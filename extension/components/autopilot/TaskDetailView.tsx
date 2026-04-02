@@ -886,14 +886,16 @@ export const TaskDetailView: React.FC<TaskDetailViewProps> = ({
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Schedule Info */}
         <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]">
-          <h4 className="text-sm font-medium text-[var(--text-primary)] mb-3">
-            {lang === 'en' ? 'Schedule' : '执行计划'}
-          </h4>
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center gap-2 text-[var(--text-secondary)]">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-medium text-[var(--text-primary)]">
+              {lang === 'en' ? 'Schedule' : '执行计划'}
+            </h4>
+            <span className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)]">
               <Clock size={14} />
-              <span>{scheduleText}</span>
-            </div>
+              {scheduleText}
+            </span>
+          </div>
+          <div className="space-y-2 text-sm">
             {task.task_type !== TaskType.AUTO_REPLY && (
               <div className="flex items-center gap-2 text-[var(--text-secondary)]">
                 <Calendar size={14} />

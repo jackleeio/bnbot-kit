@@ -1,33 +1,20 @@
-# BNBot Chrome Extension
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-AI-powered sidebar for X/Twitter. Injects into Twitter's UI via Shadow DOM, providing AI chat, auto-reply, tweet scheduling, content boosting, and 30+ platform scraping.
+# Run and deploy your AI Studio app
 
-## Install
+This contains everything you need to run your app locally.
 
-[Chrome Web Store](https://chromewebstore.google.com/detail/bnbot/haammgigdkckogcgnbkigfleejpaiiln)
+View your app in AI Studio: https://ai.studio/apps/drive/1TNSM0E9tGH_h_oCn4euYtk-7P0-wjqL-
 
-## Development
+## Run Locally
 
-```bash
-npm install
-npm run dev          # Dev server with HMR (port 3030)
-npm run build        # Production build to dist/
-```
+**Prerequisites:**  Node.js
 
-Load `dist/` as an unpacked extension in `chrome://extensions`.
 
-## Key Features
-
-- **AI Chat** — Chat with BNBot agent, tool calling support
-- **Auto Reply** — Automated timeline replies with AI
-- **Schedule** — Calendar view, draft preview, chrome.alarms auto-publish
-- **Boost** — Reward-based engagement campaigns
-- **Scraper** — 30+ platform data scraping via browser login context
-- **Analysis** — Tweet and account analytics
-
-## Architecture
-
-- **Chrome MV3** manifest with service worker
-- **Shadow DOM** isolation to prevent CSS conflicts with Twitter
-- **Background.ts** — OAuth, API proxy, WebSocket bridge, alarm scheduler
-- **Content Script** — React app injected into Twitter pages
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
