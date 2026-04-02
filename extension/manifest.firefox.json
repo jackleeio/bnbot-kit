@@ -1,0 +1,70 @@
+{
+  "manifest_version": 3,
+  "name": "BNBot - Your AI Growth Agent for X",
+  "version": "0.7.2",
+  "description": "Supercharge your X and reach your first 5M impressions and earn $100K.",
+  "icons": {
+    "16": "assets/images/icon-16.png",
+    "48": "assets/images/icon-48.png",
+    "128": "assets/images/icon-128.png"
+  },
+  "permissions": [
+    "storage",
+    "identity",
+    "tabs",
+    "alarms"
+  ],
+  "host_permissions": [
+    "*://api.bnbot.ai/*",
+    "*://*.googlevideo.com/*",
+    "*://x.com/*",
+    "*://video.twimg.com/*",
+    "*://mp.weixin.qq.com/*",
+    "*://*.tiktok.com/*",
+    "*://*.xiaohongshu.com/*",
+    "*://*.xhscdn.com/*",
+    "*://mmbiz.qpic.cn/*",
+    "*://*.qpic.cn/*",
+    "http://localhost:*/*"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://x.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/*",
+        "wechat-scraper-inject.js",
+        "tiktok-inject.js",
+        "xiaohongshu-inject.js",
+        "timeline-interceptor.js",
+        "tweet-interceptor.js"
+      ],
+      "matches": [
+        "*://x.com/*"
+      ]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.googlevideo.com wss://api.bnbot.ai https://api.bnbot.ai https://mp.weixin.qq.com http://mp.weixin.qq.com https://*.tiktok.com https://*.tiktokv.com https://*.tiktokcdn.com https://*.xiaohongshu.com https://*.xhscdn.com http://*.xhscdn.com https://mmbiz.qpic.cn https://*.qpic.cn ws://localhost:* http://localhost:* blob: data:; img-src 'self' https://abs.twimg.com https://pbs.twimg.com https://mmbiz.qpic.cn https://*.qpic.cn https://*.xhscdn.com http://*.xhscdn.com blob: data:; media-src 'self' https://*.googlevideo.com https://*.xhscdn.com http://*.xhscdn.com blob: data:; worker-src 'self';"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "bnbot@bnbot.ai",
+      "strict_min_version": "109.0"
+    }
+  }
+}

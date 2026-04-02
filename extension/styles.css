@@ -1,0 +1,564 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+@source "./**/*.tsx";
+@source "./**/*.ts";
+@source "./**/*.html";
+
+/* Import TwitterChirp font from Twitter's CDN */
+@font-face {
+  font-family: 'TwitterChirp';
+  src: url('https://abs.twimg.com/fonts/v2/chirp-regular-web.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TwitterChirp';
+  src: url('https://abs.twimg.com/fonts/v2/chirp-medium-web.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TwitterChirp';
+  src: url('https://abs.twimg.com/fonts/v2/chirp-bold-web.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+
+@theme {
+  /* --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827; */
+  --color-neutral-800: #262626;
+  --color-neutral-900: #171717;
+  --color-neutral-950: #0a0a0a;
+
+  /* Force pixel values to prevent Twitter's rem scaling from affecting layout */
+  --spacing: 4px;
+
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  
+  --text-sm: 14px;
+  --text-sm--line-height: 20px;
+  
+  --text-base: 16px;
+  --text-base--line-height: 24px;
+  
+  --text-lg: 18px;
+  --text-lg--line-height: 28px;
+  
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  
+  --text-2xl: 24px;
+  --text-2xl--line-height: 32px;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+}
+
+/* Base styles - Use Twitter's Chirp font directly from the host page */
+:host {
+  font-family: TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+:host {
+  /* Force Tailwind spacing to use fixed px value */
+  --spacing: 4px !important;
+
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  --skeleton-color: #e5e7eb;
+  --text-primary: #0f1419; /* Twitter Black */
+  --text-secondary: #536471; /* Twitter Gray */
+  --border-color: #eff3f4;
+  --hover-bg: #f3f4f6;
+  --accent-color: #ff4d4d;
+  --accent-text: #d93636;
+  --accent-bg-light: #fff5f5;
+  --card-hover-bg: rgba(0, 0, 0, 0.03);
+}
+
+/* Light theme (default) */
+.light {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  --skeleton-color: #e5e7eb;
+  --text-primary: #0f1419;
+  --text-secondary: #536471;
+  --border-color: #eff3f4;
+  --hover-bg: #f3f4f6;
+  --accent-color: #ff4d4d;
+  --accent-text: #d93636;
+  --accent-bg-light: #fff5f5;
+  --card-hover-bg: rgba(0, 0, 0, 0.03);
+}
+
+/* Dark theme */
+.dark {
+  --bg-primary: #000000; /* Twitter Dark is pure black or very dark */
+  --bg-secondary: #16181c;
+  --skeleton-color: #374151;
+  --text-primary: #e7e9ea; /* Twitter White */
+  --text-secondary: #71767b; /* Twitter Dark Gray */
+  --border-color: #2f3336;
+  --hover-bg: #181818;
+  --accent-color: #ff4d4d;
+  --accent-text: #ffb3b3;
+  --accent-bg-light: #262626;
+  --card-hover-bg: rgba(255, 255, 255, 0.03);
+}
+
+/*
+ * Global theme transition - unified 0.3s for all theme-related properties
+ * Using !important to override Tailwind's transition-colors (which uses 150ms)
+ */
+.light,
+.light *,
+.dark,
+.dark * {
+  transition-property: background-color, border-color, color, fill, stroke !important;
+  transition-duration: 0.3s !important;
+  transition-timing-function: ease !important;
+}
+
+/* Hide scrollbar */
+::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Card shadow */
+.shadow-card {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15), 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.light .shadow-card {
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Shadow DOM host - set font-size to ensure rem units work correctly */
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+  font-size: 15px !important; /* Twitter standard base size */
+}
+
+/* Root element base styles - isolate from Twitter CSS */
+#x-sidekick-root {
+  all: initial;
+  display: block;
+  width: 100%;
+  height: 100%;
+  font-family: TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  color: var(--text-primary);
+  /* Force Tailwind CSS variables */
+  --spacing: 4px;
+}
+
+#x-sidekick-root *,
+#x-sidekick-root *::before,
+#x-sidekick-root *::after {
+  box-sizing: border-box;
+  --spacing: 4px;
+  font-family: TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Reset specific elements that Twitter might affect */
+#x-sidekick-root img {
+  border-style: none;
+}
+
+/* Override Tailwind rem-based utilities with px to prevent Twitter's font-size changes from affecting layout */
+#x-sidekick-root .w-10 { width: 40px !important; }
+#x-sidekick-root .h-10 { height: 40px !important; }
+#x-sidekick-root .w-7 { width: 28px !important; }
+#x-sidekick-root .h-7 { height: 28px !important; }
+#x-sidekick-root .w-20 { width: 80px !important; }
+#x-sidekick-root .h-20 { height: 80px !important; }
+#x-sidekick-root .w-16 { width: 64px !important; }
+#x-sidekick-root .h-16 { height: 64px !important; }
+#x-sidekick-root .w-6 { width: 24px !important; }
+#x-sidekick-root .h-6 { height: 24px !important; }
+#x-sidekick-root .w-1 { width: 4px !important; }
+#x-sidekick-root .gap-4 { gap: 16px !important; }
+#x-sidekick-root .gap-3 { gap: 12px !important; }
+#x-sidekick-root .gap-2 { gap: 8px !important; }
+#x-sidekick-root .p-4 { padding: 16px !important; }
+#x-sidekick-root .p-3 { padding: 12px !important; }
+#x-sidekick-root .px-4 { padding-left: 16px !important; padding-right: 16px !important; }
+#x-sidekick-root .py-3 { padding-top: 12px !important; padding-bottom: 12px !important; }
+#x-sidekick-root .rounded-xl { border-radius: 12px !important; }
+#x-sidekick-root .rounded-full { border-radius: 9999px !important; }
+#x-sidekick-root .text-2xl { font-size: 24px !important; line-height: 32px !important; }
+#x-sidekick-root .text-sm { font-size: 14px !important; line-height: 20px !important; }
+#x-sidekick-root .text-xs { font-size: 12px !important; line-height: 16px !important; }
+
+/* Hide scrollbar */
+#x-sidekick-root *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+#x-sidekick-root * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* Markdown prose styles */
+#x-sidekick-root .prose {
+  line-height: 1.6;
+}
+
+#x-sidekick-root .prose h1,
+#x-sidekick-root .prose h2,
+#x-sidekick-root .prose h3 {
+  font-weight: 700;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  color: var(--text-primary);
+}
+
+#x-sidekick-root .prose h3 {
+  font-size: 1rem;
+}
+
+#x-sidekick-root .prose p {
+  margin: 0.5em 0;
+}
+
+#x-sidekick-root .prose ul,
+#x-sidekick-root .prose ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+#x-sidekick-root .prose li {
+  margin: 0.25em 0;
+}
+
+#x-sidekick-root .prose strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+#x-sidekick-root .prose code {
+  background-color: var(--bg-secondary);
+  padding: 0.125em 0.25em;
+  border-radius: 0.25em;
+  font-size: 0.875em;
+}
+
+#x-sidekick-root .prose pre {
+  background-color: #1f2937; /* Keep code blocks dark by default or adjust if needed */
+  color: #f9fafb;
+  padding: 1em;
+  border-radius: 0.5em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
+#x-sidekick-root .prose pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+/* Chat markdown content styles - optimized for chat interface */
+#x-sidekick-root .chat-markdown-content {
+  line-height: 1.8;
+}
+
+#x-sidekick-root .chat-markdown-content h1,
+#x-sidekick-root .chat-markdown-content h2,
+#x-sidekick-root .chat-markdown-content h3,
+#x-sidekick-root .chat-markdown-content h4 {
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+#x-sidekick-root .chat-markdown-content h1 {
+  font-size: 1.25rem;
+}
+
+#x-sidekick-root .chat-markdown-content h2 {
+  font-size: 1.125rem;
+}
+
+#x-sidekick-root .chat-markdown-content h3,
+#x-sidekick-root .chat-markdown-content h4 {
+  font-size: 1rem;
+}
+
+#x-sidekick-root .chat-markdown-content p {
+  margin: 0.75em 0;
+}
+
+#x-sidekick-root .chat-markdown-content p:first-child {
+  margin-top: 0;
+}
+
+#x-sidekick-root .chat-markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+#x-sidekick-root .chat-markdown-content ul,
+#x-sidekick-root .chat-markdown-content ul ul,
+#x-sidekick-root .chat-markdown-content ul ul ul {
+  list-style: disc;
+  padding-left: 1.25em;
+  margin: 0.25em 0;
+}
+
+#x-sidekick-root .chat-markdown-content ol,
+#x-sidekick-root .chat-markdown-content ol ol,
+#x-sidekick-root .chat-markdown-content ol ol ol {
+  list-style: decimal;
+  padding-left: 1.25em;
+  margin: 0.25em 0;
+}
+
+#x-sidekick-root .chat-markdown-content li {
+  margin: 0.2em 0;
+  padding-left: 0.25em;
+}
+
+/* Reduce nested list indentation */
+#x-sidekick-root .chat-markdown-content li > ul,
+#x-sidekick-root .chat-markdown-content li > ol {
+  padding-left: 1em;
+  margin: 0.15em 0;
+}
+
+#x-sidekick-root .chat-markdown-content strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+#x-sidekick-root .chat-markdown-content code {
+  background-color: var(--bg-secondary);
+  padding: 0.125em 0.25em;
+  border-radius: 0.25em;
+  font-size: 0.875em;
+}
+
+#x-sidekick-root .chat-markdown-content pre {
+  background-color: var(--bg-secondary);
+  padding: 0.75em;
+  border-radius: 0.5em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
+#x-sidekick-root .chat-markdown-content pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+/* Table styles for chat markdown */
+#x-sidekick-root .chat-markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.875em;
+}
+
+#x-sidekick-root .chat-markdown-content th,
+#x-sidekick-root .chat-markdown-content td {
+  padding: 0.5em 0.75em;
+  text-align: left;
+  border: 1px solid var(--border-color);
+}
+
+#x-sidekick-root .chat-markdown-content th {
+  background-color: var(--bg-secondary);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+#x-sidekick-root .chat-markdown-content tr:nth-child(even) {
+  background-color: var(--bg-secondary);
+}
+
+#x-sidekick-root .chat-markdown-content tr:hover {
+  background-color: var(--hover-bg);
+}
+
+/* Blockquote styles */
+#x-sidekick-root .chat-markdown-content blockquote {
+  border-left: 3px solid var(--accent-color);
+  padding-left: 1em;
+  margin: 0.5em 0;
+  color: var(--text-secondary);
+}
+
+/* Link styles */
+#x-sidekick-root .chat-markdown-content a {
+  color: #1d9bf0;
+  text-decoration: none;
+}
+
+#x-sidekick-root .chat-markdown-content a:hover {
+  text-decoration: underline;
+}
+
+/* Breathing light for OpenClaw status indicator */
+@keyframes bnbot-breathe {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+/* Wave animation for emoji */
+@keyframes wave {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(20deg); }
+  75% { transform: rotate(-10deg); }
+}
+
+.animate-wave {
+  animation: wave 1.5s ease-in-out infinite;
+  transform-origin: 70% 70%;
+}
+
+/* Tweet divider - horizontal line between tweets */
+.tweet-divider {
+  position: relative;
+}
+
+.tweet-divider::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: var(--border-color);
+  transition: background-color 0.3s ease !important;
+}
+
+/* Quoted tweet - prevent hover color changes while keeping theme transition */
+.quoted-tweet {
+  background-color: transparent;
+}
+
+.quoted-tweet:hover {
+  background-color: var(--hover-bg);
+}
+
+/* Force quoted tweet elements to only transition on theme change, not on hover */
+.light .quoted-tweet,
+.light .quoted-tweet-text,
+.dark .quoted-tweet,
+.dark .quoted-tweet-text {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease !important;
+}
+
+/* Verification code input - remove letter-spacing from placeholder */
+#x-sidekick-root input.verification-code-input::placeholder {
+  letter-spacing: normal;
+}
+
+/* Quoted tweet border colors */
+.light .quoted-tweet {
+  border-color: #d1d5db !important;
+}
+
+.dark .quoted-tweet {
+  border-color: #404040 !important;
+}
+
+/* Custom skeleton animation - daisyUI style shimmer effect */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Shimmer animation for image generation skeleton */
+@keyframes shimmer {
+  0% {
+    transform: skewX(-20deg) translateX(-150%);
+  }
+  100% {
+    transform: skewX(-20deg) translateX(250%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--hover-bg) 0%,
+    var(--bg-secondary) 20%,
+    var(--hover-bg) 40%,
+    var(--hover-bg) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+/* Light theme skeleton */
+.light .skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #e5e7eb 0%,
+    #f3f4f6 20%,
+    #e5e7eb 40%,
+    #e5e7eb 100%
+  );
+  background-size: 200% 100%;
+}
+
+/* Dark theme skeleton */
+.dark .skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #262626 0%,
+    #404040 20%,
+    #262626 40%,
+    #262626 100%
+  );
+  background-size: 200% 100%;
+}
+
+

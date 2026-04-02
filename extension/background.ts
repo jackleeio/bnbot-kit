@@ -1,0 +1,2005 @@
+// Background Service Worker (Chrome/Edge) / Event Page (Firefox)
+// Handles Google OAuth via popup window, API proxy, and WebSocket
+
+import { isFirefox, isChrome } from './utils/browserCompat';
+import { WebSocketManager } from './utils/websocketManager';
+import { localRelayManager, LocalActionRequest } from './utils/localRelayManager';
+import { initTaskAlarmScheduler, syncSingleTaskAlarm, removeTaskAlarm, handleTaskExecutionResult, syncSingleDraftAlarm, removeDraftAlarm, handleDraftPublishResult } from './services/taskAlarmScheduler';
+import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers } from './services/scraperService';
+import { searchReddit, fetchRedditHot, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, searchZhihu, fetchZhihuHot, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote } from './services/scrapers/browser';
+
+const GOOGLE_CLIENT_ID = '968791771361-on89kib06tl0kucdoo0s7jiop3tftp16.apps.googleusercontent.com';
+const OAUTH_REDIRECT_URI = chrome.identity.getRedirectURL();
+const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8000';
+const WS_BASE_URL = process.env.WS_BASE_URL || '';
+
+// Track if remote control is enabled (WebSocket connected)
+let remoteControlEnabled = false;
+
+// Firefox: WebSocket runs directly in background (no offscreen document)
+let firefoxWsManager: WebSocketManager | null = null;
+if (isFirefox) {
+  firefoxWsManager = new WebSocketManager(API_BASE_URL, {
+    notifyHost(data: any) {
+      // In Firefox, the background IS the host — forward WS events to content scripts
+      if (data.type === 'WS_CONNECTED') {
+        remoteControlEnabled = true;
+        setXTabsKeepAlive(true);
+        sendToOneXTab(data);
+      } else if (data.type === 'WS_DISCONNECTED') {
+        remoteControlEnabled = false;
+        setXTabsKeepAlive(false);
+        chrome.tabs.query({ url: ['*://twitter.com/*', '*://x.com/*'] }, (tabs) => {
+          for (const tab of tabs) {
+            if (tab.id) {
+              chrome.tabs.sendMessage(tab.id, data).catch(() => {});
+            }
+          }
+        });
+      } else if (data.type === 'WS_MESSAGE') {
+        const innerMsg = data.message;
+        // Intercept task_sync: handle alarm sync in background, don't forward to content script
+        if (innerMsg && innerMsg.type === 'task_sync') {
+          if (innerMsg.action === 'deleted') {
+            removeTaskAlarm(innerMsg.task_id);
+          } else {
+            syncSingleTaskAlarm(innerMsg.task_id);
+          }
+          return;
+        }
+        sendToOneXTab(data);
+      }
+    },
+    async requestFreshToken() {
+      return handleFreshTokenRequest();
+    },
+  }, WS_BASE_URL || undefined);
+}
+
+// ============ Local Relay (OpenClaw MCP Integration) ============
+
+// Initialize local relay manager for OpenClaw connections
+localRelayManager.init({
+  onAction: async (message: LocalActionRequest) => {
+    console.log(`[Background] Local relay action: ${message.actionType} (${message.requestId}) payload:`, JSON.stringify(message.actionPayload));
+
+    // Handle inject_auth_tokens directly in background (no content script needed)
+    if (message.actionType === 'inject_auth_tokens') {
+      try {
+        const { access_token, refresh_token, user } = message.actionPayload as {
+          access_token?: string;
+          refresh_token?: string;
+          user?: Record<string, unknown>;
+        };
+
+        if (!access_token || !refresh_token) {
+          localRelayManager.sendActionResult({
+            type: 'action_result',
+            requestId: message.requestId,
+            success: false,
+            error: 'Missing access_token or refresh_token in payload',
+          });
+          return;
+        }
+
+        // Write tokens directly to chrome.storage.local
+        const storageData: Record<string, unknown> = {
+          'accessToken.bnbot': access_token,
+          'refreshToken.bnbot': refresh_token,
+        };
+        if (user) {
+          storageData['userData.bnbot'] = user;
+        }
+        await chrome.storage.local.set(storageData);
+        console.log('[Background] Auth tokens injected via local relay');
+
+        // Notify all X tabs to refresh auth state
+        chrome.tabs.query({ url: ['*://twitter.com/*', '*://x.com/*'] }, (tabs) => {
+          for (const tab of tabs ?? []) {
+            if (tab.id) {
+              chrome.tabs.sendMessage(tab.id, { type: 'AUTH_INJECTED' }).catch(() => {});
+            }
+          }
+        });
+
+        localRelayManager.sendActionResult({
+          type: 'action_result',
+          requestId: message.requestId,
+          success: true,
+          data: { message: 'Auth tokens injected successfully' },
+        });
+      } catch (error) {
+        console.error('[Background] inject_auth_tokens error:', error);
+        localRelayManager.sendActionResult({
+          type: 'action_result',
+          requestId: message.requestId,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+      return;
+    }
+
+    // Handle device_key sync from CLI
+    if (message.actionType === 'sync_device_key') {
+      const { deviceKey } = message.actionPayload as { deviceKey: string };
+      await chrome.storage.local.set({ cliDeviceKey: deviceKey });
+      localRelayManager.sendActionResult({
+        type: 'action_result',
+        requestId: message.requestId,
+        success: true,
+        data: { message: 'Device key synced' },
+      });
+      return;
+    }
+
+    // Handle draft alarm actions directly in background
+    if (message.actionType === 'draft_alarm_sync') {
+      try {
+        await syncSingleDraftAlarm((message.actionPayload as { draftId: string }).draftId);
+        localRelayManager.sendActionResult({
+          type: 'action_result',
+          requestId: message.requestId,
+          success: true,
+          data: { message: 'Draft alarm synced' },
+        });
+      } catch (error) {
+        localRelayManager.sendActionResult({
+          type: 'action_result',
+          requestId: message.requestId,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+      return;
+    }
+
+    if (message.actionType === 'draft_alarm_remove') {
+      try {
+        await removeDraftAlarm((message.actionPayload as { draftId: string }).draftId);
+        localRelayManager.sendActionResult({
+          type: 'action_result',
+          requestId: message.requestId,
+          success: true,
+          data: { message: 'Draft alarm removed' },
+        });
+      } catch (error) {
+        localRelayManager.sendActionResult({
+          type: 'action_result',
+          requestId: message.requestId,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+      return;
+    }
+
+    // Handle scraper actions directly in background (no content script needed)
+    const scraperKey = Object.keys(scraperHandlers).find(k =>
+      message.actionType === k || message.actionType === k.toLowerCase().replace(/_/g, '-')
+    );
+    if (scraperKey) {
+      try {
+        const data = await scraperHandlers[scraperKey](message.actionPayload as any);
+        startAllIdleTimers();
+        localRelayManager.sendActionResult({
+          type: 'action_result',
+          requestId: message.requestId,
+          success: true,
+          data,
+        });
+      } catch (error) {
+        startAllIdleTimers();
+        localRelayManager.sendActionResult({
+          type: 'action_result',
+          requestId: message.requestId,
+          success: false,
+          error: error instanceof Error ? error.message : 'Scraper error',
+        });
+      }
+      return;
+    }
+
+    // Forward action to the content script for execution
+    const sent = await sendToOneXTab({
+      type: 'LOCAL_ACTION',
+      requestId: message.requestId,
+      actionType: message.actionType,
+      actionPayload: message.actionPayload,
+    });
+
+    // If message could not be delivered, return error immediately
+    if (!sent) {
+      console.error(`[Background] Failed to deliver action ${message.actionType} to content script`);
+      localRelayManager.sendActionResult({
+        type: 'action_result',
+        requestId: message.requestId,
+        success: false,
+        error: 'No Twitter/X tab with content script available. Please open x.com and refresh the page.',
+      });
+    }
+  },
+  onConnectionChange: (connected: boolean) => {
+    console.log(`[Background] Local relay ${connected ? 'connected' : 'disconnected'}`);
+    // Keep at least one X tab alive when local relay is connected
+    if (connected) {
+      setXTabsKeepAlive(true);
+    } else if (!remoteControlEnabled) {
+      setXTabsKeepAlive(false);
+    }
+  },
+});
+
+// Load local relay settings from storage on startup
+// Default to enabled so users can connect immediately after installing
+chrome.storage.local.get(['openclawEnabled', 'openclawPort'], (result) => {
+  const enabled = result.openclawEnabled !== false;
+  const port = result.openclawPort || 18900;
+  if (enabled) {
+    console.log('[Background] OpenClaw integration enabled on startup, port:', port);
+    localRelayManager.setEnabled(true, port);
+  }
+});
+
+// Auto-check for updates on startup (only for Web Store installs)
+if (chrome.runtime.getManifest().update_url) {
+  chrome.runtime.requestUpdateCheck().then(([status]) => {
+    if (status === 'update_available') {
+      console.log('[Background] Update available, will apply on next Chrome restart');
+    }
+  }).catch(() => {});
+}
+
+// Listen for local action results from content scripts
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'LOCAL_ACTION_RESULT') {
+    const { requestId, success, data, error } = message;
+    console.log(`[Background] Local action result: ${requestId}, success: ${success}`);
+    localRelayManager.sendActionResult({
+      type: 'action_result',
+      requestId,
+      success,
+      data,
+      error,
+      retryAfter: error === 'extension_busy' ? 3000 : undefined,
+    });
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  // OpenClaw settings changes
+  if (message.type === 'OPENCLAW_SET_ENABLED') {
+    const { enabled, port } = message;
+    console.log(`[Background] OpenClaw ${enabled ? 'enabling' : 'disabling'}, port: ${port}`);
+    localRelayManager.setEnabled(enabled, port);
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (message.type === 'OPENCLAW_RECONNECT') {
+    console.log('[Background] OpenClaw manual reconnect');
+    localRelayManager.reconnect();
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (message.type === 'OPENCLAW_GET_STATUS') {
+    sendResponse(localRelayManager.getConfig());
+    return false;
+  }
+});
+
+// ============ Tab Keep-Alive (Prevent Chrome from discarding X tabs) ============
+
+/**
+ * Prevent Chrome from discarding/freezing X tabs when remote control is enabled
+ * This is crucial for Telegram remote control to work in background
+ */
+/**
+ * Prevent Chrome from discarding/freezing one X tab when remote control is enabled
+ * Only need to keep one tab alive for scheduled tasks to work
+ */
+async function setXTabsKeepAlive(enabled: boolean): Promise<void> {
+  // Firefox event page doesn't support autoDiscardable
+  if (isFirefox) return;
+
+  const tabs = await chrome.tabs.query({ url: ['*://twitter.com/*', '*://x.com/*'] });
+
+  if (enabled && tabs.length > 0) {
+    // Only keep the first X tab alive
+    const tab = tabs[0];
+    if (tab.id) {
+      try {
+        await chrome.tabs.update(tab.id, { autoDiscardable: false });
+        console.log(`[Background] Tab ${tab.id} set to keep-alive`);
+      } catch (err) {
+        // Tab might have been closed
+      }
+    }
+  } else if (!enabled) {
+    // When disabling, restore all tabs to default behavior
+    for (const tab of tabs) {
+      if (tab.id) {
+        try {
+          await chrome.tabs.update(tab.id, { autoDiscardable: true });
+        } catch (err) {
+          // Tab might have been closed
+        }
+      }
+    }
+    console.log(`[Background] Restored ${tabs.length} X tabs to default`);
+  }
+}
+
+// When new X tab is opened, set autoDiscardable based on remote control status
+// (Chrome/Edge only — Firefox doesn't support autoDiscardable)
+// Track tabs already set to keep-alive to avoid spamming logs and redundant API calls
+const keepAliveTabs = new Set<number>();
+if (isChrome) {
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (remoteControlEnabled && changeInfo.status === 'complete' && tab.url) {
+      if ((tab.url.includes('twitter.com') || tab.url.includes('x.com')) && !keepAliveTabs.has(tabId)) {
+        chrome.tabs.update(tabId, { autoDiscardable: false }).catch(() => {});
+        keepAliveTabs.add(tabId);
+        console.log(`[Background] New X tab ${tabId} set to keep-alive`);
+      }
+    }
+  });
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    keepAliveTabs.delete(tabId);
+  });
+}
+
+/**
+ * Send message to one X tab only (avoid duplicate execution)
+ * Priority: active X tab > first X tab > auto-open new tab
+ * Returns true if message was successfully delivered, false otherwise.
+ */
+async function sendToOneXTab(message: object): Promise<boolean> {
+  // Helper: send message and verify content script received it
+  async function trySend(tabId: number): Promise<boolean> {
+    try {
+      await chrome.tabs.sendMessage(tabId, message);
+      return true;
+    } catch {
+      console.warn(`[Background] Content script not responding on tab ${tabId}`);
+      return false;
+    }
+  }
+
+  // First try to find active X tab in current window
+  const activeTabs = await chrome.tabs.query({
+    url: ['*://twitter.com/*', '*://x.com/*'],
+    active: true,
+    currentWindow: true
+  });
+
+  if (activeTabs.length > 0 && activeTabs[0].id) {
+    const sent = await trySend(activeTabs[0].id);
+    if (sent) {
+      console.log(`[Background] Sent to active X tab ${activeTabs[0].id}`);
+      return true;
+    }
+  }
+
+  // Fallback: any X tab
+  const allXTabs = await chrome.tabs.query({
+    url: ['*://twitter.com/*', '*://x.com/*']
+  });
+
+  for (const tab of allXTabs) {
+    if (tab.id) {
+      const sent = await trySend(tab.id);
+      if (sent) {
+        console.log(`[Background] Sent to X tab ${tab.id}`);
+        return true;
+      }
+    }
+  }
+
+  // No X tab found - auto-open one in background
+  console.log('[Background] No X tab found, opening one automatically...');
+
+  try {
+    const newTab = await chrome.tabs.create({
+      url: 'https://x.com/home',
+      active: false  // Open in background, don't disturb user
+    });
+
+    if (!newTab.id) {
+      console.error('[Background] Failed to create new X tab');
+      return false;
+    }
+
+    // Wait for content script to load (listen for tab complete + small delay)
+    await new Promise<void>((resolve) => {
+      const onUpdated = (tabId: number, changeInfo: { status?: string }) => {
+        if (tabId === newTab.id && changeInfo.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(onUpdated);
+          // Give content script time to initialize
+          setTimeout(resolve, 1500);
+        }
+      };
+      chrome.tabs.onUpdated.addListener(onUpdated);
+
+      // Timeout fallback (15 seconds)
+      setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve();
+      }, 15000);
+    });
+
+    // Now send the message
+    const sent = await trySend(newTab.id);
+    if (sent) {
+      console.log(`[Background] Sent to newly opened X tab ${newTab.id}`);
+    }
+
+    // Set keep-alive if remote control is enabled (Chrome/Edge only)
+    if (remoteControlEnabled && isChrome) {
+      chrome.tabs.update(newTab.id, { autoDiscardable: false }).catch(() => {});
+    }
+
+    return sent;
+  } catch (err) {
+    console.error('[Background] Failed to open X tab:', err);
+    return false;
+  }
+}
+
+// ============ Offscreen Document Management (Chrome/Edge only) ============
+
+let creatingOffscreen: Promise<void> | null = null;
+
+async function ensureOffscreenDocument(): Promise<void> {
+  // Firefox doesn't support offscreen documents
+  if (isFirefox) return;
+
+  const offscreenUrl = chrome.runtime.getURL('offscreen.html');
+
+  // Check if offscreen document already exists
+  if (chrome.runtime.getContexts) {
+    const existingContexts = await chrome.runtime.getContexts({
+      contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
+      documentUrls: [offscreenUrl]
+    });
+
+    if (existingContexts.length > 0) {
+      return; // Already exists
+    }
+  }
+
+  // Create offscreen document (prevent multiple simultaneous creations)
+  if (creatingOffscreen) {
+    await creatingOffscreen;
+    return;
+  }
+
+  creatingOffscreen = chrome.offscreen.createDocument({
+    url: offscreenUrl,
+    reasons: [chrome.offscreen.Reason.WEB_RTC], // WEB_RTC allows persistent connections
+    justification: 'Maintain WebSocket connection for Telegram remote control'
+  });
+
+  await creatingOffscreen;
+  creatingOffscreen = null;
+  console.log('[Background] Offscreen document created');
+}
+
+// Forward WebSocket messages from offscreen to content scripts (Chrome only)
+// On Firefox, WS events are forwarded by firefoxWsManager.notifyHost directly
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Messages from offscreen document to broadcast to tabs (Chrome only path)
+  if (isChrome && message.type === 'WS_CONNECTED') {
+    remoteControlEnabled = true;
+    setXTabsKeepAlive(true);
+
+    // Send to active X tab first, otherwise first X tab
+    sendToOneXTab(message);
+    return false;
+  }
+
+  if (isChrome && message.type === 'WS_DISCONNECTED') {
+    remoteControlEnabled = false;
+    setXTabsKeepAlive(false);
+
+    // Broadcast disconnect to all tabs
+    chrome.tabs.query({ url: ['*://twitter.com/*', '*://x.com/*'] }, (tabs) => {
+      for (const tab of tabs) {
+        if (tab.id) {
+          chrome.tabs.sendMessage(tab.id, message).catch(() => {});
+        }
+      }
+    });
+    return false;
+  }
+
+  if (isChrome && message.type === 'WS_MESSAGE') {
+    const innerMsg = message.message;
+    // Intercept task_sync: handle alarm sync in background, don't forward to content script
+    if (innerMsg && innerMsg.type === 'task_sync') {
+      if (innerMsg.action === 'deleted') {
+        removeTaskAlarm(innerMsg.task_id);
+      } else {
+        syncSingleTaskAlarm(innerMsg.task_id);
+      }
+      return false;
+    }
+    // Send to active X tab first, otherwise first X tab
+    sendToOneXTab(message);
+    return false;
+  }
+
+  // Handle WS commands from content scripts
+  if (message.type === 'WS_CONNECT') {
+    const { userId, accessToken } = message;
+
+    if (isFirefox && firefoxWsManager) {
+      // Firefox: connect directly in background
+      console.log('[Background] WS_CONNECT received (Firefox direct mode)');
+      firefoxWsManager.connect(userId, accessToken)
+        .then((result) => sendResponse(result))
+        .catch((err) => sendResponse({ success: false, error: err.message }));
+      return true;
+    }
+
+    // Chrome: use offscreen document
+    console.log('[Background] WS_CONNECT received, ensuring offscreen document...');
+
+    const tryConnect = async (attempt: number): Promise<any> => {
+      try {
+        await ensureOffscreenDocument();
+        console.log('[Background] Offscreen document ready, attempt:', attempt);
+        // 显示连接的 WebSocket 地址
+        const _apiBase = process.env.API_BASE_URL || 'http://localhost:8000';
+        const _wsBase = process.env.WS_BASE_URL || '';
+        const WS_URL = _wsBase || (_apiBase.includes('localhost')
+          ? 'ws://localhost:8001'
+          : _apiBase.replace('http://', 'ws://').replace('https://', 'wss://'));
+        console.log('[Background] WebSocket connecting to:', WS_URL);
+        // Wait for offscreen document to initialize its message listener
+        await new Promise(resolve => setTimeout(resolve, 1000 + attempt * 500));
+        console.log('[Background] Sending OFFSCREEN_WS_CONNECT...');
+        return await chrome.runtime.sendMessage({
+          type: 'OFFSCREEN_WS_CONNECT',
+          userId,
+          accessToken
+        });
+      } catch (err: any) {
+        if (attempt < 3 && err?.message?.includes('Receiving end does not exist')) {
+          console.log('[Background] Retrying connection, attempt:', attempt + 1);
+          return tryConnect(attempt + 1);
+        }
+        throw err;
+      }
+    };
+
+    tryConnect(1)
+      .then((result) => {
+        console.log('[Background] OFFSCREEN_WS_CONNECT result:', result);
+        sendResponse(result);
+      })
+      .catch((err) => {
+        console.error('[Background] OFFSCREEN_WS_CONNECT error:', err);
+        sendResponse({ success: false, error: err.message });
+      });
+    return true;
+  }
+
+  if (message.type === 'WS_DISCONNECT') {
+    if (isFirefox && firefoxWsManager) {
+      firefoxWsManager.disconnect();
+      sendResponse({ success: true });
+      return true;
+    }
+    chrome.runtime.sendMessage({ type: 'OFFSCREEN_WS_DISCONNECT' })
+      .then(() => sendResponse({ success: true }))
+      .catch(() => sendResponse({ success: true }));
+    return true;
+  }
+
+  if (message.type === 'WS_SEND') {
+    if (isFirefox && firefoxWsManager) {
+      const success = firefoxWsManager.send(message.message);
+      sendResponse({ success });
+      return true;
+    }
+    chrome.runtime.sendMessage({ type: 'OFFSCREEN_WS_SEND', message: message.message })
+      .then((result) => sendResponse(result))
+      .catch(() => sendResponse({ success: false }));
+    return true;
+  }
+
+  if (message.type === 'WS_STATUS') {
+    if (isFirefox && firefoxWsManager) {
+      sendResponse(firefoxWsManager.getStatus());
+      return true;
+    }
+    chrome.runtime.sendMessage({ type: 'OFFSCREEN_WS_STATUS' })
+      .then((result) => sendResponse(result))
+      .catch(() => sendResponse({ connected: false, userId: null }));
+    return true;
+  }
+
+  // Handle fresh token request from offscreen (for reconnection)
+  if (message.type === 'REQUEST_FRESH_TOKEN') {
+    handleFreshTokenRequest()
+      .then((accessToken) => sendResponse({ accessToken }))
+      .catch(() => sendResponse({ accessToken: null }));
+    return true;
+  }
+});
+
+// Listen for messages from content script
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+  if (request.type === 'GOOGLE_LOGIN') {
+    handleGoogleLogin()
+      .then(sendResponse)
+      .catch((error) => sendResponse({ error: error.message }));
+    return true;
+  }
+
+  if (request.type === 'LOGOUT') {
+    // Disconnect WebSocket on logout
+    if (isFirefox && firefoxWsManager) {
+      firefoxWsManager.disconnect();
+    } else {
+      chrome.runtime.sendMessage({ type: 'OFFSCREEN_WS_DISCONNECT' }).catch(() => {});
+    }
+    // Clear all task alarms on logout
+    chrome.alarms.clearAll();
+    handleLogout()
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => sendResponse({ error: error.message }));
+    return true;
+  }
+
+  // Task execution result from content script
+  if (request.type === 'SCHEDULED_TASK_RESULT') {
+    handleTaskExecutionResult(request.taskId, request.executionId, request.success, request.data, request.error);
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  // UI created/modified a task — sync its alarm
+  if (request.type === 'TASK_ALARM_SYNC') {
+    syncSingleTaskAlarm(request.taskId).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  // UI paused/deleted a task — remove its alarm
+  if (request.type === 'TASK_ALARM_REMOVE') {
+    removeTaskAlarm(request.taskId).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  // Draft publish result from content script
+  if (request.type === 'DRAFT_PUBLISH_RESULT') {
+    handleDraftPublishResult(request.draftId, request.success, request.error);
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  // UI scheduled a draft — sync its alarm
+  if (request.type === 'DRAFT_ALARM_SYNC') {
+    syncSingleDraftAlarm(request.draftId).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  // UI unscheduled a draft — remove its alarm
+  if (request.type === 'DRAFT_ALARM_REMOVE') {
+    removeDraftAlarm(request.draftId).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  // Check for extension updates
+  if (request.type === 'CHECK_FOR_UPDATES') {
+    chrome.runtime.requestUpdateCheck().then(([status, details]: [string, any]) => {
+      if (status === 'update_available') {
+        sendResponse({ updateAvailable: true, version: details?.version || 'new' });
+      } else {
+        sendResponse({ updateAvailable: false });
+      }
+    }).catch(() => {
+      sendResponse({ updateAvailable: false });
+    });
+    return true;
+  }
+
+  // API proxy - forward requests from content script to API with cookies
+  if (request.type === 'API_REQUEST') {
+    handleApiRequest(request.url, request.options)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ error: error.message }));
+    return true;
+  }
+
+  // 微信公众号文章抓取
+  if (request.type === 'WECHAT_SCRAPE') {
+    scrapeWechatUrl(request.url)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  // Twitter 视频下载
+  if (request.type === 'DOWNLOAD_VIDEO') {
+    const filename = request.filename || 'twitter-video.mp4';
+    chrome.downloads.download({
+      url: request.url,
+      filename,
+    }, (downloadId: number) => {
+      if (chrome.runtime.lastError) {
+        console.error('[BNBot Background] Download failed:', chrome.runtime.lastError.message);
+        sendResponse({ success: false, error: chrome.runtime.lastError.message });
+      } else {
+        console.log('[BNBot Background] Download started, id:', downloadId);
+        sendResponse({ success: true, downloadId });
+      }
+    });
+    return true;
+  }
+
+  // TikTok 视频信息获取
+  if (request.type === 'TIKTOK_FETCH') {
+    fetchTiktokVideo(request.url)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  // TikTok 视频信息获取（新版 API，符合后端文档格式）
+  if (request.type === 'TIKTOK_FETCH_V2') {
+    fetchTiktokVideoV2(request.url)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  // 小红书笔记抓取
+  if (request.type === 'XIAOHONGSHU_SCRAPE') {
+    scrapeXiaohongshuNote(request.url)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  // Fetch blob from URL and return as base64 data URL (to bypass CORS)
+  if (request.type === 'FETCH_BLOB') {
+    fetchBlobAsDataUrl(request.url)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ error: error.message }));
+    return true;
+  }
+
+  // Fetch blob from URL (bypass CORS)
+  if (request.type === 'FETCH_BLOB') {
+    fetchBlobAsDataUrl(request.url)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ error: error.message }));
+    return true;
+  }
+
+  // Video proxy - fetch video and return as base64 data URL
+  if (request.type === 'FETCH_VIDEO') {
+    fetchVideoAsDataUrl(request.url)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ error: error.message }));
+    return true;
+  }
+
+  // Fetch image from URL and return as base64 (for article image uploads)
+  if (request.type === 'FETCH_IMAGE') {
+    fetchImageAsBase64(request.url)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+});
+
+async function handleGoogleLogin(): Promise<{ id_token: string }> {
+  // Build Google OAuth URL
+  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
+  authUrl.searchParams.set('redirect_uri', OAUTH_REDIRECT_URI);
+  authUrl.searchParams.set('response_type', 'id_token');
+  authUrl.searchParams.set('scope', 'openid email profile');
+  authUrl.searchParams.set('nonce', Math.random().toString(36).substring(2));
+  // Force Google to show login screen, clearing any cached session
+  authUrl.searchParams.set('prompt', 'login');
+
+  return new Promise((resolve, reject) => {
+    chrome.identity.launchWebAuthFlow(
+      {
+        url: authUrl.toString(),
+        interactive: true,
+      },
+      (redirectUrl) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+
+        if (!redirectUrl) {
+          reject(new Error('No redirect URL received'));
+          return;
+        }
+
+        // Extract id_token from URL fragment
+        const url = new URL(redirectUrl);
+        const hash = url.hash.substring(1);
+        const params = new URLSearchParams(hash);
+        const idToken = params.get('id_token');
+
+        if (!idToken) {
+          reject(new Error('No id_token in response'));
+          return;
+        }
+
+        resolve({ id_token: idToken });
+      }
+    );
+  });
+}
+
+async function handleLogout() {
+  await chrome.storage.local.remove(['bnbot_user']);
+
+  // Clear Google identity cache so user gets prompted to choose email on next login
+  // (clearAllCachedAuthTokens may not be available on all browsers)
+  if (chrome.identity?.clearAllCachedAuthTokens) {
+    await new Promise<void>((resolve) => {
+      chrome.identity.clearAllCachedAuthTokens(() => {
+        if (chrome.runtime.lastError) {
+          console.warn('[BNBot] Failed to clear Google identity cache:', chrome.runtime.lastError.message);
+        } else {
+          console.log('[BNBot] Google identity cache cleared');
+        }
+        resolve();
+      });
+    });
+  }
+}
+
+// Handle API requests from content script
+// Background script can make cross-origin requests with cookies
+async function handleApiRequest(
+  url: string,
+  options: { method?: string; headers?: Record<string, string>; body?: string; formData?: Array<{ key: string; value: string; filename?: string; type?: string; base64?: string }> }
+): Promise<{ status: number; data: unknown; error?: string }> {
+  try {
+    console.log('[BNBot Background] API request:', options.method || 'GET', url);
+
+    let requestBody: BodyInit | undefined = options.body;
+    let requestHeaders: Record<string, string> = { ...options.headers };
+
+    // Check if this is a FormData request
+    if (options.formData && Array.isArray(options.formData)) {
+      const formData = new FormData();
+      for (const entry of options.formData) {
+        if (entry.base64 && entry.type) {
+          // Convert base64 back to Blob for file entries
+          const byteString = atob(entry.base64);
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+          }
+          const blob = new Blob([ab], { type: entry.type });
+          formData.append(entry.key, blob, entry.filename || 'file');
+        } else {
+          formData.append(entry.key, entry.value);
+        }
+      }
+      requestBody = formData;
+      // Don't set Content-Type for FormData - browser will set it with boundary
+    } else if (requestBody) {
+      // Only set Content-Type for non-FormData requests
+      requestHeaders['Content-Type'] = 'application/json';
+    }
+
+    const response = await fetch(url, {
+      method: options.method || 'GET',
+      headers: requestHeaders,
+      body: requestBody,
+    });
+
+    console.log('[BNBot Background] API response status:', response.status);
+
+    // Parse response based on content type
+    let data: unknown = null;
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+    } else {
+      // Return text for HTML and other text-based responses
+      try {
+        data = await response.text();
+      } catch {
+        data = null;
+      }
+    }
+
+    return {
+      status: response.status,
+      data,
+    };
+  } catch (error) {
+    console.error('[BNBot Background] API request error:', error);
+    return {
+      status: 0,
+      data: null,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+// Handle port-based streaming connections for SSE
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'STREAM_API') return;
+
+  console.log('[BNBot Background] Stream connection opened');
+
+  let aborted = false;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+
+  port.onDisconnect.addListener(() => {
+    console.log('[BNBot Background] Stream connection closed');
+    aborted = true;
+    if (reader) {
+      reader.cancel().catch(() => { });
+    }
+  });
+
+  port.onMessage.addListener(async (msg) => {
+    if (msg.type !== 'START_STREAM') return;
+
+    const { url, options } = msg;
+    console.log('[BNBot Background] Starting stream:', options?.method || 'POST', url);
+
+    try {
+      const response = await fetch(url, {
+        method: options?.method || 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...options?.headers,
+        },
+        body: options?.body,
+      });
+
+      console.log('[BNBot Background] Stream response status:', response.status);
+
+      // Send initial status
+      port.postMessage({
+        type: 'STREAM_STATUS',
+        status: response.status,
+        ok: response.ok,
+      });
+
+      if (!response.ok || !response.body) {
+        // Try to get error body
+        let errorData = null;
+        try {
+          errorData = await response.json();
+        } catch { }
+        port.postMessage({
+          type: 'STREAM_ERROR',
+          status: response.status,
+          error: errorData?.detail || errorData?.message || `HTTP ${response.status}`,
+        });
+        return;
+      }
+
+      // Stream the response
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (!aborted) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          port.postMessage({ type: 'STREAM_END' });
+          break;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        port.postMessage({ type: 'STREAM_CHUNK', chunk });
+      }
+    } catch (error) {
+      console.error('[BNBot Background] Stream error:', error);
+      if (!aborted) {
+        port.postMessage({
+          type: 'STREAM_ERROR',
+          status: 0,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+  });
+});
+
+// Handle port-based download with progress
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'DOWNLOAD_PORT') return;
+
+  console.log('[BNBot Background] Download port opened');
+
+  port.onDisconnect.addListener(() => {
+    console.log('[BNBot Background] Download port closed');
+  });
+
+  port.onMessage.addListener(async (msg) => {
+    if (msg.type === 'PING') return; // Keep-alive
+    if (msg.type !== 'START_DOWNLOAD') return;
+
+    const { url } = msg;
+    console.log('[BNBot Background] Starting download:', url);
+
+    try {
+      const fetchHeaders: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      };
+      // Add Referer for Xiaohongshu CDN
+      if (url.includes('xhscdn') || url.includes('xiaohongshu')) {
+        fetchHeaders['Referer'] = 'https://www.xiaohongshu.com/';
+      }
+
+      const response = await fetch(url, {
+        referrerPolicy: 'no-referrer',
+        headers: fetchHeaders,
+      });
+
+      if (!response.ok) {
+        port.postMessage({ type: 'DOWNLOAD_ERROR', error: `HTTP ${response.status}` });
+        return;
+      }
+
+      const contentLength = response.headers.get('content-length');
+      const total = contentLength ? parseInt(contentLength, 10) : 0;
+      const contentType = response.headers.get('content-type') || '';
+
+      port.postMessage({
+        type: 'DOWNLOAD_START',
+        total,
+        contentType,
+      });
+
+      if (!response.body) {
+        port.postMessage({ type: 'DOWNLOAD_ERROR', error: 'No response body' });
+        return;
+      }
+
+      const reader = response.body.getReader();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        // Send chunk as array (ports handle structured clone)
+        // Convert Uint8Array to regular array to avoid serialization issues effectively? 
+        // Chrome ports verify efficiency with AraryBuffers. Value is Uint8Array.
+        // We can send it directly.
+        port.postMessage({ type: 'DOWNLOAD_CHUNK', chunk: Array.from(value) });
+      }
+
+      port.postMessage({ type: 'DOWNLOAD_END' });
+
+    } catch (error) {
+      console.error('[BNBot Background] Download error:', error);
+      port.postMessage({
+        type: 'DOWNLOAD_ERROR',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+});
+
+console.log('BNBot background service worker loaded');
+
+// Initialize task alarm scheduler (chrome.alarms-based local scheduling)
+initTaskAlarmScheduler();
+
+// ============ Scraper Service (browser-based only, PUBLIC APIs go through CLI/backend) ============
+const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
+  SCRAPER_SEARCH_TIKTOK: (m) => searchTikTok(m.query, m.limit),
+  SCRAPER_SEARCH_YOUTUBE: (m) => searchYouTube(m.query, { limit: m.limit, type: m.type, upload: m.upload, sort: m.sort }),
+  SCRAPER_SEARCH_REDDIT: (m) => searchReddit(m.query, m.limit),
+  SCRAPER_SEARCH_BILIBILI: (m) => searchBilibili(m.query, m.limit),
+  SCRAPER_SEARCH_ZHIHU: (m) => searchZhihu(m.query, m.limit),
+  SCRAPER_SEARCH_XUEQIU: (m) => searchXueqiu(m.query, m.limit),
+  SCRAPER_SEARCH_INSTAGRAM: (m) => searchInstagram(m.query, m.limit),
+  SCRAPER_SEARCH_LINUX_DO: (m) => searchLinuxDo(m.query, m.limit),
+  SCRAPER_SEARCH_JIKE: (m) => searchJike(m.query, m.limit),
+  SCRAPER_SEARCH_XIAOHONGSHU: (m) => searchXiaohongshu(m.query, m.limit),
+  SCRAPER_SEARCH_WEIBO: (m) => searchWeibo(m.query, m.limit),
+  SCRAPER_SEARCH_DOUBAN: (m) => searchDouban(m.query, m.limit),
+  SCRAPER_SEARCH_MEDIUM: (m) => searchMedium(m.query, m.limit),
+  SCRAPER_SEARCH_GOOGLE: (m) => searchGoogle(m.query, { limit: m.limit, lang: m.lang }),
+  SCRAPER_SEARCH_FACEBOOK: (m) => searchFacebook(m.query, m.limit),
+  SCRAPER_SEARCH_LINKEDIN: (m) => searchLinkedInJobs(m.query, m),
+  SCRAPER_SEARCH_36KR: (m) => search36Kr(m.query, m.limit),
+  SCRAPER_FETCH_PRODUCTHUNT: (m) => fetchProductHuntHot(m.limit),
+  SCRAPER_FETCH_WEIXIN: (m) => fetchWeixinArticle(m.url),
+  SCRAPER_FETCH_YAHOO_FINANCE: (m) => fetchYahooFinanceQuote(m.symbol),
+  SCRAPER_FETCH_REDDIT_HOT: (m) => fetchRedditHot(m.limit),
+  SCRAPER_FETCH_BILIBILI_HOT: (m) => fetchBilibiliHot(m.limit),
+  SCRAPER_FETCH_BILIBILI_RANKING: (m) => fetchBilibiliRanking(m.limit),
+  SCRAPER_FETCH_TIKTOK_EXPLORE: (m) => fetchTikTokExplore(m.limit),
+  SCRAPER_FETCH_ZHIHU_HOT: (m) => fetchZhihuHot(m.limit),
+  SCRAPER_FETCH_XUEQIU_HOT: (m) => fetchXueqiuHot(m.limit),
+  SCRAPER_FETCH_WEIBO_HOT: (m) => fetchWeiboHot(m.limit),
+  SCRAPER_FETCH_DOUBAN_MOVIE_HOT: (m) => fetchDoubanMovieHot(m.limit),
+  SCRAPER_FETCH_DOUBAN_BOOK_HOT: (m) => fetchDoubanBookHot(m.limit),
+  SCRAPER_FETCH_DOUBAN_TOP250: (m) => fetchDoubanTop250(m.limit),
+  SCRAPER_FETCH_36KR_HOT: (m) => fetch36KrHot(m.limit, m),
+  SCRAPER_FETCH_36KR_NEWS: (m) => fetch36KrNews(m.limit),
+  SCRAPER_SEARCH_GOOGLE_NEWS: (m) => searchGoogleNews(m.query, m.limit),
+  SCRAPER_FETCH_INSTAGRAM_EXPLORE: (m) => fetchInstagramExplore(m.limit),
+};
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  const handler = scraperHandlers[message.type];
+  if (handler) {
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Scraper timed out after 30s')), 30000));
+    Promise.race([handler(message), timeout])
+      .then((data) => { startAllIdleTimers(); sendResponse(data); })
+      .catch((err) => { startAllIdleTimers(); sendResponse({ error: err.message }); });
+    return true;
+  }
+});
+
+// Expose for service worker console testing
+Object.assign(self, {
+  searchTikTok, searchYouTube, fetchTikTokExplore,
+  searchReddit, fetchRedditHot,
+  searchBilibili, fetchBilibiliHot, fetchBilibiliRanking,
+  searchZhihu, fetchZhihuHot,
+  searchXueqiu, fetchXueqiuHot,
+  searchInstagram, fetchInstagramExplore,
+  searchLinuxDo, searchJike, searchXiaohongshu,
+  searchWeibo, fetchWeiboHot,
+  searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250,
+  searchMedium,
+  searchGoogle, searchGoogleNews,
+  searchFacebook, searchLinkedInJobs,
+  search36Kr, fetch36KrHot, fetch36KrNews,
+  fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote,
+});
+
+// Handle fresh token request for WebSocket reconnection
+async function handleFreshTokenRequest(): Promise<string | null> {
+  try {
+    // Get current access token
+    const result = await chrome.storage.local.get(['accessToken.bnbot', 'refreshToken.bnbot']);
+    const accessToken = result['accessToken.bnbot'] as string | undefined;
+    const refreshToken = result['refreshToken.bnbot'] as string | undefined;
+
+    if (!accessToken) {
+      console.log('[Background] No access token available');
+      return null;
+    }
+
+    // Validate token by making a simple API call
+    const validateResponse = await fetch(`${API_BASE_URL}/api/v1/payments/credits`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+
+    if (validateResponse.ok) {
+      console.log('[Background] Current access token is valid');
+      return accessToken;
+    }
+
+    // Token expired, try to refresh
+    if (validateResponse.status === 401 && refreshToken) {
+      console.log('[Background] Access token expired, refreshing...');
+
+      const refreshResponse = await fetch(`${API_BASE_URL}/api/v1/refresh`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${refreshToken}` }
+      });
+
+      if (refreshResponse.ok) {
+        const data = await refreshResponse.json();
+        if (data.access_token) {
+          // Save new tokens
+          await chrome.storage.local.set({
+            'accessToken.bnbot': data.access_token,
+            'refreshToken.bnbot': data.refresh_token || refreshToken
+          });
+          console.log('[Background] Token refreshed successfully');
+
+          // Also update WS manager with new token
+          if (isFirefox && firefoxWsManager) {
+            firefoxWsManager.updateToken(data.access_token);
+          } else {
+            chrome.runtime.sendMessage({
+              type: 'OFFSCREEN_WS_UPDATE_TOKEN',
+              accessToken: data.access_token
+            }).catch(() => {});
+          }
+
+          return data.access_token;
+        }
+      }
+
+      console.log('[Background] Token refresh failed');
+    }
+
+    return null;
+  } catch (error) {
+    console.error('[Background] Error getting fresh token:', error);
+    return null;
+  }
+}
+
+// Fetch video from URL and return as blob URL
+async function fetchVideoAsDataUrl(url: string): Promise<{ blobUrl?: string; error?: string }> {
+  try {
+    console.log('[BNBot Background] Fetching video:', url.substring(0, 100) + '...');
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      },
+    });
+
+    if (!response.ok) {
+      return { error: `HTTP ${response.status}` };
+    }
+
+    const blob = await response.blob();
+
+    // Convert blob to base64 data URL
+    const reader = new FileReader();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    console.log('[BNBot Background] Video fetched, size:', blob.size);
+    return { blobUrl: dataUrl };
+  } catch (error) {
+    console.error('[BNBot Background] Video fetch error:', error);
+    return { error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+// Fetch image from URL and return as base64 (for article image uploads)
+async function fetchImageAsBase64(url: string): Promise<{ success: boolean; data?: string; mimeType?: string; error?: string }> {
+  try {
+    console.log('[BNBot Background] Fetching image:', url.substring(0, 100) + '...');
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+        'Referer': 'https://mp.weixin.qq.com/',
+      },
+    });
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+
+    const blob = await response.blob();
+    const mimeType = blob.type || 'image/jpeg';
+
+    // Convert blob to base64 (without data URL prefix)
+    const reader = new FileReader();
+    const base64 = await new Promise<string>((resolve, reject) => {
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        // Remove the data URL prefix to get just base64
+        const base64Data = dataUrl.split(',')[1];
+        resolve(base64Data);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    console.log('[BNBot Background] Image fetched, size:', blob.size, 'type:', mimeType);
+    return { success: true, data: base64, mimeType };
+  } catch (error) {
+    console.error('[BNBot Background] Image fetch error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+// Fetch blob from URL and return as blob URL
+async function fetchBlobAsDataUrl(url: string): Promise<{ success: boolean; data?: string; error?: string }> {
+  try {
+    console.log('[BNBot Background] Fetching blob:', url.substring(0, 100) + '...');
+
+    // Build fetch options with appropriate headers for different CDNs
+    const fetchOptions: RequestInit = { method: 'GET' };
+    const isXhs = url.includes('xhscdn') || url.includes('xiaohongshu');
+    if (isXhs) {
+      fetchOptions.headers = {
+        'Referer': 'https://www.xiaohongshu.com/',
+      };
+    }
+
+    const response = await fetch(url, fetchOptions);
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+
+    const blob = await response.blob();
+
+    // Convert blob to base64 data URL
+    const reader = new FileReader();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    console.log('[BNBot Background] Blob fetched, size:', blob.size);
+    return { success: true, data: dataUrl };
+  } catch (error) {
+    console.error('[BNBot Background] Blob fetch error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+// 获取 TikTok 视频信息（直接请求网页，解析内嵌 JSON）
+async function fetchTiktokVideo(url: string): Promise<{
+  success: boolean;
+  data?: {
+    title: string;
+    author: string;
+    videoUrl: string;
+    musicUrl: string;
+    coverUrl: string;
+    duration: number;
+    playCount: number;
+    likeCount: number;
+    commentCount: number;
+    shareCount: number;
+  };
+  error?: string;
+}> {
+  try {
+    console.log('[BNBot Background] 获取 TikTok 视频:', url);
+
+    // 直接请求 TikTok 网页
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+
+    const html = await response.text();
+    console.log('[BNBot Background] TikTok 页面获取成功，长度:', html.length);
+
+    // 查找页面中的 JSON 数据
+    // TikTok 会在 <script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"> 中嵌入数据
+    const jsonMatch = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([^<]+)<\/script>/);
+
+    if (!jsonMatch) {
+      console.log('[BNBot Background] 未找到 __UNIVERSAL_DATA_FOR_REHYDRATION__');
+
+      // 尝试查找 SIGI_STATE (旧版/备用)
+      const sigiMatch = html.match(/<script id="SIGI_STATE"[^>]*>([^<]+)<\/script>/);
+      if (sigiMatch) {
+        console.log('[BNBot Background] 找到 SIGI_STATE，尝试解析...');
+        // 这里可以添加 SIGI_STATE 的解析逻辑，如果需要的话
+        // 目前主要关注 __UNIVERSAL_DATA_FOR_REHYDRATION__
+      }
+
+      return { success: false, error: '未找到视频数据' };
+    }
+
+    const jsonData = JSON.parse(jsonMatch[1]);
+    console.log('[BNBot Background] JSON 数据解析成功');
+
+    // 提取视频信息 - 路径可能是 __DEFAULT_SCOPE__["webapp.video-detail"]["itemInfo"]["itemStruct"]
+    const videoDetail = jsonData?.['__DEFAULT_SCOPE__']?.['webapp.video-detail'];
+    const itemStruct = videoDetail?.itemInfo?.itemStruct;
+
+    if (!itemStruct) {
+      console.log('[BNBot Background] 未找到 itemStruct,Keys:', Object.keys(jsonData?.['__DEFAULT_SCOPE__'] || {}).join(','));
+      return { success: false, error: '未找到视频详情' };
+    }
+
+    // 提取视频播放地址
+    const playAddr = itemStruct.video?.playAddr;
+    const bitrateInfo = itemStruct.video?.bitrateInfo;
+
+    let videoUrl = '';
+
+    // 优先从 bitrateInfo 获取高清链接
+    if (bitrateInfo && Array.isArray(bitrateInfo) && bitrateInfo.length > 0) {
+      // 遍历所有 quality 选项，寻找 PlayAddrStruct 或 PlayAddr
+      for (const info of bitrateInfo) {
+        // 1. 尝试 PlayAddrStruct (用户指定)
+        // 注意：有些 key 可能是大写开头
+        const struct = info.PlayAddrStruct || info.playAddrStruct || info.PlayAddr || info.playAddr;
+
+        if (struct && struct.UrlList && struct.UrlList.length > 0) {
+          videoUrl = struct.UrlList[0];
+          console.log('[BNBot Background] 从 bitrateInfo 提取到视频链接');
+          break;
+        }
+      }
+    }
+
+    // 备选：从 itemStruct.video.playAddr 获取
+    if (!videoUrl && playAddr) {
+      videoUrl = playAddr;
+      console.log('[BNBot Background] 从 video.playAddr 提取到视频链接');
+    }
+
+    // 解码 Unicode 转义
+    if (videoUrl) {
+      videoUrl = videoUrl.replace(/\\u002F/g, '/');
+    }
+
+    const data = {
+      title: itemStruct.desc || '',
+      author: itemStruct.author?.nickname || itemStruct.author?.uniqueId || '',
+      videoUrl: videoUrl,
+      musicUrl: itemStruct.music?.playUrl || '',
+      coverUrl: itemStruct.video?.cover || itemStruct.video?.originCover || '',
+      duration: itemStruct.video?.duration || 0,
+      playCount: itemStruct.stats?.playCount || 0,
+      likeCount: itemStruct.stats?.diggCount || 0,
+      commentCount: itemStruct.stats?.commentCount || 0,
+      shareCount: itemStruct.stats?.shareCount || 0,
+    };
+
+    console.log('[BNBot Background] TikTok 视频解析成功:', data.title);
+    console.log('[BNBot Background] 视频链接:', data.videoUrl?.substring(0, 100) + '...');
+
+    return { success: true, data };
+  } catch (error) {
+    console.error('[BNBot Background] TikTok 视频获取失败:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+// 抓取微信公众号文章 HTML
+async function scrapeWechatUrl(url: string): Promise<{ success: boolean; data?: string; error?: string }> {
+  try {
+    console.log('[BNBot Background] 抓取微信文章:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      },
+    });
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+
+    const html = await response.text();
+    console.log('[BNBot Background] 微信文章抓取成功, 长度:', html.length);
+
+    return { success: true, data: html };
+  } catch (error) {
+    console.error('[BNBot Background] 微信文章抓取失败:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+// 抓取小红书笔记（使用 fetch，不需要 scripting 权限）
+async function scrapeXiaohongshuNote(url: string): Promise<{ success: boolean; data?: any; error?: string }> {
+  try {
+    console.log('[BNBot Background] 抓取小红书笔记:', url);
+
+    // 直接 fetch HTML
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      },
+    });
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+
+    const html = await response.text();
+    console.log('[BNBot Background] 小红书页面获取成功，长度:', html.length);
+
+    // 从 HTML 中提取 __INITIAL_STATE__
+    // 不使用正则匹配整个 JSON，因为嵌套层级很深，非贪婪/贪婪都不可靠
+    // 改用：先定位起始位置，再用括号计数提取完整 JSON 对象
+    const statePrefix = '__INITIAL_STATE__';
+    const prefixIdx = html.indexOf(statePrefix);
+    if (prefixIdx === -1) {
+      console.log('[BNBot Background] 未找到 __INITIAL_STATE__');
+      return { success: false, error: '未找到页面数据，请确保链接包含 xsec_token 参数' };
+    }
+
+    // 找到 { 的起始位置
+    const braceStart = html.indexOf('{', prefixIdx + statePrefix.length);
+    if (braceStart === -1) {
+      console.log('[BNBot Background] 未找到 __INITIAL_STATE__ 的 JSON 起始');
+      return { success: false, error: '页面数据格式异常' };
+    }
+
+    // 括号计数找到匹配的 }
+    let depth = 0;
+    let inStr = false;
+    let escape = false;
+    let braceEnd = -1;
+    for (let i = braceStart; i < html.length; i++) {
+      const ch = html[i];
+      if (escape) { escape = false; continue; }
+      if (ch === '\\' && inStr) { escape = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (!inStr) {
+        if (ch === '{') depth++;
+        else if (ch === '}') { depth--; if (depth === 0) { braceEnd = i + 1; break; } }
+      }
+    }
+
+    if (braceEnd === -1) {
+      console.log('[BNBot Background] 括号匹配失败，无法提取完整 JSON');
+      return { success: false, error: '页面数据提取失败' };
+    }
+
+    let stateJson = html.substring(braceStart, braceEnd);
+    console.log('[BNBot Background] 提取 __INITIAL_STATE__ JSON，长度:', stateJson.length);
+    // 替换 Unicode 转义
+    stateJson = stateJson.replace(/\\u002F/g, '/');
+    // 替换 undefined 为 null（JS 特有，JSON 不支持）
+    stateJson = stateJson.replace(/:\s*undefined\b/g, ':null');
+    // 替换末尾逗号（JS 允许，JSON 不允许）
+    stateJson = stateJson.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+
+    let state;
+    try {
+      state = JSON.parse(stateJson);
+    } catch (parseError) {
+      console.error('[BNBot Background] JSON 解析失败:', parseError);
+      // 尝试用 eval（更宽松，但在 service worker 中可能受限）
+      try {
+        state = (0, eval)('(' + stateJson + ')');
+      } catch (evalError) {
+        console.error('[BNBot Background] eval 也失败:', evalError);
+        return { success: false, error: 'JSON 解析失败' };
+      }
+    }
+
+    console.log('[BNBot Background] __INITIAL_STATE__ 解析成功, 顶层 keys:', Object.keys(state));
+
+    // 兼容不同版本的小红书页面结构
+    // 旧版: state.note.noteDetailMap[id].note
+    // 新版 (2026): 没有 state.note，笔记数据在 state.feed.undertakeNote 或 feeds 中
+    let note: any = null;
+    let noteId: string = '';
+
+    // 从 URL 中提取 noteId
+    const urlNoteIdMatch = url.match(/explore\/([a-f0-9]+)/i) || url.match(/discovery\/item\/([a-f0-9]+)/i);
+    const urlNoteId = urlNoteIdMatch ? urlNoteIdMatch[1] : '';
+
+    // 路径1: 旧版 state.note.noteDetailMap
+    if (state.note?.noteDetailMap) {
+      noteId = urlNoteId || Object.keys(state.note.noteDetailMap)[0];
+      if (noteId) {
+        note = state.note.noteDetailMap[noteId]?.note;
+      }
+    }
+
+    // 路径2: state.feed.undertakeNote (新版单篇笔记详情)
+    if (!note && state.feed?.undertakeNote) {
+      const un = state.feed.undertakeNote;
+      console.log('[BNBot Background] state.feed.undertakeNote keys:', Object.keys(un));
+      // undertakeNote 可能直接是笔记对象，或者包含 note/noteCard 字段
+      if (un.noteId || un.id) {
+        note = un;
+        noteId = un.noteId || un.id || urlNoteId;
+      } else if (un.note) {
+        note = un.note;
+        noteId = un.note.noteId || un.note.id || urlNoteId;
+      } else if (un.noteCard) {
+        note = un.noteCard;
+        noteId = un.noteCard.noteId || un.noteCard.id || urlNoteId;
+      }
+    }
+
+    // 路径3: state.feed.feeds 中找匹配的笔记
+    if (!note && state.feed?.feeds && Array.isArray(state.feed.feeds)) {
+      console.log('[BNBot Background] state.feed.feeds 长度:', state.feed.feeds.length);
+      for (const feedItem of state.feed.feeds) {
+        const candidate = feedItem?.note || feedItem?.noteCard || feedItem;
+        const candidateId = candidate?.noteId || candidate?.id || feedItem?.id;
+        if (candidateId && (!urlNoteId || candidateId === urlNoteId)) {
+          note = candidate;
+          noteId = candidateId;
+          console.log('[BNBot Background] 在 state.feed.feeds 中找到笔记:', noteId);
+          break;
+        }
+      }
+    }
+
+    // 路径4: state.feed.feedsWrapper
+    if (!note && state.feed?.feedsWrapper) {
+      const wrapper = state.feed.feedsWrapper;
+      console.log('[BNBot Background] state.feed.feedsWrapper keys:', Object.keys(wrapper));
+      // feedsWrapper 可能有 feeds 数组或 noteDetailMap
+      const wrapperFeeds = wrapper.feeds || wrapper.items || [];
+      if (Array.isArray(wrapperFeeds)) {
+        for (const feedItem of wrapperFeeds) {
+          const candidate = feedItem?.note || feedItem?.noteCard || feedItem;
+          const candidateId = candidate?.noteId || candidate?.id || feedItem?.id;
+          if (candidateId && (!urlNoteId || candidateId === urlNoteId)) {
+            note = candidate;
+            noteId = candidateId;
+            console.log('[BNBot Background] 在 state.feed.feedsWrapper 中找到笔记:', noteId);
+            break;
+          }
+        }
+      }
+    }
+
+    // 路径5: 遍历 state 所有 key 查找 noteDetailMap
+    if (!note) {
+      for (const key of Object.keys(state)) {
+        const val = state[key];
+        if (val?.noteDetailMap) {
+          const id = urlNoteId || Object.keys(val.noteDetailMap)[0];
+          if (id) {
+            note = val.noteDetailMap[id]?.note;
+            noteId = id;
+            if (note) {
+              console.log(`[BNBot Background] 在 state.${key}.noteDetailMap 中找到笔记`);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (!note) {
+      console.error('[BNBot Background] 无法找到笔记数据, state 顶层 keys:', Object.keys(state));
+      // 深入打印 feed 相关的数据帮助调试
+      if (state.feed) {
+        for (const fkey of Object.keys(state.feed)) {
+          const fval = state.feed[fkey];
+          if (fval && typeof fval === 'object' && !Array.isArray(fval)) {
+            console.log(`[BNBot Background]   state.feed.${fkey} keys:`, Object.keys(fval).slice(0, 15));
+          } else if (Array.isArray(fval)) {
+            console.log(`[BNBot Background]   state.feed.${fkey}: Array(${fval.length})`, fval.length > 0 ? 'first item keys: ' + Object.keys(fval[0] || {}).slice(0, 10) : '');
+          } else {
+            console.log(`[BNBot Background]   state.feed.${fkey}:`, typeof fval, fval === null ? 'null' : '');
+          }
+        }
+      }
+      return { success: false, error: '无法找到笔记数据，页面结构可能已更新' };
+    }
+
+    console.log('[BNBot Background] 找到笔记:', noteId, 'keys:', Object.keys(note).slice(0, 20));
+
+    if (!note) {
+      return { success: false, error: '笔记内容不存在' };
+    }
+
+    const tags = (note.tagList || note.tag_list || note.tags || []).map((tag: any) => typeof tag === 'string' ? tag : tag.name).filter(Boolean);
+
+    // 新版小红书可能用不同的字段名存放图片列表
+    let imageList = note.imageList || note.image_list || note.images || [];
+
+    // 如果 imageList 不是数组，尝试其他路径
+    if (!Array.isArray(imageList) || imageList.length === 0) {
+      // 尝试 note.noteCard 或 note.noteInfo 下的图片
+      imageList = note.noteCard?.imageList || note.noteCard?.images || note.noteInfo?.imageList || [];
+    }
+
+    console.log('[BNBot Background] imageList 长度:', imageList.length, imageList.length > 0 ? 'first keys:' : '', imageList.length > 0 ? Object.keys(imageList[0]).slice(0, 10) : []);
+
+    // 从 imageList 中提取图片 URL，兼容多种字段名
+    let images = imageList.map((img: any) => {
+      if (typeof img === 'string') return img;
+      return img.urlDefault || img.url_default || img.url || img.infoList?.[0]?.url || img.originImageKey || '';
+    }).filter(Boolean);
+
+    // 如果 imageList 方式没找到图片，尝试从 note.cover 或其他字段提取
+    if (images.length === 0 && note.cover) {
+      const coverUrl = note.cover.urlDefault || note.cover.url_default || note.cover.url || note.cover.infoList?.[0]?.url || '';
+      if (coverUrl) images = [coverUrl];
+    }
+
+    console.log('[BNBot Background] 提取到', images.length, '张图片', images.length > 0 ? images[0].substring(0, 80) : '');
+
+    let video = null;
+    if (note.video && note.video.media) {
+      const streams = note.video.media.stream;
+      // 优先选择 h265（更好压缩），并选择最高质量的流（weight 越高越好）
+      const h265List = streams?.h265 || [];
+      const h264List = streams?.h264 || [];
+
+      // 按 weight 排序，选择最高质量
+      const sortByWeight = (a: any, b: any) => (b.weight || 0) - (a.weight || 0);
+      h265List.sort(sortByWeight);
+      h264List.sort(sortByWeight);
+
+      // 优先 h265 最高质量，其次 h264 最高质量
+      const stream = h265List[0] || h264List[0];
+      if (stream) {
+        // 获取封面图：优先用 image_list，其次用 video.image
+        let thumbnail = '';
+        const imageList = note.imageList || note.image_list || [];
+        if (imageList.length > 0) {
+          thumbnail = imageList[0].urlDefault || imageList[0].url_default || '';
+        }
+        // 备选：从 video.image 获取第一帧
+        if (!thumbnail && note.video.image) {
+          const firstFrame = note.video.image.first_frame_fileid || note.video.image.firstFrameFileid;
+          if (firstFrame) {
+            // 构建完整的第一帧 URL
+            thumbnail = `http://sns-img-qc.xhscdn.com/${firstFrame}`;
+          }
+        }
+
+        video = {
+          url: stream.master_url || stream.masterUrl,
+          backupUrl: stream.backup_urls?.[0],
+          duration: note.video.capa?.duration || (stream.duration / 1000),
+          width: stream.width,
+          height: stream.height,
+          codec: stream.video_codec,
+          quality: stream.quality_type,
+          thumbnail: thumbnail
+        };
+        console.log(`[BNBot Background] 选择视频流: ${stream.video_codec} ${stream.width}x${stream.height} (weight: ${stream.weight})`);
+        if (thumbnail) {
+          console.log(`[BNBot Background] 视频封面: ${thumbnail.substring(0, 80)}...`);
+        }
+      }
+    }
+
+    // Proxy images to base64 data URLs to avoid CORS/mixed-content issues on HTTPS pages
+    console.log(`[BNBot Background] 代理 ${images.length} 张小红书图片...`);
+    const proxiedImages = await Promise.all(
+      images.map(async (imgUrl: string) => {
+        try {
+          const result = await fetchBlobAsDataUrl(imgUrl);
+          if (result.success && result.data) {
+            return result.data;
+          }
+        } catch (e) {
+          console.error('[BNBot Background] 图片代理失败:', imgUrl.substring(0, 60), e);
+        }
+        return imgUrl; // fallback to original URL
+      })
+    );
+
+    const data = {
+      noteId: note.noteId,
+      title: note.title || '',
+      desc: note.desc || '',
+      type: note.type || 'normal',
+      author: note.user?.nickname || '',
+      authorAvatar: note.user?.avatar || '',
+      likeCount: note.interactInfo?.likedCount || '0',
+      collectCount: note.interactInfo?.collectedCount || '0',
+      commentCount: note.interactInfo?.commentCount || '0',
+      shareCount: note.interactInfo?.shareCount || '0',
+      images: images,              // original URLs (for backend / text content)
+      proxiedImages: proxiedImages, // base64 data URLs (for frontend display)
+      video: video,
+      tags: tags,
+      ipLocation: note.ipLocation || '',
+      publishTime: note.time || null
+    };
+
+    console.log('[BNBot Background] 小红书笔记抓取成功:', data.title || data.desc?.substring(0, 30));
+    return { success: true, data };
+
+  } catch (error) {
+    console.error('[BNBot Background] 小红书笔记抓取失败:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+// TikTok 视频数据结构（符合后端 API 文档格式）
+interface TikTokVideoData {
+  video_id: string;
+  video_url: string;
+  video_url_no_watermark?: string;
+  thumbnail: string;
+  duration: number;
+  description: string;
+  hashtags: string[];
+  author: {
+    username: string;
+    display_name: string;
+    avatar: string;
+    verified: boolean;
+  };
+  music: {
+    title: string;
+    author: string;
+    original: boolean;
+  };
+  stats: {
+    likes: number;
+    comments: number;
+    shares: number;
+    views: number;
+  };
+  original_url: string;
+}
+
+// 获取 TikTok 视频信息（新版 API，符合后端文档格式）
+async function fetchTiktokVideoV2(url: string): Promise<{
+  success: boolean;
+  data?: TikTokVideoData;
+  error?: string;
+}> {
+  try {
+    console.log('[BNBot Background] 获取 TikTok 视频 (V2):', url);
+
+    // 直接请求 TikTok 网页
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+
+    const html = await response.text();
+    console.log('[BNBot Background] TikTok 页面获取成功，长度:', html.length);
+
+    // 查找页面中的 JSON 数据
+    const jsonMatch = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([^<]+)<\/script>/);
+
+    if (!jsonMatch) {
+      console.log('[BNBot Background] 未找到 __UNIVERSAL_DATA_FOR_REHYDRATION__');
+      return { success: false, error: '未找到视频数据' };
+    }
+
+    const jsonData = JSON.parse(jsonMatch[1]);
+    console.log('[BNBot Background] JSON 数据解析成功');
+
+    // 提取视频信息
+    const videoDetail = jsonData?.['__DEFAULT_SCOPE__']?.['webapp.video-detail'];
+    const itemStruct = videoDetail?.itemInfo?.itemStruct;
+
+    if (!itemStruct) {
+      console.log('[BNBot Background] 未找到 itemStruct');
+      return { success: false, error: '未找到视频详情' };
+    }
+
+    // 提取视频播放地址
+    const playAddr = itemStruct.video?.playAddr;
+    const downloadAddr = itemStruct.video?.downloadAddr;
+    const bitrateInfo = itemStruct.video?.bitrateInfo;
+
+    let videoUrl = '';
+    let videoUrlNoWatermark = '';
+
+    // 优先从 bitrateInfo 获取高清链接
+    if (bitrateInfo && Array.isArray(bitrateInfo) && bitrateInfo.length > 0) {
+      for (const info of bitrateInfo) {
+        const struct = info.PlayAddrStruct || info.playAddrStruct || info.PlayAddr || info.playAddr;
+        if (struct && struct.UrlList && struct.UrlList.length > 0) {
+          // 优先使用第二个链接（v19-webapp-prime），第一个链接经常被拒绝访问
+          // 如果只有一个链接则使用第一个
+          videoUrl = struct.UrlList.length > 1 ? struct.UrlList[1] : struct.UrlList[0];
+          console.log('[BNBot Background] 从 bitrateInfo 提取到视频链接，使用索引:', struct.UrlList.length > 1 ? 1 : 0);
+          break;
+        }
+      }
+    }
+
+    // 备选：从 itemStruct.video.playAddr 获取
+    if (!videoUrl && playAddr) {
+      videoUrl = playAddr;
+      console.log('[BNBot Background] 从 video.playAddr 提取到视频链接');
+    }
+
+    // downloadAddr 通常是无水印版本
+    if (downloadAddr) {
+      videoUrlNoWatermark = downloadAddr;
+    }
+
+    // 解码 Unicode 转义
+    if (videoUrl) {
+      videoUrl = videoUrl.replace(/\\u002F/g, '/');
+    }
+    if (videoUrlNoWatermark) {
+      videoUrlNoWatermark = videoUrlNoWatermark.replace(/\\u002F/g, '/');
+    }
+
+    // 从 URL 提取视频 ID
+    const videoIdMatch = url.match(/\/video\/(\d+)/);
+    const videoId = videoIdMatch ? videoIdMatch[1] : (itemStruct.id || '');
+
+    // 从描述中提取 hashtags
+    const description = itemStruct.desc || '';
+    const hashtagMatches = description.match(/#(\w+)/g) || [];
+    const hashtags = hashtagMatches.map((tag: string) => tag.replace('#', ''));
+
+    // 获取作者信息
+    const author = itemStruct.author || {};
+    const authorUsername = author.uniqueId || author.nickname || '';
+    const authorDisplayName = author.nickname || author.uniqueId || '';
+    const authorAvatar = author.avatarThumb || author.avatarMedium || '';
+    const isVerified = author.verified || false;
+
+    // 获取音乐信息
+    const music = itemStruct.music || {};
+    const musicTitle = music.title || 'Original Sound';
+    const musicAuthor = music.authorName || authorUsername;
+    const isOriginal = musicTitle.toLowerCase().includes('original');
+
+    // 获取统计数据
+    const stats = itemStruct.stats || {};
+
+    const data: TikTokVideoData = {
+      video_id: videoId,
+      video_url: videoUrl,
+      video_url_no_watermark: videoUrlNoWatermark || undefined,
+      thumbnail: itemStruct.video?.cover || itemStruct.video?.originCover || '',
+      duration: itemStruct.video?.duration || 0,
+      description,
+      hashtags,
+      author: {
+        username: authorUsername,
+        display_name: authorDisplayName,
+        avatar: authorAvatar,
+        verified: isVerified,
+      },
+      music: {
+        title: musicTitle,
+        author: musicAuthor,
+        original: isOriginal,
+      },
+      stats: {
+        likes: stats.diggCount || 0,
+        comments: stats.commentCount || 0,
+        shares: stats.shareCount || 0,
+        views: stats.playCount || 0,
+      },
+      original_url: url,
+    };
+
+    console.log('[BNBot Background] TikTok 视频解析成功 (V2):', data.description?.substring(0, 50));
+    console.log('[BNBot Background] 视频链接:', data.video_url?.substring(0, 100) + '...');
+
+    return { success: true, data };
+  } catch (error) {
+    console.error('[BNBot Background] TikTok 视频获取失败 (V2):', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+// 暴露测试函数到全局作用域
+(self as any).testXiaohongshu = async (url: string) => {
+  const result = await scrapeXiaohongshuNote(url);
+  console.log('Result:', result);
+  return result;
+};

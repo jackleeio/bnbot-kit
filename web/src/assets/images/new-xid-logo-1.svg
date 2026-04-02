@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 130 80">
+  <g data-v-0dd9719b="" fill="#000000" class="newinitialsvg-g newinitialsvg" transform="matrix(1, 0, 0, 1, 2.591768, 16.615545)">
+    <g class="tp-name">
+      <g class="tp-graph" transform="translate(0, 0)" mask="url(#63b776c3-b8b1-4b45-ae9c-99b6510fc9fd)">
+        <rect data-gra="graph-name" stroke="#000000" stroke-width="2" fill-opacity="0" stroke-linejoin="round" x="0" y="0" width="51.11" height="47.275"></rect>
+        <g data-gra="path-name" fill="#000000" transform="translate(2.9999996948242185,3)">
+          <g transform="scale(1)" fill="#000000">
+            <path d="M19.63-41.27L25.16-28.28L35.10-41.27L42.90-41.27L27.50-22.75L37.18 0L21.13 0L15.60-12.94L5.59 0L-2.21 0L13.13-18.79L3.58-41.27L19.63-41.27Z" transform="translate(2.21, 41.275)"></path>
+          </g>
+        </g>
+      </g>
+      <g transform="translate(55.11, 0)">
+        <g data-gra="path-name" fill="#000000" transform="translate(0,3)">
+          <g transform="scale(1)">
+            <path d="M22.88-41.27L14.04 0L0 0L8.78-41.27L22.88-41.27Z" transform="translate(0, 41.275)"></path>
+          </g>
+        </g>
+      </g>
+      <g transform="translate(81.99000000000001, 0)">
+        <g data-gra="path-name" fill="#000000" transform="translate(0,3)">
+          <g transform="scale(1)">
+            <path d="M18.66 0L0 0L8.78-41.27L26.26-41.27Q30.29-41.27 33.31-40.46Q36.34-39.65 38.32-37.77Q40.30-35.88 41.31-32.83Q42.32-29.77 42.32-25.35L42.32-25.35Q42.32-20.61 41.11-16.05Q39.91-11.51 37.12-7.93Q34.32-4.36 29.80-2.18Q25.29 0 18.66 0L18.66 0ZM15.02-4.55L17.81-4.55Q19.96-4.55 21.61-6.34Q23.27-8.13 24.47-10.89Q25.68-13.65 26.49-17.00Q27.30-20.35 27.79-23.46Q28.28-26.59 28.50-29.05Q28.73-31.53 28.73-32.56L28.73-32.56Q28.73-34.58 27.92-35.72Q27.11-36.86 25.09-36.86L25.09-36.86L21.97-36.86L15.02-4.55Z" transform="translate(0, 41.275)"></path>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

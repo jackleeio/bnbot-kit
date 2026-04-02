@@ -1,0 +1,32 @@
+{
+  "id": "",
+  "type": "personal",
+  "name": "",
+  "handle": "",
+  "bio": "",
+  "domains": [],
+  "language": "",
+  "tone": "",
+  "avoid": [],
+  "style": {
+    "maxTweetLength": 280,
+    "threadOk": true,
+    "hashtagMax": 1,
+    "emojiLevel": "minimal"
+  },
+  "styleReference": {
+    "accounts": [],
+    "blendMode": "reference",
+    "blendNote": ""
+  },
+  "videoPreferences": {
+    "enabled": false,
+    "platforms": ["youtube", "tiktok"],
+    "topics": [],
+    "style": "",
+    "language": "",
+    "maxResults": 5
+  },
+  "sampleTweets": [],
+  "notes": ""
+}

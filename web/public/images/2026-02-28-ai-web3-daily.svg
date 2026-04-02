@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="720" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1220"/>
+      <stop offset="1" stop-color="#1B0D2C"/>
+    </linearGradient>
+    <linearGradient id="acc" x1="120" y1="120" x2="1160" y2="600" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00E5FF"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <g opacity="0.35" stroke="url(#acc)">
+    <path d="M80 560 C260 420, 420 680, 620 500 C760 380, 960 620, 1200 460" stroke-width="3"/>
+    <path d="M120 180 C300 60, 520 300, 760 200 C920 130, 1080 300, 1220 220" stroke-width="2"/>
+    <circle cx="280" cy="470" r="6" fill="#00E5FF"/>
+    <circle cx="620" cy="500" r="7" fill="#A78BFA"/>
+    <circle cx="930" cy="430" r="6" fill="#F59E0B"/>
+  </g>
+  <rect x="90" y="90" width="1100" height="540" rx="20" fill="#0F172A" fill-opacity="0.7" stroke="#334155"/>
+  <text x="140" y="220" fill="#E2E8F0" font-family="Inter,Arial,sans-serif" font-size="56" font-weight="800">AI + Web3 Daily Brief</text>
+  <text x="140" y="280" fill="#94A3B8" font-family="Inter,Arial,sans-serif" font-size="28">Signals from KOL feeds + web search, turned into SEO-ready content.</text>
+  <text x="140" y="340" fill="#F8FAFC" font-family="Inter,Arial,sans-serif" font-size="34" font-weight="700">BNBot Blog Pipeline Demo</text>
+  <text x="140" y="600" fill="#F59E0B" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="600">bnbot.ai</text>
+</svg>

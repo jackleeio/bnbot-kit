@@ -1,0 +1,20 @@
+// Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+// SPDX-License-Identifier: MIT
+
+import { BadgeInfo } from "lucide-react";
+
+import { Markdown } from "~/components/deep-research/deer-flow/markdown";
+
+import aboutEn from "./about-en.md";
+import aboutZh from "./about-zh.md";
+import type { Tab } from "./types";
+
+export const AboutTab: Tab = () => {
+  const locale = useLocale();
+
+  const aboutContent = locale === "zh" ? aboutZh : aboutEn;
+
+  return <Markdown>{aboutContent}</Markdown>;
+};
+AboutTab.icon = BadgeInfo;
+AboutTab.displayName = "About";

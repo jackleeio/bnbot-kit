@@ -1,0 +1,51 @@
+{
+  "name": "@bnbot/cli",
+  "version": "0.3.23",
+  "description": "AI-powered personal branding toolkit for X. Discover trends, create content, automate growth.",
+  "main": "dist/index.js",
+  "bin": {
+    "bnbot": "dist/index.js",
+    "bnbot-cli": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build",
+    "postinstall": "node scripts/install-skill.js"
+  },
+  "keywords": [
+    "bnbot",
+    "twitter",
+    "chrome-extension",
+    "openclaw",
+    "ai-assistant"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bnbot-ai/bnbot-cli.git"
+  },
+  "homepage": "https://github.com/bnbot-ai/bnbot-cli",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "commander": "^14.0.3",
+    "undici": "^7.24.6",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist/**/*",
+    "scripts/**/*"
+  ]
+}

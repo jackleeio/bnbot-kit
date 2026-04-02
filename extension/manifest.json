@@ -1,0 +1,85 @@
+{
+  "manifest_version": 3,
+  "name": "BNBot",
+  "version": "0.7.2",
+  "description": "The ultimate way to build your brand. Made for humans & OpenClaw 🦞.",
+  "icons": {
+    "16": "assets/images/icon-16.png",
+    "48": "assets/images/icon-48.png",
+    "128": "assets/images/icon-128.png"
+  },
+  "permissions": [
+    "storage",
+    "identity",
+    "offscreen",
+    "tabs",
+    "alarms",
+    "scripting",
+    "cookies",
+    "notifications"
+  ],
+  "host_permissions": [
+    "*://api.bnbot.ai/*",
+    "*://x.com/*",
+    "*://video.twimg.com/*",
+    "*://mp.weixin.qq.com/*",
+    "*://*.tiktok.com/*",
+    "*://*.youtube.com/*",
+    "*://*.xiaohongshu.com/*",
+    "*://*.xhscdn.com/*",
+    "*://mmbiz.qpic.cn/*",
+    "*://*.qpic.cn/*",
+    "*://*.reddit.com/*",
+    "*://*.bilibili.com/*",
+    "*://*.zhihu.com/*",
+    "*://*.xueqiu.com/*",
+    "*://*.instagram.com/*",
+    "*://linux.do/*",
+    "*://*.okjike.com/*",
+    "*://s.weibo.com/*",
+    "*://*.weibo.com/*",
+    "*://*.douban.com/*",
+    "*://*.medium.com/*",
+    "*://*.google.com/*",
+    "*://*.facebook.com/*",
+    "*://*.linkedin.com/*",
+    "*://*.36kr.com/*",
+    "*://*.producthunt.com/*",
+    "*://*.yahoo.com/*",
+    "http://localhost:*/*"
+  ],
+  "background": {
+    "service_worker": "background.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://x.com/*"
+      ],
+      "js": [
+        "index.tsx"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/*",
+        "wechat-scraper-inject.js",
+        "tiktok-inject.js",
+        "xiaohongshu-inject.js",
+        "timeline-interceptor.js",
+        "tweet-interceptor.js",
+        "offscreen.html"
+      ],
+      "matches": [
+        "*://x.com/*"
+      ]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.googlevideo.com wss://api.bnbot.ai https://api.bnbot.ai https://mp.weixin.qq.com http://mp.weixin.qq.com https://*.tiktok.com https://*.tiktokv.com https://*.tiktokcdn.com https://*.xiaohongshu.com https://*.xhscdn.com http://*.xhscdn.com https://mmbiz.qpic.cn https://*.qpic.cn ws://localhost:* http://localhost:* blob: data:; img-src 'self' https://abs.twimg.com https://pbs.twimg.com https://mmbiz.qpic.cn https://*.qpic.cn https://*.xhscdn.com http://*.xhscdn.com blob: data:; media-src 'self' https://*.googlevideo.com https://*.xhscdn.com http://*.xhscdn.com blob: data:; worker-src 'self';"
+  }
+}

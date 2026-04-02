@@ -1,0 +1,306 @@
+/**
+ * Commander action handlers for X platform commands.
+ *
+ * Each handler maps commander arguments/options to the WebSocket action format
+ * and uses `runCliAction` from cli.ts to send them to the running server.
+ */
+
+import { runCliAction } from '../cli.js';
+import { resolveMediaListAsync } from '../tools/mediaUtils.js';
+
+const DEFAULT_PORT = 18900;
+
+// ── Helpers ──────────────────────────────────────────────────
+
+function getPort(): number {
+  return DEFAULT_PORT;
+}
+
+function fail(msg: string): never {
+  console.error(msg);
+  process.exit(1);
+}
+
+/**
+ * Resolve --media / -m options into the data URL array the extension expects.
+ * Supports: local file paths, http(s) URLs, data: URIs, comma-separated lists.
+ */
+async function resolveMedia(
+  raw: string | string[] | undefined
+): Promise<Array<{ type: 'photo' | 'video'; url: string }> | undefined> {
+  if (!raw) return undefined;
+  const sources: string[] = (Array.isArray(raw) ? raw : [raw])
+    .flatMap((s) => String(s).split(','))
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (sources.length === 0) return undefined;
+  return resolveMediaListAsync(sources);
+}
+
+// ── Tweet / Post ─────────────────────────────────────────────
+
+export async function postCommand(text: string, options: { media?: string | string[]; draft?: boolean }): Promise<void> {
+  const isDraft = options.draft || false;
+  const preview = text.slice(0, 80) + (text.length > 80 ? '...' : '');
+  console.error(isDraft ? `Drafting: "${preview}"` : `Posting: "${preview}"`);
+
+  const params: Record<string, unknown> = { text, draftOnly: isDraft };
+  const media = await resolveMedia(options.media);
+  if (media) params.media = media;
+
+  // Auto-split into thread when >4 media
+  const MAX_MEDIA = 4;
+  if (media && media.length > MAX_MEDIA) {
+    const tweets: Array<{ text: string; media: typeof media }> = [];
+    for (let i = 0; i < media.length; i += MAX_MEDIA) {
+      const chunk = media.slice(i, i + MAX_MEDIA);
+      tweets.push({
+        text: i === 0 ? text : `(${Math.floor(i / MAX_MEDIA) + 1}/${Math.ceil(media.length / MAX_MEDIA)})`,
+        media: chunk,
+      });
+    }
+    console.error(`[BNBOT] ${media.length} media files — auto-splitting into ${tweets.length}-tweet thread`);
+    return runCliAction('post_thread', { tweets, draftOnly: isDraft }, getPort());
+  }
+
+  return runCliAction('post_tweet', params, getPort());
+}
+
+export async function closeCommand(options: { save?: boolean }): Promise<void> {
+  const isSave = options.save || false;
+  console.error(isSave ? 'Saving draft and closing...' : 'Discarding and closing...');
+  return runCliAction('close_composer', { save: isSave }, getPort());
+}
+
+export async function threadCommand(tweetsJson: string): Promise<void> {
+  let tweets: unknown;
+  try {
+    tweets = JSON.parse(tweetsJson);
+  } catch {
+    fail('Invalid JSON for thread tweets. Expected: \'[{"text":"..."},{"text":"..."}]\'');
+  }
+  console.error('Posting thread...');
+  return runCliAction('post_thread', { tweets }, getPort());
+}
+
+export async function replyCommand(url: string, text: string, options: { media?: string | string[] }): Promise<void> {
+  console.error(`Replying to: ${url}`);
+  const params: Record<string, unknown> = { tweetUrl: url, text };
+  const media = await resolveMedia(options.media);
+  if (media) params.media = media;
+  return runCliAction('submit_reply', params, getPort());
+}
+
+export async function quoteCommand(url: string, text: string): Promise<void> {
+  console.error(`Quoting: ${url}`);
+  return runCliAction('quote_tweet', { tweetUrl: url, text }, getPort());
+}
+
+// ── Engagement ───────────────────────────────────────────────
+
+export async function likeCommand(url: string): Promise<void> {
+  console.error(`Liking: ${url}`);
+  return runCliAction('like_tweet', { tweetUrl: url }, getPort());
+}
+
+export async function unlikeCommand(url: string): Promise<void> {
+  console.error(`Unliking: ${url}`);
+  return runCliAction('unlike_tweet', { tweetUrl: url }, getPort());
+}
+
+export async function retweetCommand(url: string): Promise<void> {
+  console.error(`Retweeting: ${url}`);
+  return runCliAction('retweet', { tweetUrl: url }, getPort());
+}
+
+export async function unretweetCommand(url: string): Promise<void> {
+  console.error(`Unretweeting: ${url}`);
+  return runCliAction('unretweet', { tweetUrl: url }, getPort());
+}
+
+export async function followCommand(username: string): Promise<void> {
+  console.error(`Following: @${username}`);
+  return runCliAction('follow_user', { username }, getPort());
+}
+
+export async function unfollowCommand(username: string): Promise<void> {
+  console.error(`Unfollowing: @${username}`);
+  return runCliAction('unfollow_user', { username }, getPort());
+}
+
+export async function deleteCommand(url: string): Promise<void> {
+  console.error(`Deleting: ${url}`);
+  return runCliAction('delete_tweet', { tweetUrl: url }, getPort());
+}
+
+export async function bookmarkCommand(url: string): Promise<void> {
+  console.error(`Bookmarking: ${url}`);
+  return runCliAction('bookmark_tweet', { tweetUrl: url }, getPort());
+}
+
+export async function unbookmarkCommand(url: string): Promise<void> {
+  console.error(`Unbookmarking: ${url}`);
+  return runCliAction('unbookmark_tweet', { tweetUrl: url }, getPort());
+}
+
+// ── Scrape ───────────────────────────────────────────────────
+
+export async function scrapeTimelineCommand(options: { limit?: string; scrollAttempts?: string }): Promise<void> {
+  const limit = parseInt(options.limit || '20', 10);
+  const scrollAttempts = parseInt(options.scrollAttempts || '5', 10);
+  console.error(`Scraping timeline (limit: ${limit})...`);
+  return runCliAction('scrape_timeline', { limit, scrollAttempts }, getPort());
+}
+
+export async function scrapeBookmarksCommand(options: { limit?: string }): Promise<void> {
+  const limit = parseInt(options.limit || '20', 10);
+  console.error(`Scraping bookmarks (limit: ${limit})...`);
+  return runCliAction('scrape_bookmarks', { limit }, getPort());
+}
+
+export async function scrapeSearchCommand(
+  query: string,
+  options: {
+    tab?: string;
+    limit?: string;
+    from?: string;
+    since?: string;
+    until?: string;
+    lang?: string;
+    minLikes?: string;
+    minRetweets?: string;
+    has?: string;
+  }
+): Promise<void> {
+  const limit = parseInt(options.limit || '20', 10);
+  const tab = options.tab || 'top';
+  console.error(`Searching: "${query}" (tab: ${tab}, limit: ${limit})...`);
+  const params: Record<string, unknown> = { query, tab, limit };
+  if (options.from) params.from = options.from;
+  if (options.since) params.since = options.since;
+  if (options.until) params.until = options.until;
+  if (options.lang) params.lang = options.lang;
+  if (options.minLikes) params.minLikes = parseInt(options.minLikes, 10);
+  if (options.minRetweets) params.minRetweets = parseInt(options.minRetweets, 10);
+  if (options.has) params.has = options.has;
+  return runCliAction('scrape_search_results', params, getPort());
+}
+
+export async function scrapeUserTweetsCommand(username: string, options: { limit?: string; scrollAttempts?: string }): Promise<void> {
+  const limit = parseInt(options.limit || '20', 10);
+  const scrollAttempts = parseInt(options.scrollAttempts || '5', 10);
+  console.error(`Scraping @${username} tweets (limit: ${limit})...`);
+  return runCliAction('scrape_user_tweets', { username, limit, scrollAttempts }, getPort());
+}
+
+export async function scrapeUserProfileCommand(username: string): Promise<void> {
+  console.error(`Scraping @${username} profile...`);
+  return runCliAction('scrape_user_profile', { username }, getPort());
+}
+
+export async function scrapeThreadCommand(url: string): Promise<void> {
+  console.error(`Scraping thread: ${url}`);
+  return runCliAction('scrape_thread', { tweetUrl: url }, getPort());
+}
+
+// ── Analytics ────────────────────────────────────────────────
+
+export async function analyticsCommand(): Promise<void> {
+  console.error('Fetching analytics...');
+  return runCliAction('account_analytics', {}, getPort());
+}
+
+// ── Navigation ───────────────────────────────────────────────
+
+export async function navigateUrlCommand(url: string): Promise<void> {
+  console.error(`Navigating to: ${url}`);
+  return runCliAction('navigate_to_tweet', { tweetUrl: url }, getPort());
+}
+
+export async function navigateSearchCommand(query: string): Promise<void> {
+  console.error(`Navigating to search: ${query}`);
+  return runCliAction('navigate_to_search', { query }, getPort());
+}
+
+export async function navigateBookmarksCommand(): Promise<void> {
+  console.error('Navigating to bookmarks...');
+  return runCliAction('navigate_to_bookmarks', {}, getPort());
+}
+
+export async function navigateNotificationsCommand(): Promise<void> {
+  console.error('Navigating to notifications...');
+  return runCliAction('navigate_to_notifications', {}, getPort());
+}
+
+// ── Status & Serve ───────────────────────────────────────────
+
+export async function statusCommand(): Promise<void> {
+  const WebSocket = (await import('ws')).default;
+  const { randomUUID } = await import('crypto');
+  const port = getPort();
+  const requestId = randomUUID();
+
+  return new Promise((resolve) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+    const timer = setTimeout(() => {
+      console.log('');
+      console.log('  🦞 BNBot Status');
+      console.log('  ─────────────────');
+      console.log('  Server    ✗ not running');
+      console.log('  Extension ✗ not connected');
+      console.log('');
+      ws.close();
+      resolve();
+    }, 5000);
+
+    ws.on('open', () => {
+      ws.send(JSON.stringify({ type: 'cli_action', requestId, actionType: 'get_extension_status', actionPayload: {} }));
+    });
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.requestId === requestId) {
+          clearTimeout(timer);
+          const d = msg.data || {};
+          console.log('');
+          console.log('  🦞 BNBot Status');
+          console.log('  ─────────────────');
+          console.log(`  Server    ${msg.success ? '✓' : '✗'} ws://localhost:${d.wsPort || port}`);
+          console.log(`  Extension ${d.connected ? '✓ connected' : '✗ not connected'}${d.extensionVersion ? ` (v${d.extensionVersion})` : ''}`);
+          console.log('');
+          ws.close();
+          resolve();
+        }
+      } catch {}
+    });
+    ws.on('error', () => {
+      clearTimeout(timer);
+      console.log('');
+      console.log('  🦞 BNBot Status');
+      console.log('  ─────────────────');
+      console.log('  Server    ✗ not running');
+      console.log('  Extension ✗ not connected');
+      console.log('');
+      console.log('  Run "bnbot serve" to start the server.');
+      console.log('');
+      resolve();
+    });
+  });
+}
+
+// ── Content fetching (via extension) ─────────────────────────
+
+export async function fetchWeixinArticleCommand(url: string): Promise<void> {
+  console.error(`Fetching WeChat article: ${url}`);
+  return runCliAction('fetch_wechat_article', { url }, getPort());
+}
+
+export async function fetchTiktokCommand(url: string): Promise<void> {
+  console.error(`Fetching TikTok: ${url}`);
+  return runCliAction('fetch_tiktok_video', { url }, getPort());
+}
+
+export async function fetchXiaohongshuCommand(url: string): Promise<void> {
+  console.error(`Fetching Xiaohongshu: ${url}`);
+  return runCliAction('fetch_xiaohongshu_note', { url }, getPort());
+}
