@@ -250,8 +250,29 @@ class AutoReplyService {
       }
 
       if (apiDataCache.size() === 0) {
-        console.warn('[AutoReplyService] No API data received after waiting, proceeding anyway');
-        this.addToLog('warning', 'No cached data available, some tweets may be skipped');
+        // Clicking Home while already on Home may not trigger a new API request.
+        // Use manual fetch as fallback.
+        console.log('[AutoReplyService] No API data after Home click, trying manual fetch...');
+        this.addToLog('debug', 'Triggering manual timeline fetch...');
+        window.postMessage({ type: 'BNBOT_REFRESH_TIMELINE' }, '*');
+
+        // Wait for manual fetch to complete
+        const manualWaitMax = 8000;
+        let manualWaited = 0;
+        while (manualWaited < manualWaitMax) {
+          if (apiDataCache.size() > 0) {
+            console.log('[AutoReplyService] Manual fetch succeeded, cache has', apiDataCache.size(), 'tweets');
+            this.addToLog('debug', `Timeline data loaded via manual fetch (${apiDataCache.size()} tweets cached)`);
+            break;
+          }
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
+          manualWaited += checkInterval;
+        }
+
+        if (apiDataCache.size() === 0) {
+          console.warn('[AutoReplyService] No API data received after manual fetch');
+          this.addToLog('warning', 'No cached data available, some tweets may be skipped');
+        }
       }
     }
 

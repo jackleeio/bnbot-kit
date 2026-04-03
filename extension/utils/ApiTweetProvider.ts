@@ -101,6 +101,18 @@ export class ApiTweetProvider {
     }
 
     console.log('[ApiTweetProvider] No new data after', maxRetries, 'scroll attempts');
+
+    // Last resort: trigger manual timeline fetch via interceptor
+    if (apiDataCache.size() === 0) {
+      console.log('[ApiTweetProvider] Cache still empty, trying manual fetch...');
+      window.postMessage({ type: 'BNBOT_REFRESH_TIMELINE' }, '*');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      if (apiDataCache.size() > sizeBefore) {
+        console.log('[ApiTweetProvider] Manual fetch succeeded, cache has', apiDataCache.size(), 'tweets');
+        return true;
+      }
+    }
+
     return false;
   }
 

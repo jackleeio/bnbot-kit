@@ -185,7 +185,7 @@ export const TASK_TYPE_LABELS: Record<TaskType, { en: string; zh: string }> = {
 // Frequency labels
 export const FREQUENCY_LABELS: Record<TaskFrequency, { en: string; zh: string }> = {
   [TaskFrequency.ONCE]: { en: 'Once', zh: '一次' },
-  [TaskFrequency.HOURLY]: { en: 'Hourly', zh: '每N小时' },
+  [TaskFrequency.HOURLY]: { en: 'Hourly', zh: '每小时' },
   [TaskFrequency.DAILY]: { en: 'Daily', zh: '每天' },
   [TaskFrequency.WEEKLY]: { en: 'Weekly', zh: '每周' },
   [TaskFrequency.MONTHLY]: { en: 'Monthly', zh: '每月' },

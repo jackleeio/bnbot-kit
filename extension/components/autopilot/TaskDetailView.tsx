@@ -558,10 +558,11 @@ export const TaskDetailView: React.FC<TaskDetailViewProps> = ({
 
   // Build schedule text
   let scheduleText = `${frequencyLabel} ${task.execution_time}`;
-  if (task.frequency === 'hourly' && task.interval_hours) {
+  if (task.frequency === 'hourly') {
+    const hours = task.interval_hours || 1;
     scheduleText = lang === 'en'
-      ? `Every ${task.interval_hours} hour${task.interval_hours > 1 ? 's' : ''}`
-      : `每 ${task.interval_hours} 小时`;
+      ? `Every ${hours} hour${hours > 1 ? 's' : ''}`
+      : `每 ${hours} 小时`;
   } else if (task.frequency === 'weekly' && task.day_of_week !== null) {
     scheduleText = `${DAY_OF_WEEK_LABELS[lang][task.day_of_week]} ${task.execution_time}`;
   } else if (task.frequency === 'monthly' && task.day_of_month !== null) {
@@ -761,6 +762,11 @@ export const TaskDetailView: React.FC<TaskDetailViewProps> = ({
   const isConfirming = session?.status === 'confirming';
 
   const loadExecutions = async () => {
+    // Local-only tasks don't have backend execution records
+    if (task.task_type === TaskType.AUTO_REPLY || task.task_type === TaskType.HANDLE_NOTIFICATION) {
+      setIsLoadingExecutions(false);
+      return;
+    }
     try {
       // Only show loading spinner if no cached data
       if (executions.length === 0) setIsLoadingExecutions(true);
@@ -886,7 +892,7 @@ export const TaskDetailView: React.FC<TaskDetailViewProps> = ({
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Schedule Info */}
         <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)]">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between">
             <h4 className="text-sm font-medium text-[var(--text-primary)]">
               {lang === 'en' ? 'Schedule' : '执行计划'}
             </h4>
@@ -894,29 +900,6 @@ export const TaskDetailView: React.FC<TaskDetailViewProps> = ({
               <Clock size={14} />
               {scheduleText}
             </span>
-          </div>
-          <div className="space-y-2 text-sm">
-            {task.task_type !== TaskType.AUTO_REPLY && (
-              <div className="flex items-center gap-2 text-[var(--text-secondary)]">
-                <Calendar size={14} />
-                <span>
-                  {lang === 'en' ? 'Next:' : '下次:'} {formatDateTime(task.next_execution_at, lang)}
-                </span>
-              </div>
-            )}
-            {task.task_type !== TaskType.AUTO_REPLY && task.task_type !== TaskType.HANDLE_NOTIFICATION && (
-              <div className="flex items-center gap-2 text-[var(--text-secondary)]">
-                <Bell size={14} />
-                <span>
-                  {lang === 'en' ? 'Notification:' : '通知:'} {
-                    task.notification_type === NotificationType.TELEGRAM_ONLY ? 'Telegram' :
-                    task.notification_type === NotificationType.BOTH ? (lang === 'en' ? 'Telegram + Email' : 'Telegram + 邮件') :
-                    task.notification_type === NotificationType.EMAIL_ONLY ? (lang === 'en' ? 'Email' : '邮件') :
-                    (lang === 'en' ? 'Off' : '关闭')
-                  }
-                </span>
-              </div>
-            )}
           </div>
         </div>
 

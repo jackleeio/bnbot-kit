@@ -2006,9 +2006,9 @@ const TweetDraftCard: React.FC<{
             const isOnTweetPage = currentUrl.includes(`/status/${referenceTweetId}`) || currentUrl.includes('/status/');
 
             if (!isOnTweetPage) {
-              // Navigate to the tweet first
-              const tweetUrl = `https://x.com/i/status/${referenceTweetId}`;
-              window.location.href = tweetUrl;
+              // Navigate to the tweet first (SPA navigation, no page reload)
+              const tweetUrl = `/i/status/${referenceTweetId}`;
+              navigateToUrl(tweetUrl);
               return; // User will need to click again after navigation
             }
 
@@ -2092,9 +2092,9 @@ const TweetDraftCard: React.FC<{
               // Pass true to upload media if available
               fillComposerText('[data-testid="tweetTextarea_0"]', '[data-testid="tweetButton"]', true);
             } else {
-              // Navigate to tweet page first
-              const tweetUrl = `https://x.com/i/status/${referenceTweetId}`;
-              window.location.href = tweetUrl;
+              // Navigate to tweet page first (SPA navigation, no page reload)
+              const tweetUrl = `/i/status/${referenceTweetId}`;
+              navigateToUrl(tweetUrl);
             }
           } else {
             // No reference tweet, fallback to regular post with image

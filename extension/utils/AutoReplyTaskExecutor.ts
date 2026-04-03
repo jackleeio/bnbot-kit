@@ -205,6 +205,25 @@ export class AutoReplyTaskExecutor {
         waited += checkInterval;
       }
 
+      // Fallback: manual fetch if clicking Home didn't trigger a new API request
+      if (apiDataCache.size() === 0) {
+        console.log('[AutoReplyTaskExecutor] No API data after Home click, trying manual fetch...');
+        autoReplyService.addToLog('debug', 'Triggering manual timeline fetch...');
+        window.postMessage({ type: 'BNBOT_REFRESH_TIMELINE' }, '*');
+
+        let manualWaited = 0;
+        const manualWaitMax = 8000;
+        while (manualWaited < manualWaitMax) {
+          if (apiDataCache.size() > 0) {
+            console.log('[AutoReplyTaskExecutor] Manual fetch succeeded, cache has', apiDataCache.size(), 'tweets');
+            autoReplyService.addToLog('debug', `Timeline data loaded via manual fetch (${apiDataCache.size()} tweets cached)`);
+            break;
+          }
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
+          manualWaited += checkInterval;
+        }
+      }
+
       autoReplyService.addToLog('scrolling', `Reading tweets from API cache (${apiDataCache.size()} available)`);
 
       let emptyBatchAttempts = 0;

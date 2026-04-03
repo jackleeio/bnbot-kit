@@ -429,9 +429,17 @@
         const data = await response.json();
         console.log('[BNBot Timeline Interceptor] Manual fetch successful');
 
-        // Send data to content script
+        // Send data to content script (both formats for backward compatibility)
         window.postMessage({
           type: 'BNBOT_TIMELINE_DATA',
+          payload: data
+        }, '*');
+
+        // Also send as BNBOT_API_DATA so ApiDataCache can receive it
+        window.postMessage({
+          type: 'BNBOT_API_DATA',
+          endpoint: 'timeline',
+          pattern: '/HomeTimeline',
           payload: data
         }, '*');
       } else {
