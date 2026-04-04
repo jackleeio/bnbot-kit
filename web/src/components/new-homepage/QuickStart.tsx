@@ -9,15 +9,40 @@ import SectionHeader from './SectionHeader';
 const SKILL_URL = 'https://bnbot.ai/skill.md';
 const CHROME_URL = 'https://chromewebstore.google.com/detail/bnbot/haammgigdkckogcgnbkigfleejpaiiln';
 
-const SETUP_CMD = 'npx @bnbot/cli setup';
+const STEPS = [
+  {
+    step: '1',
+    title: 'Install',
+    desc: 'One command to set up. Works in any AI coding agent.',
+    cmd: 'npx @bnbot/cli setup',
+  },
+  {
+    step: '2',
+    title: 'Generate tweets',
+    desc: 'Draft today\'s posts based on your niche and voice.',
+    cmd: '/bnbot draft today',
+  },
+  {
+    step: '3',
+    title: 'Find trends',
+    desc: 'Scan 30+ platforms for what\'s going viral right now.',
+    cmd: '/bnbot trend',
+  },
+  {
+    step: '4',
+    title: 'Repurpose content',
+    desc: 'Turn any URL into an X thread or tweet.',
+    cmd: '/bnbot repurpose <url>',
+  },
+];
 
 const QuickStart: React.FC = () => {
-  const [copied, setCopied] = React.useState(false);
+  const [copied, setCopied] = React.useState<number | null>(null);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(SETUP_CMD);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = (idx: number) => {
+    navigator.clipboard.writeText(STEPS[idx].cmd);
+    setCopied(idx);
+    setTimeout(() => setCopied(null), 2000);
   };
 
   return (
@@ -46,7 +71,7 @@ const QuickStart: React.FC = () => {
 
             {/* Body */}
             <div className="relative px-5 py-6">
-              <p className="mb-4 font-mono text-xs text-space-dim">
+              <p className="mb-5 font-mono text-xs text-space-dim">
                 # Works with{' '}
                 <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer" className="text-space-muted underline underline-offset-2 hover:text-space-text">Claude Code</a>,{' '}
                 <a href="https://codex.openai.com" target="_blank" rel="noopener noreferrer" className="text-space-muted underline underline-offset-2 hover:text-space-text">Codex</a>,{' '}
@@ -55,18 +80,28 @@ const QuickStart: React.FC = () => {
                 <a href="https://gemini.google.com" target="_blank" rel="noopener noreferrer" className="text-space-muted underline underline-offset-2 hover:text-space-text">Gemini CLI</a>.
               </p>
 
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 font-mono text-sm">
-                  <span className="text-coral-500">$ </span>
-                  <span className="text-space-text">{SETUP_CMD}</span>
-                </div>
-
-                <button
-                  onClick={handleCopy}
-                  className="flex-shrink-0 rounded-md border border-white/[0.08] p-2 text-space-dim transition-colors hover:bg-white/[0.04] hover:text-space-muted"
-                >
-                  {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
-                </button>
+              <div className="space-y-4">
+                {STEPS.map((s, i) => (
+                  <div key={i} className="group">
+                    <div className="flex items-baseline gap-3 mb-1">
+                      <span className="flex-shrink-0 text-xs font-bold text-coral-500">{s.step}.</span>
+                      <span className="text-sm font-semibold text-space-text">{s.title}</span>
+                      <span className="text-xs text-space-dim">{s.desc}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4 ml-5 rounded-md bg-white/[0.03] px-3 py-2">
+                      <code className="font-mono text-sm">
+                        <span className="text-coral-500">$ </span>
+                        <span className="text-space-text">{s.cmd}</span>
+                      </code>
+                      <button
+                        onClick={() => handleCopy(i)}
+                        className="flex-shrink-0 rounded-md p-1 text-space-dim opacity-0 transition-all hover:text-space-muted group-hover:opacity-100"
+                      >
+                        {copied === i ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

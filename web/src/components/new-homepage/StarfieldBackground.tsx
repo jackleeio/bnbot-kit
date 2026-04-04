@@ -20,7 +20,7 @@ const StarfieldBackground: React.FC = () => {
   }, []);
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" suppressHydrationWarning>
+    <div className="starfield-bg pointer-events-none fixed inset-0 z-0 overflow-hidden" suppressHydrationWarning>
       {/* Stars */}
       <div className="absolute inset-0 animate-twinkle" style={{ boxShadow: small }} suppressHydrationWarning />
       <div className="absolute inset-0 animate-twinkle" style={{ boxShadow: medium, animationDelay: '-4s' }} suppressHydrationWarning />
@@ -28,22 +28,22 @@ const StarfieldBackground: React.FC = () => {
 
       {/* Nebula glow - top right */}
       <div className="absolute -top-[200px] -right-[100px] h-[800px] w-[800px] rounded-full"
-        style={{ background: 'radial-gradient(circle, rgba(255,77,77,0.12) 0%, rgba(255,77,77,0.05) 40%, transparent 70%)' }}
+        style={{ background: 'radial-gradient(circle, rgba(0,229,204,0.10) 0%, rgba(0,229,204,0.04) 40%, transparent 70%)' }}
       />
 
       {/* Nebula glow - bottom left */}
       <div className="absolute -bottom-[300px] -left-[200px] h-[700px] w-[700px] rounded-full"
-        style={{ background: 'radial-gradient(circle, rgba(255,100,100,0.08) 0%, rgba(255,77,77,0.03) 40%, transparent 70%)' }}
+        style={{ background: 'radial-gradient(circle, rgba(0,229,204,0.07) 0%, rgba(0,229,204,0.02) 40%, transparent 70%)' }}
       />
 
       {/* Nebula glow - center top */}
       <div className="absolute top-[10%] left-1/2 h-[500px] w-[1200px] -translate-x-1/2 rounded-full"
-        style={{ background: 'radial-gradient(ellipse, rgba(255,77,77,0.06) 0%, rgba(200,50,50,0.02) 50%, transparent 80%)' }}
+        style={{ background: 'radial-gradient(ellipse, rgba(0,229,204,0.05) 0%, rgba(0,180,160,0.02) 50%, transparent 80%)' }}
       />
 
-      {/* Deep space ambient warm tint */}
+      {/* Deep space ambient cool tint */}
       <div className="absolute inset-0"
-        style={{ background: 'radial-gradient(ellipse at 70% 20%, rgba(255,60,60,0.04) 0%, transparent 60%), radial-gradient(ellipse at 30% 80%, rgba(255,80,80,0.03) 0%, transparent 50%)' }}
+        style={{ background: 'radial-gradient(ellipse at 70% 20%, rgba(0,229,204,0.03) 0%, transparent 60%), radial-gradient(ellipse at 30% 80%, rgba(0,229,204,0.02) 0%, transparent 50%)' }}
       />
 
       {/* Vignette */}

@@ -460,8 +460,17 @@ export const AutoPilotPanel: React.FC<AutoPilotPanelProps> = ({
     autoReplyService.updateSettings({ [key]: value });
   };
 
+  const [openSettings, setOpenSettings] = useState(false);
+
   const handleTaskClick = (task: any) => {
     setSelectedTask(task);
+    setOpenSettings(false);
+    setViewMode('session');
+  };
+
+  const handleTaskSettings = (task: any) => {
+    setSelectedTask(task);
+    setOpenSettings(true);
     setViewMode('session');
   };
 
@@ -581,7 +590,7 @@ export const AutoPilotPanel: React.FC<AutoPilotPanelProps> = ({
           /* Task List View */
           <div className="flex-1 overflow-y-auto p-4">
             <TaskList
-              onSettings={handleTaskClick}
+              onSettings={handleTaskSettings}
               onPause={handleTaskPause}
               onResume={handleTaskResume}
               onExecute={handleTaskExecute}
@@ -602,6 +611,7 @@ export const AutoPilotPanel: React.FC<AutoPilotPanelProps> = ({
             onTaskUpdated={handleTaskUpdated}
             cachedExecutions={executionsCacheRef.current[selectedTask.id]}
             onExecutionsUpdate={(taskId, execs) => { executionsCacheRef.current[taskId] = execs; }}
+            initialShowSettings={openSettings}
           />
         )}
       </div>

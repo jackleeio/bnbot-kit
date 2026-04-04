@@ -280,6 +280,7 @@ interface TaskDetailViewProps {
   onStopExecution?: (taskId: string) => void;
   cachedExecutions?: TaskExecution[];
   onExecutionsUpdate?: (taskId: string, executions: TaskExecution[]) => void;
+  initialShowSettings?: boolean;
 }
 
 // Format execution result for HANDLE_NOTIFICATION task
@@ -445,6 +446,7 @@ export const TaskDetailView: React.FC<TaskDetailViewProps> = ({
   onStopExecution,
   cachedExecutions,
   onExecutionsUpdate,
+  initialShowSettings = false,
 }) => {
   const { language } = useLanguage();
   const { theme } = useTheme();
@@ -455,7 +457,16 @@ export const TaskDetailView: React.FC<TaskDetailViewProps> = ({
   const [actionLoading, setActionLoading] = useState(false);
   const [expandedExecutionId, setExpandedExecutionId] = useState<string | null>(null);
   const [showLogsPanel, setShowLogsPanel] = useState(false);
-  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(initialShowSettings);
+  const enteredViaSettings = useRef(initialShowSettings);
+
+  // If entered via settings button, go back to task list when settings panel is closed
+  useEffect(() => {
+    if (enteredViaSettings.current && !showSettingsPanel) {
+      onBack();
+    }
+  }, [showSettingsPanel]);
+
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   // Schedule editing state

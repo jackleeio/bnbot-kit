@@ -20,7 +20,7 @@ import ClassicLayout from '@/layouts/classic/layout';
 export default function NewHomePage() {
   return (
     <ClassicLayout hideTopNav={true} contentClassName="!p-0 !bg-space-black">
-      <style jsx global>{`html, body { background-color: #000000 !important; }`}</style>
+      <style jsx global>{`html:not(.light-home), html:not(.light-home) body { background-color: #000000 !important; }`}</style>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}

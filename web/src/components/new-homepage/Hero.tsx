@@ -5,34 +5,51 @@ import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { useHomeTranslations } from '@/context/locale-context';
 
-// 0 = "Brand & Bot" → 1 = "Brand N Bot" → 2 = "BNBot" → loop
-type Phase = 0 | 1 | 2;
+// 0 = "Brand & Bot" → 1 = "Boost & Bot" → 2 = "Boost N Bot" → 3 = "BNBot" → loop
+type Phase = 0 | 1 | 2 | 3;
 
 const Hero: React.FC = () => {
   const { t: tNew } = useHomeTranslations('home.newHome.hero');
   const [phase, setPhase] = useState<Phase>(0);
 
   useEffect(() => {
-    const durations = [1500, 2000, 2500];
+    const durations = [1500, 1500, 1500, 2500];
     const timer = setTimeout(() => {
-      setPhase((prev) => ((prev + 1) % 3) as Phase);
+      setPhase((prev) => ((prev + 1) % 4) as Phase);
     }, durations[phase]);
     return () => clearTimeout(timer);
   }, [phase]);
 
-  const showRand = phase !== 2;
-  const merged = phase === 2;
+  const showLeft = phase !== 3;
+  const merged = phase === 3;
+  // Left word scroll: oost(0), rand(1), oost(2) — same pattern as middle char
+  const [leftPos, setLeftPos] = useState(1); // start at rand
+  const [leftNoTransition, setLeftNoTransition] = useState(false);
   const [mascotHover, setMascotHover] = useState(false);
 
-  // Stack: N(0), &(1), N(2) — always scroll DOWN (marginTop increases)
-  // Phase 0 (show &): pos=1 | Phase 1 (show N): pos=0→reset to 2 | Phase 2 (N): pos=2 | Phase 0: pos=1
+  // Stack for middle char: N(0), &(1), N(2)
   const [scrollPos, setScrollPos] = useState(1);
   const [noTransition, setNoTransition] = useState(false);
 
+  // Left word: Brand → Boost (phase 1), Boost stays (phase 2,3), reset to Brand (phase 0)
   useEffect(() => {
     if (phase === 1) {
-      setScrollPos(0); // & → N: DOWN (1→0)
-      // After animation, instantly reset to bottom N(2)
+      setLeftPos(0); // rand → oost: slide down (1→0)
+      const t = setTimeout(() => {
+        setLeftNoTransition(true);
+        setLeftPos(2); // instant reset to bottom oost
+        requestAnimationFrame(() => setLeftNoTransition(false));
+      }, 400);
+      return () => clearTimeout(t);
+    } else if (phase === 0) {
+      setLeftPos(1); // oost → rand: slide down (2→1)
+    }
+  }, [phase]);
+
+  // Middle char: & → N (phase 2), reset to & (phase 0)
+  useEffect(() => {
+    if (phase === 2) {
+      setScrollPos(0); // & → N: slide down (1→0)
       const t = setTimeout(() => {
         setNoTransition(true);
         setScrollPos(2);
@@ -40,15 +57,16 @@ const Hero: React.FC = () => {
       }, 400);
       return () => clearTimeout(t);
     } else if (phase === 0) {
-      setScrollPos(1); // N → &: DOWN (2→1)
+      setNoTransition(true);
+      setScrollPos(1); // reset to &
+      requestAnimationFrame(() => setNoTransition(false));
     }
-    // phase 2: stays at scrollPos 2 (N)
   }, [phase]);
 
   return (
     <section className="relative flex min-h-screen flex-col items-center justify-center px-4 pt-16">
-      <div className="pointer-events-none absolute -top-20 right-0 h-[500px] w-[500px] rounded-full bg-coral-500/[0.04] blur-[120px]" />
-      <div className="pointer-events-none absolute -bottom-20 left-0 h-[400px] w-[400px] rounded-full bg-coral-500/[0.03] blur-[120px]" />
+      <div className="pointer-events-none absolute -top-20 right-0 h-[500px] w-[500px] rounded-full bg-teal-500/[0.04] blur-[120px]" />
+      <div className="pointer-events-none absolute -bottom-20 left-0 h-[400px] w-[400px] rounded-full bg-teal-500/[0.03] blur-[120px]" />
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -66,10 +84,10 @@ const Hero: React.FC = () => {
             alt="BNBot"
             width={128}
             height={128}
-            className={`h-24 w-24 transition-[filter,transform] duration-300 md:h-32 md:w-32 ${
+            className={`h-16 w-16 transition-[filter,transform] duration-300 md:h-20 md:w-20 ${
               mascotHover
-                ? 'scale-110 drop-shadow-[0_0_50px_rgba(255,77,77,0.6)] animate-[nod_0.5s_ease-in-out_infinite]'
-                : 'drop-shadow-[0_0_30px_rgba(255,77,77,0.3)]'
+                ? 'scale-110 drop-shadow-[0_0_50px_rgba(0,229,204,0.5)] animate-[nod_0.5s_ease-in-out_infinite]'
+                : 'drop-shadow-[0_0_30px_rgba(0,229,204,0.2)]'
             }`}
             priority
           />
@@ -88,16 +106,30 @@ const Hero: React.FC = () => {
           }}
         >
           B
-          {/* "rand" collapses via max-width */}
+          {/* "rand"/"oost" — slides down like the & → N animation */}
           <span style={{
             display: 'inline-block',
-            maxWidth: showRand ? '4em' : '0px',
+            maxWidth: showLeft ? '4em' : '0px',
             overflow: 'hidden',
             whiteSpace: 'nowrap',
             transition: 'max-width 0.3s ease-in-out',
             verticalAlign: 'bottom',
           }}>
-            rand
+            <span style={{
+              display: 'inline-block',
+              height: '1.15em',
+              overflow: 'hidden',
+              verticalAlign: 'bottom',
+            }}>
+              <span style={{
+                display: 'block',
+                marginTop: `${-leftPos * 1.15}em`,
+                transition: leftNoTransition ? 'none' : 'margin-top 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+                lineHeight: '1.15em',
+              }}>
+                oost<br />rand<br />oost
+              </span>
+            </span>
           </span>
           {/* left space */}
           <span style={{ display: 'inline-block', width: merged ? '0.05em' : '0.2em', transition: 'width 0.3s ease-in-out' }} />

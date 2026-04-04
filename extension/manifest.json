@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "BNBot",
   "version": "0.7.2",
-  "description": "The ultimate way to build your brand. Made for humans & OpenClaw 🦞.",
+  "description": "Your AI growth agent for X. Made for humans & OpenClaw 🦞.",
   "icons": {
     "16": "assets/images/icon-16.png",
     "48": "assets/images/icon-48.png",

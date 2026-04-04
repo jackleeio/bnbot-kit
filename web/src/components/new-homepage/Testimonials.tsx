@@ -48,19 +48,19 @@ const Testimonials: React.FC = () => {
           <SectionHeader title={`${t('titlePrefix')}${t('rotatingWords.0')}${t('titleSuffix')}`} />
         </motion.div>
 
-        <div className="space-y-4 [--marquee-speed:4s] md:[--marquee-speed:8s]">
+        <div className="space-y-4">
           <div className="relative overflow-hidden">
             <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-space-black to-transparent" />
             <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-space-black to-transparent" />
-            <div className="flex animate-marquee-left-slow" style={{ animationDuration: 'var(--marquee-speed, 8s)' }}>
-              {[...row1, ...row1, ...row1, ...row1].map((c, i) => <Card key={`a-${c.id}-${i}`} c={c} t={t} />)}
+            <div className="flex animate-marquee-left" style={{ width: 'max-content' }}>
+              {[...row1, ...row1].map((c, i) => <Card key={`a-${c.id}-${i}`} c={c} t={t} />)}
             </div>
           </div>
           <div className="relative overflow-hidden">
             <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-space-black to-transparent" />
             <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-space-black to-transparent" />
-            <div className="flex animate-marquee-right-slow" style={{ animationDelay: '-30s', animationDuration: 'var(--marquee-speed, 8s)' }}>
-              {[...row2, ...row2, ...row2, ...row2].map((c, i) => <Card key={`b-${c.id}-${i}`} c={c} t={t} />)}
+            <div className="flex animate-marquee-right" style={{ width: 'max-content' }}>
+              {[...row2, ...row2].map((c, i) => <Card key={`b-${c.id}-${i}`} c={c} t={t} />)}
             </div>
           </div>
         </div>

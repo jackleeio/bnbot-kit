@@ -2,7 +2,7 @@
 
 ## Short Description (132 chars max)
 
-The ultimate way to build your brand. Made for humans & OpenClaw 🦞.
+Your AI growth agent for X. Made for humans & OpenClaw 🦞.
 
 ## Detailed Description
 
