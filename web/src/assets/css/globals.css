@@ -835,6 +835,10 @@ textarea::-webkit-scrollbar {
 .light-home .text-white { color: #0a0f1a !important; }
 .light-home .text-white\/80 { color: rgba(10, 15, 26, 0.8) !important; }
 .light-home .text-white\/60 { color: rgba(10, 15, 26, 0.6) !important; }
+/* Preserve coral text on light bg (buttons, links, accents) */
+.light-home .text-coral-500 { color: #ef4b58 !important; }
+.light-home .text-coral-400 { color: #ff6b6b !important; }
+
 /* Keep white text on colored backgrounds */
 .light-home .bg-coral-500.text-white,
 .light-home .bg-coral-400.text-white,
