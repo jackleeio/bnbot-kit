@@ -888,8 +888,8 @@ textarea::-webkit-scrollbar {
 /* Edge fade gradients: space-black → light bg */
 .light-home .from-space-black { --tw-gradient-from: #f0f2f8 !important; }
 
-/* Integration icons: near-white (#f0f4ff) invisible on light bg → darken via filter */
-.light-home .integration-icon { filter: brightness(0.4) saturate(1.2); }
+/* Integration icons: only darken near-white icons, preserve colored ones */
+.light-home .integration-icon { filter: none; }
 
 /* Shadow glows: red → neutral */
 .light-home .hover\:shadow-\[0_0_40px_rgba\(255\,77\,77\,0\.1\)\]:hover { box-shadow: 0 0 40px rgba(90, 101, 128, 0.08) !important; }

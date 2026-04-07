@@ -8,3 +8,7 @@ dist/
 CLAUDE.md
 */CLAUDE.md
 .gstack/
+.vercel
+web/.open-next/
+web/.vercel/
+web/.wrangler/
