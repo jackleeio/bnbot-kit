@@ -1,7 +1,7 @@
 {
   "name": "bnbot",
   "private": true,
-  "version": "0.7.2",
+  "version": "0.7.3",
   "type": "module",
   "scripts": {
     "dev": "vite --mode development",
@@ -19,7 +19,7 @@
     "bump:major": "node scripts/bump-version.js major"
   },
   "dependencies": {
-    "@google/genai": "^1.30.0",
+    "@google/genai": "^1.48.0",
     "@tiptap/extension-link": "^3.17.0",
     "@tiptap/extension-placeholder": "^3.17.0",
     "@tiptap/extension-typography": "^3.17.0",

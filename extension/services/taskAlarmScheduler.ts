@@ -837,12 +837,7 @@ export async function handleDraftPublishResult(
   console.log(`[DraftAlarm] Publish result: draft=${draftId}, success=${success}`);
 
   if (!success) {
-    chrome.notifications.create(`draft-fail-${draftId}`, {
-      type: 'basic',
-      iconUrl: 'assets/images/icon-128.png',
-      title: '推文发布失败',
-      message: error || '未知错误',
-    });
+    console.warn(`[DraftAlarm] 推文发布失败: ${error || '未知错误'}`);
   }
 
   try {

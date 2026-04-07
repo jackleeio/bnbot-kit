@@ -5,7 +5,7 @@
  * Navigates to the 36kr search results page and extracts article cards from DOM.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface Kr36Result {
   rank: number;
@@ -42,10 +42,7 @@ export async function fetch36KrHot(
   await new Promise(r => setTimeout(r, 4000));
   await checkLoginRedirect(tabId, '36Kr');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (lim: number) => {
+  const data = await executeInPage(tabId, (lim: number) => {
       try {
         const seen = new Set<string>();
         const items: any[] = [];
@@ -73,11 +70,8 @@ export async function fetch36KrHot(
       } catch (e: any) {
         return { error: e.message || '36kr hot scraper failed' };
       }
-    },
-    args: [count],
-  });
+    }, [count]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -96,10 +90,7 @@ export async function fetch36KrNews(limit = 20): Promise<Kr36NewsResult[]> {
   const tabId = await getTab('https://www.36kr.com');
   await checkLoginRedirect(tabId, '36Kr');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (lim: number) => {
+  const data = await executeInPage(tabId, async (lim: number) => {
       try {
         const resp = await fetch('https://www.36kr.com/feed');
         if (!resp.ok) return { error: '36kr news feed failed: HTTP ' + resp.status };
@@ -136,11 +127,8 @@ export async function fetch36KrNews(limit = 20): Promise<Kr36NewsResult[]> {
       } catch (e: any) {
         return { error: e.message || '36kr news scraper failed' };
       }
-    },
-    args: [count],
-  });
+    }, [count]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -151,10 +139,7 @@ export async function search36Kr(query: string, limit = 20): Promise<Kr36Result[
   await new Promise(r => setTimeout(r, 4000));
   await checkLoginRedirect(tabId, '36Kr');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (lim: number) => {
+  const data = await executeInPage(tabId, (lim: number) => {
       try {
         const seen = new Set<string>();
         const items: any[] = [];
@@ -207,11 +192,8 @@ export async function search36Kr(query: string, limit = 20): Promise<Kr36Result[
       } catch (e: any) {
         return { error: e.message || '36kr scraper failed' };
       }
-    },
-    args: [count],
-  });
+    }, [count]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

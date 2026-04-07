@@ -5,7 +5,7 @@
  * Navigates to a WeChat article URL and extracts title, author, date, and content text.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface WeixinArticleResult {
   title: string;
@@ -41,10 +41,7 @@ export async function fetchWeixinArticle(url: string): Promise<WeixinArticleResu
   await new Promise(r => setTimeout(r, 5000));
   await checkLoginRedirect(tabId, 'WeChat');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (srcUrl: string) => {
+  const data = await executeInPage(tabId, (srcUrl: string) => {
       try {
         // Title: #activity-name
         const titleEl = document.querySelector('#activity-name');
@@ -99,11 +96,8 @@ export async function fetchWeixinArticle(url: string): Promise<WeixinArticleResu
       } catch (e: any) {
         return { error: e.message || 'WeChat article scraper failed' };
       }
-    },
-    args: [normalizedUrl],
-  });
+    }, [normalizedUrl]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || null;
 }

@@ -1,8 +1,9 @@
 /**
- * Scraper Service — fetch data from external sites using chrome.scripting.
+ * Scraper Service — fetch data from external sites using chrome.debugger (CDP).
  *
- * Instead of CDP (chrome.debugger), this uses chrome.scripting.executeScript()
- * which only needs host_permissions for the target site — no debugger permission.
+ * Uses chrome.debugger + Runtime.evaluate to execute JS in the page's main world.
+ * This only requires the "debugger" permission + "<all_urls>" host_permissions,
+ * avoiding the need for "scripting" permission with many host_permissions entries.
  *
  * Uses a session-based tab pool: tabs are reused across commands and auto-closed
  * after an idle timeout (similar to opencli's automation window approach).
@@ -12,6 +13,9 @@
 
 const IDLE_TIMEOUT = 5000; // 5s idle → close tab
 const tabPool = new Map<string, { tabId: number; timer: ReturnType<typeof setTimeout> }>();
+
+// Track which tabs have the debugger attached
+const attachedTabs = new Set<number>();
 
 /** Get or create a tab for a given domain, reusing existing ones. */
 export async function getTab(url: string): Promise<number> {
@@ -53,6 +57,11 @@ function closePooledTab(domain: string) {
   const entry = tabPool.get(domain);
   if (!entry) return;
   tabPool.delete(domain);
+  // Detach debugger before closing tab
+  if (attachedTabs.has(entry.tabId)) {
+    chrome.debugger.detach({ tabId: entry.tabId }).catch(() => {});
+    attachedTabs.delete(entry.tabId);
+  }
   chrome.tabs.remove(entry.tabId).catch(() => {});
   console.log(`[Scraper] Tab closed: ${domain}`);
 }
@@ -79,6 +88,15 @@ chrome.tabs.onRemoved.addListener((tabId) => {
       tabPool.delete(domain);
     }
   }
+  // Clean up debugger attachment tracking
+  attachedTabs.delete(tabId);
+});
+
+// Also clean up if debugger is detached externally (e.g. user closes DevTools)
+chrome.debugger.onDetach.addListener((source) => {
+  if (source.tabId != null) {
+    attachedTabs.delete(source.tabId);
+  }
 });
 
 /** Check if tab was redirected to a login page. Call after getTab + wait. */
@@ -87,6 +105,64 @@ export async function checkLoginRedirect(tabId: number, platformName: string): P
   if (tab.url && (tab.url.includes('passport.') || tab.url.includes('/login') || tab.url.includes('/signin') || tab.url.includes('/sso/'))) {
     throw new Error(`Please sign in to ${platformName} first`);
   }
+}
+
+// ─── CDP executeInPage helper ─────────────────────────────────────
+
+/**
+ * Execute a function in the page's main world via chrome.debugger (CDP Runtime.evaluate).
+ *
+ * Replaces chrome.scripting.executeScript({ world: 'MAIN' }) to avoid needing
+ * the "scripting" permission. Only requires "debugger" + "<all_urls>".
+ *
+ * @param tabId - The tab to execute in
+ * @param func - A self-contained function (no closures) to execute in the page
+ * @param args - Arguments to pass to the function
+ * @returns The return value of the function
+ */
+export async function executeInPage<T = any>(
+  tabId: number,
+  func: (...args: any[]) => T,
+  args: any[] = [],
+): Promise<T> {
+  // Attach debugger if not already attached
+  if (!attachedTabs.has(tabId)) {
+    try {
+      await chrome.debugger.attach({ tabId }, '1.3');
+      attachedTabs.add(tabId);
+    } catch (e: any) {
+      // Already attached (e.g. by DevTools or previous call that raced)
+      if (e.message?.includes('Another debugger is already attached') ||
+          e.message?.includes('already attached')) {
+        attachedTabs.add(tabId);
+      } else {
+        throw e;
+      }
+    }
+  }
+
+  // Build IIFE expression: (async function(...) { ... })(...args)
+  const argsJson = args.map(a => JSON.stringify(a)).join(', ');
+  const expression = `(${func.toString()})(${argsJson})`;
+
+  const result = await chrome.debugger.sendCommand(
+    { tabId },
+    'Runtime.evaluate',
+    {
+      expression,
+      awaitPromise: true,
+      returnByValue: true,
+    },
+  ) as any;
+
+  if (result?.exceptionDetails) {
+    const errMsg = result.exceptionDetails.exception?.description
+      || result.exceptionDetails.text
+      || 'executeInPage failed';
+    throw new Error(errMsg);
+  }
+
+  return result?.result?.value as T;
 }
 
 // ─── TikTok ─────────────────────────────────────────────────────────
@@ -106,10 +182,7 @@ export async function searchTikTok(query: string, limit = 10): Promise<TikTokSea
   const tabId = await getTab('https://www.tiktok.com/explore');
   await new Promise(r => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'TikTok');
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (q: string, lim: number) => {
+  const data = await executeInPage(tabId, async (q: string, lim: number) => {
       try {
         const res = await fetch(
           '/api/search/general/full/?keyword=' + encodeURIComponent(q) + '&offset=0&count=' + lim + '&aid=1988',
@@ -142,10 +215,7 @@ export async function searchTikTok(query: string, limit = 10): Promise<TikTokSea
       } catch (e: any) {
         return { error: e.message || 'TikTok scraper failed' };
       }
-    },
-    args: [query, limit],
-  });
-  const data = results[0]?.result;
+    }, [query, limit]);
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -164,10 +234,7 @@ export async function fetchTikTokExplore(limit = 20): Promise<TikTokExploreResul
   await new Promise(r => setTimeout(r, 5000));
   await checkLoginRedirect(tabId, 'TikTok');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (lim: number) => {
+  const data = await executeInPage(tabId, async (lim: number) => {
       try {
         // Try multiple API endpoints for trending/explore content
         const apis = [
@@ -204,11 +271,8 @@ export async function fetchTikTokExplore(limit = 20): Promise<TikTokExploreResul
       } catch (e: any) {
         return { error: e.message || 'TikTok explore scraper failed' };
       }
-    },
-    args: [limit],
-  });
+    }, [limit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -255,10 +319,7 @@ export async function searchYouTube(query: string, options: YouTubeSearchOptions
   await new Promise(r => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'YouTube');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (lim: number) => {
+  const data = await executeInPage(tabId, (lim: number) => {
       try {
         const data = (window as any).ytInitialData;
         if (!data) return { error: 'YouTube data not found' };
@@ -305,10 +366,7 @@ export async function searchYouTube(query: string, options: YouTubeSearchOptions
       } catch (e: any) {
         return { error: e.message || 'YouTube scraper failed' };
       }
-    },
-    args: [safeLimit],
-  });
-  const data = results[0]?.result;
+    }, [safeLimit]);
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

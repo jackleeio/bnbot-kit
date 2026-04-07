@@ -5,7 +5,7 @@
  * Filters results to type === 'search_result' and constructs URLs based on object type.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface ZhihuResult {
   rank: number;
@@ -30,10 +30,7 @@ export async function fetchZhihuHot(limit = 20): Promise<ZhihuHotResult[]> {
   const tabId = await getTab('https://www.zhihu.com');
   await checkLoginRedirect(tabId, 'Zhihu');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (lim: number) => {
+  const data = await executeInPage(tabId, async (lim: number) => {
       try {
         const res = await fetch('https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total?limit=50', {
           credentials: 'include',
@@ -66,11 +63,8 @@ export async function fetchZhihuHot(limit = 20): Promise<ZhihuHotResult[]> {
       } catch (e: any) {
         return { error: e.message || 'Zhihu hot scraper failed' };
       }
-    },
-    args: [limit],
-  });
+    }, [limit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -79,10 +73,7 @@ export async function searchZhihu(query: string, limit = 10): Promise<ZhihuResul
   const tabId = await getTab('https://www.zhihu.com');
   await checkLoginRedirect(tabId, 'Zhihu');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (q: string, lim: number) => {
+  const data = await executeInPage(tabId, async (q: string, lim: number) => {
       try {
         const strip = (html: string) =>
           (html || '')
@@ -153,11 +144,8 @@ export async function searchZhihu(query: string, limit = 10): Promise<ZhihuResul
       } catch (e: any) {
         return { error: e.message || 'Zhihu scraper failed' };
       }
-    },
-    args: [query, limit],
-  });
+    }, [query, limit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

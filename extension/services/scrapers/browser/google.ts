@@ -6,7 +6,7 @@
  * Extracts featured snippets, standard results, and People Also Ask.
  */
 
-import { getTab, checkLoginRedirect, waitForLoad } from '../../scraperService';
+import { getTab, checkLoginRedirect, waitForLoad, executeInPage } from '../../scraperService';
 
 export interface GoogleSearchResult {
   type: 'snippet' | 'result' | 'paa';
@@ -40,10 +40,7 @@ export async function searchGoogleNews(
   const tabId = await getTab('https://news.google.com');
   await new Promise(r => setTimeout(r, 2000));
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (url: string, lim: number) => {
+  const data = await executeInPage(tabId, async (url: string, lim: number) => {
       try {
         const resp = await fetch(url);
         if (!resp.ok) return { error: 'Google News fetch failed: HTTP ' + resp.status };
@@ -82,11 +79,8 @@ export async function searchGoogleNews(
       } catch (e: any) {
         return { error: e.message || 'Google News scraper failed' };
       }
-    },
-    args: [rssUrl, safeLimit],
-  });
+    }, [rssUrl, safeLimit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -102,18 +96,13 @@ export async function searchGoogle(
   await new Promise(r => setTimeout(r, 3000));
 
   // Handle Google consent page — click "Accept all" / "I agree" if present
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: () => {
+  await executeInPage(tabId, () => {
       // Google consent form buttons
       const consentBtn = document.querySelector('button#L2AGLb')           // "Accept all" (EU)
         || document.querySelector('form[action*="consent"] button')        // Generic consent form
         || document.querySelector('button[jsname="higCR"]');               // "I agree" variant
       if (consentBtn) (consentBtn as HTMLElement).click();
-    },
-    args: [],
-  });
+    }, []);
 
   // Wait for potential redirect after consent
   await new Promise(r => setTimeout(r, 2000));
@@ -128,10 +117,7 @@ export async function searchGoogle(
 
   await checkLoginRedirect(tabId, 'Google');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: () => {
+  const data = await executeInPage(tabId, () => {
       try {
       const results: any[] = [];
       const seenUrls: Record<string, boolean> = {};
@@ -236,11 +222,8 @@ export async function searchGoogle(
       } catch (e: any) {
         return { error: e.message || 'Google scraper failed' };
       }
-    },
-    args: [],
-  });
+    }, []);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

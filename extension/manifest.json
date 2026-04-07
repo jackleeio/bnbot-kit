@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BNBot",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Your AI growth agent for X. Made for humans & OpenClaw 🦞.",
   "icons": {
     "16": "assets/images/icon-16.png",
@@ -14,9 +14,8 @@
     "offscreen",
     "tabs",
     "alarms",
-    "scripting",
-    "cookies",
-    "notifications"
+    "debugger",
+    "cookies"
   ],
   "host_permissions": [
     "*://api.bnbot.ai/*",
@@ -24,29 +23,10 @@
     "*://video.twimg.com/*",
     "*://mp.weixin.qq.com/*",
     "*://*.tiktok.com/*",
-    "*://*.youtube.com/*",
     "*://*.xiaohongshu.com/*",
     "*://*.xhscdn.com/*",
     "*://mmbiz.qpic.cn/*",
-    "*://*.qpic.cn/*",
-    "*://*.reddit.com/*",
-    "*://*.bilibili.com/*",
-    "*://*.zhihu.com/*",
-    "*://*.xueqiu.com/*",
-    "*://*.instagram.com/*",
-    "*://linux.do/*",
-    "*://*.okjike.com/*",
-    "*://s.weibo.com/*",
-    "*://*.weibo.com/*",
-    "*://*.douban.com/*",
-    "*://*.medium.com/*",
-    "*://*.google.com/*",
-    "*://*.facebook.com/*",
-    "*://*.linkedin.com/*",
-    "*://*.36kr.com/*",
-    "*://*.producthunt.com/*",
-    "*://*.yahoo.com/*",
-    "http://localhost:*/*"
+    "*://*.qpic.cn/*"
   ],
   "background": {
     "service_worker": "background.ts",

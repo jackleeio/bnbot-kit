@@ -5,7 +5,7 @@
  * WBI signing: fetch nav data for img/sub keys, generate mixin key, MD5 sign params.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface BilibiliResult {
   rank: number;
@@ -28,10 +28,7 @@ export async function fetchBilibiliHot(limit = 20): Promise<BilibiliHotResult[]>
   const tabId = await getTab('https://www.bilibili.com');
   await checkLoginRedirect(tabId, 'Bilibili');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (lim: number) => {
+  const data = await executeInPage(tabId, async (lim: number) => {
       try {
         const res = await fetch('https://api.bilibili.com/x/web-interface/popular?ps=' + lim + '&pn=1', {
           credentials: 'include',
@@ -56,11 +53,8 @@ export async function fetchBilibiliHot(limit = 20): Promise<BilibiliHotResult[]>
       } catch (e: any) {
         return { error: e.message || 'Bilibili hot scraper failed' };
       }
-    },
-    args: [limit],
-  });
+    }, [limit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -77,10 +71,7 @@ export async function fetchBilibiliRanking(limit = 20): Promise<BilibiliRankingR
   const tabId = await getTab('https://www.bilibili.com');
   await checkLoginRedirect(tabId, 'Bilibili');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (lim: number) => {
+  const data = await executeInPage(tabId, async (lim: number) => {
       try {
         const res = await fetch('https://api.bilibili.com/x/web-interface/ranking/v2?rid=0&type=all', {
           credentials: 'include',
@@ -104,11 +95,8 @@ export async function fetchBilibiliRanking(limit = 20): Promise<BilibiliRankingR
       } catch (e: any) {
         return { error: e.message || 'Bilibili ranking scraper failed' };
       }
-    },
-    args: [limit],
-  });
+    }, [limit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -121,10 +109,7 @@ export async function searchBilibili(
   const tabId = await getTab('https://www.bilibili.com');
   await checkLoginRedirect(tabId, 'Bilibili');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (keyword: string, lim: number, searchType: string, pageNum: number) => {
+  const data = await executeInPage(tabId, async (keyword: string, lim: number, searchType: string, pageNum: number) => {
       try {
       // ── WBI signing logic (ported from opencli bilibili/utils.ts) ──
       const MIXIN_KEY_ENC_TAB = [
@@ -250,16 +235,13 @@ export async function searchBilibili(
       } catch (e: any) {
         return { error: e.message || 'Bilibili scraper failed' };
       }
-    },
-    args: [
+    }, [
       query,
       limit,
       options.type === 'user' ? 'bili_user' : 'video',
       options.page || 1,
-    ],
-  });
+    ]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

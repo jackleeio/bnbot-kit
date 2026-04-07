@@ -5,7 +5,7 @@
  * and extracting data from the DOM via React internal fiber properties.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface JikeResult {
   rank: number;
@@ -26,10 +26,7 @@ export async function searchJike(query: string, limit = 20): Promise<JikeResult[
   await new Promise(r => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'Jike');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (lim: number) => {
+  const data = await executeInPage(tabId, (lim: number) => {
       try {
         // React fiber extraction — walk up to 10 levels to find post data
         function getPostData(element: Element): any {
@@ -82,11 +79,8 @@ export async function searchJike(query: string, limit = 20): Promise<JikeResult[
       } catch (e: any) {
         return { error: e.message || 'Jike scraper failed — please sign in to Jike first' };
       }
-    },
-    args: [limit],
-  });
+    }, [limit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

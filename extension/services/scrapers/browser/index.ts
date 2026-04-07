@@ -1,5 +1,5 @@
 /**
- * Browser-based scrapers — use chrome.scripting.executeScript to call
+ * Browser-based scrapers — use chrome.debugger (CDP Runtime.evaluate) to call
  * internal APIs with the user's browser cookies.
  */
 

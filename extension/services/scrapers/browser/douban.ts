@@ -5,7 +5,7 @@
  * Navigates to search.douban.com and scrapes rendered `.item-root` elements.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface DoubanSearchResult {
   rank: number;
@@ -35,10 +35,7 @@ export async function fetchDoubanMovieHot(limit = 20): Promise<DoubanMovieHotRes
   await new Promise(r => setTimeout(r, 4000));
   await checkLoginRedirect(tabId, 'Douban');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (lim: number) => {
+  const data = await executeInPage(tabId, (lim: number) => {
       try {
         const normalize = (value: string) => (value || '').replace(/\s+/g, ' ').trim();
         const items: any[] = [];
@@ -82,11 +79,8 @@ export async function fetchDoubanMovieHot(limit = 20): Promise<DoubanMovieHotRes
       } catch (e: any) {
         return { error: e.message || 'Douban movie hot scraper failed' };
       }
-    },
-    args: [safeLimit],
-  });
+    }, [safeLimit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -108,10 +102,7 @@ export async function fetchDoubanBookHot(limit = 20): Promise<DoubanBookHotResul
   await new Promise(r => setTimeout(r, 4000));
   await checkLoginRedirect(tabId, 'Douban');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (lim: number) => {
+  const data = await executeInPage(tabId, (lim: number) => {
       try {
         const normalize = (value: string) => (value || '').replace(/\s+/g, ' ').trim();
         const books: any[] = [];
@@ -152,11 +143,8 @@ export async function fetchDoubanBookHot(limit = 20): Promise<DoubanBookHotResul
       } catch (e: any) {
         return { error: e.message || 'Douban book hot scraper failed' };
       }
-    },
-    args: [safeLimit],
-  });
+    }, [safeLimit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -175,10 +163,7 @@ export async function fetchDoubanTop250(limit = 250): Promise<DoubanTop250Result
   await new Promise(r => setTimeout(r, 4000));
   await checkLoginRedirect(tabId, 'Douban');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (lim: number) => {
+  const data = await executeInPage(tabId, async (lim: number) => {
       try {
         const allResults: any[] = [];
 
@@ -234,11 +219,8 @@ export async function fetchDoubanTop250(limit = 250): Promise<DoubanTop250Result
       } catch (e: any) {
         return { error: e.message || 'Douban top250 scraper failed' };
       }
-    },
-    args: [safeLimit],
-  });
+    }, [safeLimit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -254,10 +236,7 @@ export async function searchDouban(
   await new Promise(r => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'Douban');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (searchType: string, lim: number) => {
+  const data = await executeInPage(tabId, async (searchType: string, lim: number) => {
       try {
         const normalize = (value: string) => (value || '').replace(/\s+/g, ' ').trim();
 
@@ -309,11 +288,8 @@ export async function searchDouban(
       } catch (e: any) {
         return { error: e.message || 'Douban scraper failed' };
       }
-    },
-    args: [type, safeLimit],
-  });
+    }, [type, safeLimit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   const raw: any[] = data || [];
   return raw.map((item, i) => ({

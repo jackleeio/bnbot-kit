@@ -5,7 +5,7 @@
  * Requires user to be signed into LinkedIn in the browser.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 // ── Filter value mappings ──────────────────────────────────────────
 
@@ -117,10 +117,7 @@ export async function searchLinkedInJobs(
     batchUrls.push(buildVoyagerUrl(query, location, offset, count, expLevels, jobTypes, datePosts, remotes));
   }
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (urls: string[], lim: number) => {
+  const data = await executeInPage(tabId, async (urls: string[], lim: number) => {
       try {
         // Extract CSRF token from JSESSIONID cookie
         const jsession = document.cookie.split(';').map(p => p.trim())
@@ -195,11 +192,8 @@ export async function searchLinkedInJobs(
       } catch (e: any) {
         return { error: e.message || 'LinkedIn scraper failed — please sign in to LinkedIn first' };
       }
-    },
-    args: [batchUrls, limit],
-  });
+    }, [batchUrls, limit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

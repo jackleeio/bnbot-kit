@@ -5,7 +5,7 @@
  * Navigates to the Product Hunt homepage and extracts product cards with vote counts.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface ProductHuntResult {
   rank: number;
@@ -21,10 +21,7 @@ export async function fetchProductHuntHot(limit = 20): Promise<ProductHuntResult
   await new Promise(r => setTimeout(r, 4000));
   await checkLoginRedirect(tabId, 'Product Hunt');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (lim: number) => {
+  const data = await executeInPage(tabId, (lim: number) => {
       try {
       const seen = new Set<string>();
       const items: any[] = [];
@@ -127,11 +124,8 @@ export async function fetchProductHuntHot(limit = 20): Promise<ProductHuntResult
       } catch (e: any) {
         return { error: e.message || 'Product Hunt scraper failed' };
       }
-    },
-    args: [count],
-  });
+    }, [count]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

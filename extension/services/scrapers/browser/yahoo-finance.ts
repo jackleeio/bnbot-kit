@@ -5,7 +5,7 @@
  * Navigates to Yahoo Finance quote page, tries v8 chart API, falls back to DOM scraping.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface YahooFinanceQuote {
   symbol: string;
@@ -34,10 +34,7 @@ export async function fetchYahooFinanceQuote(symbol: string): Promise<YahooFinan
   await new Promise(r => setTimeout(r, 4000));
   await checkLoginRedirect(tabId, 'Yahoo Finance');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (ticker: string) => {
+  const data = await executeInPage(tabId, async (ticker: string) => {
       try {
         // Strategy 1: v8 chart API (most reliable, gives full data)
         try {
@@ -99,11 +96,8 @@ export async function fetchYahooFinanceQuote(symbol: string): Promise<YahooFinan
       } catch (e: any) {
         return { error: e.message || 'Yahoo Finance scraper failed' };
       }
-    },
-    args: [sym],
-  });
+    }, [sym]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || null;
 }

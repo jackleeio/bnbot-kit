@@ -5,7 +5,7 @@
  * Navigates to XHS search_result page and scrapes rendered `.note-item` elements.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface XiaohongshuSearchResult {
   rank: number;
@@ -36,10 +36,7 @@ export async function searchXiaohongshu(query: string, limit = 20): Promise<Xiao
   await new Promise(r => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'Xiaohongshu');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (lim: number) => {
+  const data = await executeInPage(tabId, (lim: number) => {
       try {
         const normalizeUrl = (href: string) => {
           if (!href) return '';
@@ -90,11 +87,8 @@ export async function searchXiaohongshu(query: string, limit = 20): Promise<Xiao
       } catch (e: any) {
         return { error: e.message || 'Xiaohongshu scraper failed — please sign in to Xiaohongshu first' };
       }
-    },
-    args: [limit],
-  });
+    }, [limit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   const raw: any[] = data || [];
   return raw.map((item, i) => ({

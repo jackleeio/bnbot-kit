@@ -5,7 +5,7 @@
  * Returns topic results with title, views, likes, replies.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface LinuxDoResult {
   rank: number;
@@ -20,10 +20,7 @@ export async function searchLinuxDo(query: string, limit = 20): Promise<LinuxDoR
   const tabId = await getTab('https://linux.do');
   await checkLoginRedirect(tabId, 'Linux.do');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (q: string, lim: number) => {
+  const data = await executeInPage(tabId, async (q: string, lim: number) => {
       try {
         const res = await fetch('/search.json?q=' + encodeURIComponent(q), { credentials: 'include' });
         if (!res.ok) return { error: 'Linux.do search failed: HTTP ' + res.status + ' — please sign in to Linux.do first' };
@@ -51,11 +48,8 @@ export async function searchLinuxDo(query: string, limit = 20): Promise<LinuxDoR
       } catch (e: any) {
         return { error: e.message || 'Linux.do scraper failed' };
       }
-    },
-    args: [query, limit],
-  });
+    }, [query, limit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

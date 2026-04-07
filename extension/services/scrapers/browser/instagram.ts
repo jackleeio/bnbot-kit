@@ -5,7 +5,7 @@
  * Requires the X-IG-App-ID header (hardcoded public app ID).
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface InstagramResult {
   rank: number;
@@ -29,10 +29,7 @@ export async function fetchInstagramExplore(limit = 20): Promise<InstagramExplor
   const tabId = await getTab('https://www.instagram.com');
   await checkLoginRedirect(tabId, 'Instagram');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (lim: number) => {
+  const data = await executeInPage(tabId, async (lim: number) => {
       try {
         const res = await fetch(
           'https://www.instagram.com/api/v1/discover/web/explore_grid/',
@@ -69,11 +66,8 @@ export async function fetchInstagramExplore(limit = 20): Promise<InstagramExplor
       } catch (e: any) {
         return { error: e.message || 'Instagram explore scraper failed' };
       }
-    },
-    args: [limit],
-  });
+    }, [limit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -82,10 +76,7 @@ export async function searchInstagram(query: string, limit = 10): Promise<Instag
   const tabId = await getTab('https://www.instagram.com');
   await checkLoginRedirect(tabId, 'Instagram');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (q: string, lim: number) => {
+  const data = await executeInPage(tabId, async (q: string, lim: number) => {
       try {
         const res = await fetch(
           'https://www.instagram.com/web/search/topsearch/?query=' + encodeURIComponent(q) + '&context=user',
@@ -115,11 +106,8 @@ export async function searchInstagram(query: string, limit = 10): Promise<Instag
       } catch (e: any) {
         return { error: e.message || 'Instagram scraper failed' };
       }
-    },
-    args: [query, limit],
-  });
+    }, [query, limit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

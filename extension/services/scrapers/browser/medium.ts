@@ -5,7 +5,7 @@
  * Navigates to medium.com/search and scrapes rendered `article` elements.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface MediumSearchResult {
   rank: number;
@@ -25,10 +25,7 @@ export async function searchMedium(query: string, limit = 20): Promise<MediumSea
   await new Promise(r => setTimeout(r, 4000));
   await checkLoginRedirect(tabId, 'Medium');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (lim: number) => {
+  const data = await executeInPage(tabId, async (lim: number) => {
       try {
         // Extra wait for article elements to render
         await new Promise(r => setTimeout(r, 3000));
@@ -96,11 +93,8 @@ export async function searchMedium(query: string, limit = 20): Promise<MediumSea
       } catch (e: any) {
         return { error: e.message || 'Medium scraper failed — please sign in to Medium first' };
       }
-    },
-    args: [safeLimit],
-  });
+    }, [safeLimit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   const raw: any[] = data || [];
   return raw.map((item, i) => ({

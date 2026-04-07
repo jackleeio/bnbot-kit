@@ -5,7 +5,7 @@
  * Returns stock matches with symbol, name, exchange, price, and change percentage.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface XueqiuResult {
   rank: number;
@@ -31,10 +31,7 @@ export async function fetchXueqiuHot(limit = 20): Promise<XueqiuHotResult[]> {
   const tabId = await getTab('https://xueqiu.com');
   await checkLoginRedirect(tabId, 'Xueqiu');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (lim: number) => {
+  const data = await executeInPage(tabId, async (lim: number) => {
       try {
         const resp = await fetch('https://xueqiu.com/statuses/hot/listV3.json?source=hot&page=1', {
           credentials: 'include',
@@ -64,11 +61,8 @@ export async function fetchXueqiuHot(limit = 20): Promise<XueqiuHotResult[]> {
       } catch (e: any) {
         return { error: e.message || 'Xueqiu hot scraper failed' };
       }
-    },
-    args: [limit],
-  });
+    }, [limit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -77,10 +71,7 @@ export async function searchXueqiu(query: string, limit = 10): Promise<XueqiuRes
   const tabId = await getTab('https://xueqiu.com');
   await checkLoginRedirect(tabId, 'Xueqiu');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (q: string, lim: number) => {
+  const data = await executeInPage(tabId, async (q: string, lim: number) => {
       try {
         const resp = await fetch(
           'https://xueqiu.com/stock/search.json?code=' + encodeURIComponent(q) + '&size=' + lim,
@@ -116,11 +107,8 @@ export async function searchXueqiu(query: string, limit = 10): Promise<XueqiuRes
       } catch (e: any) {
         return { error: e.message || 'Xueqiu scraper failed' };
       }
-    },
-    args: [query, limit],
-  });
+    }, [query, limit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

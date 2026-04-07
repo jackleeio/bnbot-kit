@@ -5,7 +5,7 @@
  * Supports subreddit-scoped search and sort/time filters.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface RedditResult {
   rank: number;
@@ -34,10 +34,7 @@ export async function fetchRedditHot(
   const tabId = await getTab('https://www.reddit.com');
   await checkLoginRedirect(tabId, 'Reddit');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (lim: number, subreddit: string) => {
+  const data = await executeInPage(tabId, async (lim: number, subreddit: string) => {
       try {
         const path = subreddit ? '/r/' + subreddit + '/hot.json' : '/hot.json';
         const res = await fetch(path + '?limit=' + lim + '&raw_json=1', {
@@ -64,11 +61,8 @@ export async function fetchRedditHot(
       } catch (e: any) {
         return { error: e.message || 'Reddit hot scraper failed' };
       }
-    },
-    args: [limit, options.subreddit || ''],
-  });
+    }, [limit, options.subreddit || '']);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -81,10 +75,7 @@ export async function searchReddit(
   const tabId = await getTab('https://www.reddit.com');
   await checkLoginRedirect(tabId, 'Reddit');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (q: string, lim: number, subreddit: string, sort: string, time: string) => {
+  const data = await executeInPage(tabId, async (q: string, lim: number, subreddit: string, sort: string, time: string) => {
       try {
         const basePath = subreddit ? `/r/${subreddit}/search.json` : '/search.json';
         const params =
@@ -116,11 +107,8 @@ export async function searchReddit(
       } catch (e: any) {
         return { error: e.message || 'Reddit scraper failed' };
       }
-    },
-    args: [query, limit, options.subreddit || '', options.sort || 'relevance', options.time || 'all'],
-  });
+    }, [query, limit, options.subreddit || '', options.sort || 'relevance', options.time || 'all']);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

@@ -6,7 +6,7 @@
  * `[role="listitem"]` elements.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface FacebookSearchResult {
   rank: number;
@@ -22,10 +22,7 @@ export async function searchFacebook(query: string, limit = 10): Promise<Faceboo
   await new Promise(r => setTimeout(r, 4000));
   await checkLoginRedirect(tabId, 'Facebook');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (lim: number) => {
+  const data = await executeInPage(tabId, (lim: number) => {
       try {
         // Search results are in role="article" or role="listitem"
         let items = document.querySelectorAll('[role="article"]');
@@ -56,11 +53,8 @@ export async function searchFacebook(query: string, limit = 10): Promise<Faceboo
       } catch (e: any) {
         return { error: e.message || 'Facebook scraper failed — please sign in to Facebook first' };
       }
-    },
-    args: [safeLimit],
-  });
+    }, [safeLimit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

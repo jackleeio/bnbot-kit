@@ -5,7 +5,7 @@
  * Navigates to s.weibo.com and scrapes rendered `.card-wrap` elements.
  */
 
-import { getTab, checkLoginRedirect } from '../../scraperService';
+import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
 
 export interface WeiboSearchResult {
   rank: number;
@@ -30,10 +30,7 @@ export async function fetchWeiboHot(limit = 30): Promise<WeiboHotResult[]> {
   await new Promise(r => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'Weibo');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (lim: number) => {
+  const data = await executeInPage(tabId, async (lim: number) => {
       try {
         const resp = await fetch('/ajax/statuses/hot_band', { credentials: 'include' });
         if (!resp.ok) return { error: 'Weibo hot failed: HTTP ' + resp.status + ' — please sign in to Weibo first' };
@@ -57,11 +54,8 @@ export async function fetchWeiboHot(limit = 30): Promise<WeiboHotResult[]> {
       } catch (e: any) {
         return { error: e.message || 'Weibo hot scraper failed' };
       }
-    },
-    args: [count],
-  });
+    }, [count]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
@@ -74,10 +68,7 @@ export async function searchWeibo(query: string, limit = 10): Promise<WeiboSearc
 
   await checkLoginRedirect(tabId, 'Weibo');
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (lim: number) => {
+  const data = await executeInPage(tabId, (lim: number) => {
       try {
         const clean = (value: string) => (value || '').replace(/\s+/g, ' ').trim();
         const absoluteUrl = (href: string) => {
@@ -129,11 +120,8 @@ export async function searchWeibo(query: string, limit = 10): Promise<WeiboSearc
       } catch (e: any) {
         return { error: e.message || 'Weibo scraper failed — please sign in to Weibo first' };
       }
-    },
-    args: [safeLimit],
-  });
+    }, [safeLimit]);
 
-  const data = results[0]?.result;
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   const raw: any[] = data || [];
   return raw.map((item, i) => ({

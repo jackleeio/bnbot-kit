@@ -67,6 +67,7 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
     const lastScrollY = useRef(0);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const savedScrollTop = useRef(0);
+    const savedBoostList = useRef<Boost[]>([]); // preserve full list when entering detail
 
     const handleScroll = () => {
         if (!scrollContainerRef.current) return;
@@ -369,29 +370,29 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
 
     // Handle clicking a boost card from list view
     const handleBoostCardClick = async (boost: Boost, tweetUrl?: string) => {
-        // Save scroll position before entering detail view
+        // Save scroll position and full list before entering detail view
         if (scrollContainerRef.current) {
             savedScrollTop.current = scrollContainerRef.current.scrollTop;
         }
+        savedBoostList.current = [...boosts];
+
+        // Immediately show detail with current boost (no waiting)
+        setCurrentBoostIndex(0);
+        setSelectedBoost(boost);
 
         // Navigate to the tweet URL so user can interact
         if (tweetUrl) {
             navigateToUrl(tweetUrl);
         }
 
-        // Fetch all boosts for this tweet and show detail inline
-        const tweetBoosts = await boostService.getBoostsByTweet(boost.tweet_id);
-
-        if (tweetBoosts.length > 0) {
-            setBoosts(tweetBoosts);
-            const clickedIndex = tweetBoosts.findIndex(b => b.id === boost.id);
-            setCurrentBoostIndex(clickedIndex >= 0 ? clickedIndex : 0);
-            setSelectedBoost(tweetBoosts[clickedIndex >= 0 ? clickedIndex : 0]);
-        } else {
-            setBoosts([boost]);
-            setCurrentBoostIndex(0);
-            setSelectedBoost(boost);
-        }
+        // Fetch all boosts for this tweet in background, update if more found
+        boostService.getBoostsByTweet(boost.tweet_id).then(tweetBoosts => {
+            if (tweetBoosts.length > 1) {
+                const clickedIndex = tweetBoosts.findIndex(b => b.id === boost.id);
+                setCurrentBoostIndex(clickedIndex >= 0 ? clickedIndex : 0);
+                setSelectedBoost(tweetBoosts[clickedIndex >= 0 ? clickedIndex : 0]);
+            }
+        }).catch(() => { /* keep current boost on error */ });
     };
 
 
@@ -987,13 +988,19 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <button
                                 onClick={() => {
+                                    // Restore full list and scroll position
+                                    if (savedBoostList.current.length > 0) {
+                                        setBoosts(savedBoostList.current);
+                                        savedBoostList.current = [];
+                                    }
                                     setSelectedBoost(null);
-                                    // Restore scroll position after render
-                                    requestAnimationFrame(() => {
-                                        if (scrollContainerRef.current) {
-                                            scrollContainerRef.current.scrollTop = savedScrollTop.current;
-                                        }
-                                    });
+                                    setTimeout(() => {
+                                        requestAnimationFrame(() => {
+                                            if (scrollContainerRef.current) {
+                                                scrollContainerRef.current.scrollTop = savedScrollTop.current;
+                                            }
+                                        });
+                                    }, 50);
                                 }}
                                 className="p-1.5 hover:bg-[var(--hover-bg)] rounded-full transition-colors text-[var(--text-secondary)] cursor-pointer"
                             >
