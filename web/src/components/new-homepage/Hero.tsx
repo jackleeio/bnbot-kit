@@ -161,11 +161,11 @@ const Hero: React.FC = () => {
         <p className={`mb-6 text-[10px] font-medium uppercase tracking-[2.5px] md:text-base transition-all duration-300 ${
           mascotHover ? 'text-teal-400 animate-[shake_0.4s_ease-in-out_3]' : 'text-coral-500'
         }`}>
-          {mascotHover ? 'LFG! LFG!' : tNew('tagline')}
+          {mascotHover ? 'LFG! LFG!' : 'YOUR AI GROWTH AGENT FOR X.'}
         </p>
 
         <p className="mt-4 max-w-[600px] text-center text-sm leading-relaxed text-space-muted md:text-[17px]">
-          Your AI agent for personal branding. From trend discovery to viral content, all on autopilot.
+          Spot trends. Create content. Grow your audience.
         </p>
 
         <a
