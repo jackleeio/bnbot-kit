@@ -8,8 +8,22 @@ import { useHomeTranslations } from '@/context/locale-context';
 // 0 = "Brand & Bot" → 1 = "Boost & Bot" → 2 = "Boost N Bot" → 3 = "BNBot" → loop
 type Phase = 0 | 1 | 2 | 3;
 
+const ROTATING_LINES = [
+  'Supercharge Your X with BNBot AI',
+  'Earn your first $100,000 on X',
+  'Get your first 5M Impressions on X',
+];
+
 const Hero: React.FC = () => {
   const { t: tNew } = useHomeTranslations('home.newHome.hero');
+  const [lineIndex, setLineIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLineIndex((prev) => (prev + 1) % ROTATING_LINES.length);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, []);
   const [phase, setPhase] = useState<Phase>(0);
 
   useEffect(() => {
@@ -164,9 +178,16 @@ const Hero: React.FC = () => {
           {mascotHover ? 'LFG! LFG!' : 'YOUR AI GROWTH AGENT FOR X.'}
         </p>
 
-        <p className="mt-4 max-w-[600px] text-center text-sm leading-relaxed text-space-muted md:text-[17px]">
-          Spot trends. Create content. Grow your audience.
-        </p>
+        <div className="mt-4 h-8 max-w-[600px] overflow-hidden text-center text-sm md:text-[17px]">
+          <div
+            className="transition-transform duration-500 ease-in-out"
+            style={{ transform: `translateY(-${lineIndex * 2}rem)` }}
+          >
+            {ROTATING_LINES.map((line, i) => (
+              <p key={i} className="h-8 leading-8 text-space-muted">{line}</p>
+            ))}
+          </div>
+        </div>
 
         <a
           href="#quickstart"
