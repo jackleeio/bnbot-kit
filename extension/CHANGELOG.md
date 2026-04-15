@@ -3,6 +3,21 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.7.5] - 2026-04-15
+
+### Removed
+- **cookies 权限**: 移除未使用的 `cookies` permission，扩展从未调用 `chrome.cookies` API
+
+## [0.7.4] - 2026-04-14
+
+### Fixed
+- **Scraper 抗扩展冲突**: 修复其他扩展（new-tab-override、会话管理类等）劫持 bnbot 新建 tab 导致 scraper 报 `Cannot access a chrome-extension:// URL of different extension` 的问题
+  - `getTab` 改用 `chrome.windows.create({ type: 'popup', state: 'minimized' })` 开最小化 popup 窗口，绕过 `chrome.tabs.onCreated` 这条易被劫持的路径
+  - `waitForLoad` 升级为轮询目标 hostname，不再只等 `status === 'complete'`，防止停在别的扩展页上就返回
+  - 若 popup 被劫持到 `chrome-extension://` 页面，自动关窗重试一次；两次均失败抛出明确提示，指引用户检查冲突扩展
+  - `executeInPage` 在 attach debugger 前预检 tab URL，发现 `chrome-extension://` / `chrome://` / `devtools://` 直接报可读错误
+  - 新增 `chrome.windows.onRemoved` 监听，清理用户手动关闭 scraper 窗口后 pool 里的死条目
+
 ## [0.7.1] - 2026-04-01
 
 ### Added

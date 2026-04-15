@@ -5,78 +5,164 @@
  * This only requires the "debugger" permission + "<all_urls>" host_permissions,
  * avoiding the need for "scripting" permission with many host_permissions entries.
  *
- * Uses a session-based tab pool: tabs are reused across commands and auto-closed
- * after an idle timeout (similar to opencli's automation window approach).
+ * Session-based pool: each target host gets a dedicated minimized popup window
+ * (chrome.windows.create with type: 'popup'), reused across commands and auto-closed
+ * after an idle timeout. We use a popup window instead of chrome.tabs.create to
+ * bypass new-tab-override / tab-hijacking extensions that hook chrome.tabs.onCreated.
  */
 
 // ─── Tab pool with idle cleanup ────────────────────────────────────
 
-const IDLE_TIMEOUT = 5000; // 5s idle → close tab
-const tabPool = new Map<string, { tabId: number; timer: ReturnType<typeof setTimeout> }>();
+const IDLE_TIMEOUT = 5000; // 5s idle → close window
+interface PoolEntry {
+  tabId: number;
+  windowId: number;
+  timer: ReturnType<typeof setTimeout> | null;
+  userOwned?: boolean; // if true, don't close on idle (it's the user's own tab)
+}
+const tabPool = new Map<string, PoolEntry>();
 
-// Track which tabs have the debugger attached
-const attachedTabs = new Set<number>();
+// Track which tabs have the debugger attached (maps tabId -> the CDP targetId we attached to).
+// We attach by targetId, not tabId, because chrome.debugger.attach({tabId}) rejects
+// the whole tab if ANY frame/target belongs to another extension (e.g. password managers,
+// Grammarly, Honey injecting chrome-extension:// iframes into arbitrary sites).
+const attachedTabs = new Map<number, string>();
 
-/** Get or create a tab for a given domain, reusing existing ones. */
+/** Open a fresh scraper window for the given URL.
+ *  Uses type: 'normal' (not 'popup') because chrome.debugger.attach refuses to attach
+ *  to extension-owned popup windows (error: "Cannot access a chrome-extension:// URL
+ *  of different extension" — misleading, actually about the popup's owner extension).
+ *  A minimized normal window is treated as a regular user tab by the debugger API.
+ */
+async function openScraperWindow(url: string): Promise<{ tabId: number; windowId: number }> {
+  const win = await chrome.windows.create({
+    url,
+    type: 'normal',
+    state: 'minimized',
+    focused: false,
+  });
+  const tabId = win.tabs?.[0]?.id;
+  const windowId = win.id;
+  if (tabId == null || windowId == null) {
+    throw new Error('Failed to create scraper window');
+  }
+  return { tabId, windowId };
+}
+
+/** Read the current hostname of a tab, or empty string on failure. */
+async function getTabHost(tabId: number): Promise<string> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return new URL(tab.url || '').hostname;
+  } catch {
+    return '';
+  }
+}
+
+/** Get or create a minimized popup window for a given domain, reusing existing ones. */
 export async function getTab(url: string): Promise<number> {
-  const domain = new URL(url).hostname;
-  const existing = tabPool.get(domain);
+  const expectedHost = new URL(url).hostname;
+  const existing = tabPool.get(expectedHost);
 
   if (existing) {
     // Pause idle timer while scraper is working
-    clearTimeout(existing.timer);
-    existing.timer = null as any;
+    if (existing.timer) clearTimeout(existing.timer);
+    existing.timer = null;
     try {
       const tab = await chrome.tabs.get(existing.tabId);
-      if (tab.url && new URL(tab.url).hostname === domain) return existing.tabId;
-      await chrome.tabs.update(existing.tabId, { url });
-      await waitForLoad(existing.tabId);
-      return existing.tabId;
+      const curHost = (() => { try { return new URL(tab.url || '').hostname; } catch { return ''; } })();
+      if (curHost === expectedHost && tab.url?.startsWith('https://')) {
+        return existing.tabId;
+      }
+      // URL drifted (tab hijacked or closed) — discard and rebuild from scratch
+      console.warn(`[Scraper] Pool entry for ${expectedHost} drifted to ${tab.url || 'unknown'}, rebuilding`);
+      await closePooledWindow(existing);
     } catch {
-      tabPool.delete(domain);
+      // Tab is gone
     }
+    tabPool.delete(expectedHost);
   }
 
-  // Create new tab — no idle timer yet (starts after scraper completes)
-  const tab = await chrome.tabs.create({ url, active: false });
-  await waitForLoad(tab.id!);
-  tabPool.set(domain, { tabId: tab.id!, timer: null as any });
-  return tab.id!;
+  // Always create a fresh dedicated scraper window. We intentionally do NOT reuse
+  // user-owned tabs because they may carry stale chrome-extension:// iframes from
+  // other extensions (password managers, translators, etc.) that cause
+  // chrome.debugger.attach to refuse with "Cannot access a chrome-extension:// URL
+  // of different extension" — a minimized popup loaded fresh by us is clean.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const entry = await openScraperWindow(url);
+    await waitForLoad(entry.tabId, expectedHost);
+    const finalHost = await getTabHost(entry.tabId);
+    if (finalHost === expectedHost) {
+      tabPool.set(expectedHost, { ...entry, timer: null });
+      return entry.tabId;
+    }
+    // Hijacked — close and retry (or fail on second attempt)
+    const finalTab = await chrome.tabs.get(entry.tabId).catch(() => null);
+    console.warn(`[Scraper] Window for ${expectedHost} ended up on ${finalTab?.url || 'unknown'} (attempt ${attempt + 1}/2)`);
+    await chrome.windows.remove(entry.windowId).catch(() => {});
+    if (attempt === 1) {
+      throw new Error(
+        `Failed to open ${expectedHost} — another extension appears to be hijacking new windows ` +
+        `(got: ${finalTab?.url || 'unknown'}). Check chrome://extensions for new-tab-override or ` +
+        `session-manager extensions.`
+      );
+    }
+  }
+  throw new Error(`Failed to open ${expectedHost}`); // unreachable
 }
 
-/** Start idle countdown on all tabs that don't have one running. */
+/** Start idle countdown on all windows that don't have one running. */
 export function startAllIdleTimers(): void {
   for (const [domain, entry] of tabPool.entries()) {
     if (!entry.timer) {
-      entry.timer = setTimeout(() => closePooledTab(domain), IDLE_TIMEOUT);
+      entry.timer = setTimeout(() => closePooledDomain(domain), IDLE_TIMEOUT);
     }
   }
 }
 
-function closePooledTab(domain: string) {
+async function closePooledWindow(entry: PoolEntry): Promise<void> {
+  if (entry.timer) clearTimeout(entry.timer);
+  const targetId = attachedTabs.get(entry.tabId);
+  if (targetId) {
+    chrome.debugger.detach({ targetId }).catch(() => {});
+    attachedTabs.delete(entry.tabId);
+  }
+  // Never close a user-owned tab — just detach the debugger
+  if (!entry.userOwned) {
+    await chrome.windows.remove(entry.windowId).catch(() => {});
+  }
+}
+
+function closePooledDomain(domain: string) {
   const entry = tabPool.get(domain);
   if (!entry) return;
   tabPool.delete(domain);
-  // Detach debugger before closing tab
-  if (attachedTabs.has(entry.tabId)) {
-    chrome.debugger.detach({ tabId: entry.tabId }).catch(() => {});
-    attachedTabs.delete(entry.tabId);
-  }
-  chrome.tabs.remove(entry.tabId).catch(() => {});
-  console.log(`[Scraper] Tab closed: ${domain}`);
+  closePooledWindow(entry).catch(() => {});
+  console.log(`[Scraper] Window closed: ${domain}`);
 }
 
 
-export async function waitForLoad(tabId: number): Promise<void> {
-  await new Promise<void>((resolve) => {
-    const listener = (id: number, info: chrome.tabs.TabChangeInfo) => {
-      if (id === tabId && info.status === 'complete') {
-        chrome.tabs.onUpdated.removeListener(listener);
-        resolve();
+/** Wait until the tab is fully loaded AND on the expected host (if provided). */
+export async function waitForLoad(tabId: number, expectedHost?: string, maxMs = 15000): Promise<void> {
+  const start = Date.now();
+  return new Promise<void>((resolve) => {
+    const check = async () => {
+      try {
+        const tab = await chrome.tabs.get(tabId);
+        if (tab.status === 'complete') {
+          if (!expectedHost) return resolve();
+          let host = '';
+          try { host = new URL(tab.url || '').hostname; } catch {}
+          if (host === expectedHost) return resolve();
+        }
+      } catch {
+        // Tab was closed externally
+        return resolve();
       }
+      if (Date.now() - start >= maxMs) return resolve();
+      setTimeout(check, 300);
     };
-    chrome.tabs.onUpdated.addListener(listener);
-    setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); resolve(); }, 15000);
+    check();
   });
 }
 
@@ -84,7 +170,7 @@ export async function waitForLoad(tabId: number): Promise<void> {
 chrome.tabs.onRemoved.addListener((tabId) => {
   for (const [domain, entry] of tabPool.entries()) {
     if (entry.tabId === tabId) {
-      clearTimeout(entry.timer);
+      if (entry.timer) clearTimeout(entry.timer);
       tabPool.delete(domain);
     }
   }
@@ -92,10 +178,29 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   attachedTabs.delete(tabId);
 });
 
+// Clean up if the whole scraper window is closed externally
+chrome.windows.onRemoved.addListener((windowId) => {
+  for (const [domain, entry] of tabPool.entries()) {
+    if (entry.windowId === windowId) {
+      if (entry.timer) clearTimeout(entry.timer);
+      if (attachedTabs.has(entry.tabId)) attachedTabs.delete(entry.tabId);
+      tabPool.delete(domain);
+    }
+  }
+});
+
 // Also clean up if debugger is detached externally (e.g. user closes DevTools)
 chrome.debugger.onDetach.addListener((source) => {
   if (source.tabId != null) {
     attachedTabs.delete(source.tabId);
+  } else if (source.targetId != null) {
+    // Detached by targetId — find and remove the matching entry
+    for (const [tabId, targetId] of attachedTabs.entries()) {
+      if (targetId === source.targetId) {
+        attachedTabs.delete(tabId);
+        break;
+      }
+    }
   }
 });
 
@@ -125,18 +230,64 @@ export async function executeInPage<T = any>(
   func: (...args: any[]) => T,
   args: any[] = [],
 ): Promise<T> {
-  // Attach debugger if not already attached
-  if (!attachedTabs.has(tabId)) {
+  // Preflight: refuse to attach to a tab that drifted to an extension/chrome page.
+  // chrome.debugger.attach rejects chrome-extension:// URLs from other extensions
+  // with "Cannot access a chrome-extension:// URL of different extension".
+  let preAttachUrl = '';
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    preAttachUrl = tab.url || '';
+    console.log(`[Scraper] executeInPage: tab ${tabId} url=${preAttachUrl} status=${tab.status}`);
+    if (preAttachUrl.startsWith('chrome-extension://') || preAttachUrl.startsWith('chrome://') || preAttachUrl.startsWith('devtools://')) {
+      throw new Error(
+        `Scraper tab drifted to ${preAttachUrl} — another extension is likely hijacking new windows. ` +
+        `Check chrome://extensions for new-tab-override or session-manager extensions.`
+      );
+    }
+  } catch (e: any) {
+    if (e.message?.includes('drifted to') || e.message?.includes('hijacking')) throw e;
+    throw new Error(`Scraper tab ${tabId} not accessible: ${e.message || 'unknown error'}`);
+  }
+
+  // Resolve to the CDP page target for this tab. We use {targetId} instead of {tabId}
+  // because chrome.debugger.attach({tabId}) fails if ANY frame in the tab belongs to
+  // another extension. {targetId} attaches only to the main page target.
+  let targetId = attachedTabs.get(tabId);
+  if (!targetId) {
+    const allTargets = await chrome.debugger.getTargets();
+    const tabTargets = allTargets.filter((t: any) => t.tabId === tabId);
+    console.log(`[Scraper] tab ${tabId} ALL targets for this tab:`,
+      JSON.stringify(tabTargets.map((t: any) => ({ type: t.type, url: t.url, id: t.id, attached: t.attached })), null, 2));
+    // Also dump all page-type targets globally to see what Chrome sees
+    const allPageTargets = allTargets.filter((t: any) => t.type === 'page');
+    console.log(`[Scraper] ALL page targets globally:`,
+      allPageTargets.map((t: any) => `tabId=${t.tabId} url=${(t.url || '').slice(0, 80)}`));
+
+    const pageTarget = tabTargets.find((t: any) => t.type === 'page');
+    if (!pageTarget) {
+      throw new Error(
+        `No page target found for tab ${tabId} (url=${preAttachUrl}). ` +
+        `Found targets: [${tabTargets.map((t: any) => t.type).join(', ') || 'none'}]`
+      );
+    }
+    targetId = pageTarget.id;
+    const targetUrl = (pageTarget as any).url || 'unknown';
+    console.log(`[Scraper] attaching to targetId=${targetId} url=${targetUrl}`);
+
     try {
-      await chrome.debugger.attach({ tabId }, '1.3');
-      attachedTabs.add(tabId);
+      await chrome.debugger.attach({ targetId }, '1.3');
+      attachedTabs.set(tabId, targetId);
     } catch (e: any) {
-      // Already attached (e.g. by DevTools or previous call that raced)
       if (e.message?.includes('Another debugger is already attached') ||
           e.message?.includes('already attached')) {
-        attachedTabs.add(tabId);
+        attachedTabs.set(tabId, targetId);
       } else {
-        throw e;
+        let postUrl = 'unknown';
+        try { postUrl = (await chrome.tabs.get(tabId)).url || 'unknown'; } catch {}
+        throw new Error(
+          `chrome.debugger.attach({targetId}) failed for tab ${tabId}: ${e.message}. ` +
+          `tabUrl=${postUrl}, targetUrl=${targetUrl}, targetId=${targetId}`
+        );
       }
     }
   }
@@ -146,7 +297,7 @@ export async function executeInPage<T = any>(
   const expression = `(${func.toString()})(${argsJson})`;
 
   const result = await chrome.debugger.sendCommand(
-    { tabId },
+    { targetId },
     'Runtime.evaluate',
     {
       expression,
