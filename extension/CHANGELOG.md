@@ -3,20 +3,20 @@
 All notable changes to BNBOT will be documented in this file.
 
 
-## [0.7.5] - 2026-04-15
-
-### Removed
-- **cookies 权限**: 移除未使用的 `cookies` permission，扩展从未调用 `chrome.cookies` API
-
-## [0.7.4] - 2026-04-14
+## [0.7.5] - 2026-04-18
 
 ### Fixed
-- **Scraper 抗扩展冲突**: 修复其他扩展（new-tab-override、会话管理类等）劫持 bnbot 新建 tab 导致 scraper 报 `Cannot access a chrome-extension:// URL of different extension` 的问题
-  - `getTab` 改用 `chrome.windows.create({ type: 'popup', state: 'minimized' })` 开最小化 popup 窗口，绕过 `chrome.tabs.onCreated` 这条易被劫持的路径
-  - `waitForLoad` 升级为轮询目标 hostname，不再只等 `status === 'complete'`，防止停在别的扩展页上就返回
-  - 若 popup 被劫持到 `chrome-extension://` 页面，自动关窗重试一次；两次均失败抛出明确提示，指引用户检查冲突扩展
-  - `executeInPage` 在 attach debugger 前预检 tab URL，发现 `chrome-extension://` / `chrome://` / `devtools://` 直接报可读错误
+- **Scraper 抗扩展冲突**: 重构 scraper 窗口创建和 debugger attach 逻辑，大幅减少与其他扩展的冲突
+  - `getTab` 改用 `chrome.windows.create({ focused: false })` 开独立窗口，绕过 `chrome.tabs.onCreated` 被其他扩展劫持的问题
+  - 不再使用 `state: 'minimized'`（Chrome 会节流最小化窗口，导致页面加载不完 → debugger attach 失败）；改为 `focused: false` 创建 + 加载完成后再 `chrome.windows.update({ state: 'minimized' })`
+  - `waitForLoad` 升级为轮询目标 hostname，不再只等 `status === 'complete'`
+  - `executeInPage` 使用 `{targetId}` 代替 `{tabId}` 进行 attach，减少跨 frame 的安全检查冲突
+  - 新增 `webNavigation` 权限用于冲突诊断：attach 失败时枚举所有 frame 识别注入 `chrome-extension://` iframe 的扩展
   - 新增 `chrome.windows.onRemoved` 监听，清理用户手动关闭 scraper 窗口后 pool 里的死条目
+  - 已知不兼容扩展：Relingo (`dpphkcfmnbkdpmgneljgdhfnccnhmfig`) — 需禁用或限制站点权限
+
+### Removed
+- **cookies 权限**: 移除未使用的 `cookies` permission
 
 ## [0.7.1] - 2026-04-01
 

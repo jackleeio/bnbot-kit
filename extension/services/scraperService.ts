@@ -29,16 +29,18 @@ const tabPool = new Map<string, PoolEntry>();
 const attachedTabs = new Map<number, string>();
 
 /** Open a fresh scraper window for the given URL.
- *  Uses type: 'normal' (not 'popup') because chrome.debugger.attach refuses to attach
- *  to extension-owned popup windows (error: "Cannot access a chrome-extension:// URL
- *  of different extension" — misleading, actually about the popup's owner extension).
- *  A minimized normal window is treated as a regular user tab by the debugger API.
+ *  Uses offscreen positioning instead of state:'minimized' because Chrome aggressively
+ *  throttles minimized windows — TikTok and other heavy-JS pages may never reach
+ *  status:'complete', causing debugger.attach to fail on a half-loaded page.
+ *  An offscreen window avoids throttling while staying invisible to the user.
  */
 async function openScraperWindow(url: string): Promise<{ tabId: number; windowId: number }> {
+  // Create unfocused (NOT minimized) so Chrome doesn't throttle the page load.
+  // Minimized tabs get aggressively throttled — heavy pages like TikTok may never
+  // reach status:'complete', causing debugger.attach to fail on a half-loaded page.
   const win = await chrome.windows.create({
     url,
     type: 'normal',
-    state: 'minimized',
     focused: false,
   });
   const tabId = win.tabs?.[0]?.id;
@@ -93,6 +95,8 @@ export async function getTab(url: string): Promise<number> {
     await waitForLoad(entry.tabId, expectedHost);
     const finalHost = await getTabHost(entry.tabId);
     if (finalHost === expectedHost) {
+      // Minimize the window now that page is loaded — keeps it out of the user's way
+      chrome.windows.update(entry.windowId, { state: 'minimized' }).catch(() => {});
       tabPool.set(expectedHost, { ...entry, timer: null });
       return entry.tabId;
     }
@@ -237,7 +241,6 @@ export async function executeInPage<T = any>(
   try {
     const tab = await chrome.tabs.get(tabId);
     preAttachUrl = tab.url || '';
-    console.log(`[Scraper] executeInPage: tab ${tabId} url=${preAttachUrl} status=${tab.status}`);
     if (preAttachUrl.startsWith('chrome-extension://') || preAttachUrl.startsWith('chrome://') || preAttachUrl.startsWith('devtools://')) {
       throw new Error(
         `Scraper tab drifted to ${preAttachUrl} — another extension is likely hijacking new windows. ` +
@@ -256,13 +259,6 @@ export async function executeInPage<T = any>(
   if (!targetId) {
     const allTargets = await chrome.debugger.getTargets();
     const tabTargets = allTargets.filter((t: any) => t.tabId === tabId);
-    console.log(`[Scraper] tab ${tabId} ALL targets for this tab:`,
-      JSON.stringify(tabTargets.map((t: any) => ({ type: t.type, url: t.url, id: t.id, attached: t.attached })), null, 2));
-    // Also dump all page-type targets globally to see what Chrome sees
-    const allPageTargets = allTargets.filter((t: any) => t.type === 'page');
-    console.log(`[Scraper] ALL page targets globally:`,
-      allPageTargets.map((t: any) => `tabId=${t.tabId} url=${(t.url || '').slice(0, 80)}`));
-
     const pageTarget = tabTargets.find((t: any) => t.type === 'page');
     if (!pageTarget) {
       throw new Error(
@@ -271,8 +267,6 @@ export async function executeInPage<T = any>(
       );
     }
     targetId = pageTarget.id;
-    const targetUrl = (pageTarget as any).url || 'unknown';
-    console.log(`[Scraper] attaching to targetId=${targetId} url=${targetUrl}`);
 
     try {
       await chrome.debugger.attach({ targetId }, '1.3');
@@ -282,11 +276,35 @@ export async function executeInPage<T = any>(
           e.message?.includes('already attached')) {
         attachedTabs.set(tabId, targetId);
       } else {
+        // On the "different extension" error, enumerate ALL frames in the tab to
+        // expose which chrome-extension:// URLs are injected. This is the only
+        // way to identify the offending extension since getTargets() hides subframes.
+        let frameReport = '';
+        if (e.message?.includes('chrome-extension') || e.message?.includes('different extension')) {
+          try {
+            const frames = await chrome.webNavigation.getAllFrames({ tabId });
+            const extFrames = (frames || []).filter(f => f.url?.startsWith('chrome-extension://'));
+            if (extFrames.length > 0) {
+              const ids = extFrames.map(f => {
+                const match = f.url.match(/chrome-extension:\/\/([a-z]+)/);
+                return match ? match[1] : 'unknown';
+              });
+              const unique = [...new Set(ids)];
+              frameReport = ` | Injecting extension IDs: ${unique.join(', ')} (${extFrames.length} frames). Visit chrome://extensions (enable Developer mode) and match IDs to find the culprit.`;
+              console.warn('[Scraper] Conflicting chrome-extension:// frames detected:', extFrames);
+            } else {
+              frameReport = ` | No chrome-extension:// frames found via webNavigation — conflict may be from a worker or a different Chrome state.`;
+            }
+          } catch (navErr: any) {
+            frameReport = ` | webNavigation.getAllFrames failed: ${navErr?.message || navErr}`;
+          }
+        }
+
         let postUrl = 'unknown';
         try { postUrl = (await chrome.tabs.get(tabId)).url || 'unknown'; } catch {}
         throw new Error(
           `chrome.debugger.attach({targetId}) failed for tab ${tabId}: ${e.message}. ` +
-          `tabUrl=${postUrl}, targetUrl=${targetUrl}, targetId=${targetId}`
+          `tabUrl=${postUrl}, targetUrl=${targetUrl}, targetId=${targetId}${frameReport}`
         );
       }
     }

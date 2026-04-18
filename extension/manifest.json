@@ -14,7 +14,8 @@
     "offscreen",
     "tabs",
     "alarms",
-    "debugger"
+    "debugger",
+    "webNavigation"
   ],
   "host_permissions": [
     "*://api.bnbot.ai/*",
