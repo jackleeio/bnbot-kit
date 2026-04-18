@@ -11,7 +11,6 @@ All notable changes to BNBOT will be documented in this file.
   - 不再使用 `state: 'minimized'`（Chrome 会节流最小化窗口，导致页面加载不完 → debugger attach 失败）；改为 `focused: false` 创建 + 加载完成后再 `chrome.windows.update({ state: 'minimized' })`
   - `waitForLoad` 升级为轮询目标 hostname，不再只等 `status === 'complete'`
   - `executeInPage` 使用 `{targetId}` 代替 `{tabId}` 进行 attach，减少跨 frame 的安全检查冲突
-  - 新增 `webNavigation` 权限用于冲突诊断：attach 失败时枚举所有 frame 识别注入 `chrome-extension://` iframe 的扩展
   - 新增 `chrome.windows.onRemoved` 监听，清理用户手动关闭 scraper 窗口后 pool 里的死条目
   - 已知不兼容扩展：Relingo (`dpphkcfmnbkdpmgneljgdhfnccnhmfig`) — 需禁用或限制站点权限
 

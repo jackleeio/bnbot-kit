@@ -276,35 +276,10 @@ export async function executeInPage<T = any>(
           e.message?.includes('already attached')) {
         attachedTabs.set(tabId, targetId);
       } else {
-        // On the "different extension" error, enumerate ALL frames in the tab to
-        // expose which chrome-extension:// URLs are injected. This is the only
-        // way to identify the offending extension since getTargets() hides subframes.
-        let frameReport = '';
-        if (e.message?.includes('chrome-extension') || e.message?.includes('different extension')) {
-          try {
-            const frames = await chrome.webNavigation.getAllFrames({ tabId });
-            const extFrames = (frames || []).filter(f => f.url?.startsWith('chrome-extension://'));
-            if (extFrames.length > 0) {
-              const ids = extFrames.map(f => {
-                const match = f.url.match(/chrome-extension:\/\/([a-z]+)/);
-                return match ? match[1] : 'unknown';
-              });
-              const unique = [...new Set(ids)];
-              frameReport = ` | Injecting extension IDs: ${unique.join(', ')} (${extFrames.length} frames). Visit chrome://extensions (enable Developer mode) and match IDs to find the culprit.`;
-              console.warn('[Scraper] Conflicting chrome-extension:// frames detected:', extFrames);
-            } else {
-              frameReport = ` | No chrome-extension:// frames found via webNavigation — conflict may be from a worker or a different Chrome state.`;
-            }
-          } catch (navErr: any) {
-            frameReport = ` | webNavigation.getAllFrames failed: ${navErr?.message || navErr}`;
-          }
-        }
-
-        let postUrl = 'unknown';
-        try { postUrl = (await chrome.tabs.get(tabId)).url || 'unknown'; } catch {}
         throw new Error(
-          `chrome.debugger.attach({targetId}) failed for tab ${tabId}: ${e.message}. ` +
-          `tabUrl=${postUrl}, targetUrl=${targetUrl}, targetId=${targetId}${frameReport}`
+          `chrome.debugger.attach failed: ${e.message}. ` +
+          `Another extension may be injecting into this page — try disabling extensions like Relingo, ` +
+          `or restrict their site access at chrome://extensions.`
         );
       }
     }
