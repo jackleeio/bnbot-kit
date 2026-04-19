@@ -1170,6 +1170,13 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   TWITTER_BOOKMARKS: (m) => getTwitterBookmarks(m.limit),
   TWITTER_USER_TWEETS: (m) => getTwitterUserTweets(m.username, m.limit),
   TWITTER_THREAD: (m) => getTwitterThread(m.tweetId, m.limit),
+  // CLI compat aliases — old scrape_* actions now routed to background GraphQL scrapers
+  scrape_timeline: (m) => getTwitterTimeline(m.type || 'for-you', m.limit),
+  scrape_bookmarks: (m) => getTwitterBookmarks(m.limit),
+  scrape_search_results: (m) => searchTwitter(m.query, m.filter, m.limit),
+  scrape_user_tweets: (m) => getTwitterUserTweets(m.username, m.limit),
+  scrape_user_profile: (m) => getTwitterProfile(m.username),
+  scrape_thread: (m) => getTwitterThread(m.tweetUrl || m.tweetId, m.limit),
 };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
