@@ -16,8 +16,8 @@ const QID = {
   HomeLatestTimeline: 'BKB7oi212Fi7kQtCBGE4zA',
   SearchTimeline: 'MJpjKqXlT-Kf2m3AepDxMg',
   UserByScreenName: 'qRednkZG-rn1P6b48NINmQ',
-  UserTweets: 'V7H0Ap3_Hh2FyS75OCDO3Q',
-  TweetDetail: 'nBS-WpgA6ZG0CyNHD517JQ',
+  UserTweets: 'q6xj5bs0hapm9309hexA_g',
+  TweetDetail: 'xd_EMdYvB9hfZsZ6Idri0w',
   Bookmarks: 'Fy0QMy4q_aZCpkO0PnyLYw',
 };
 
@@ -365,13 +365,34 @@ export async function getTwitterUserTweets(username: string, limit = 20): Promis
 
       const tweets: any[] = [];
       const seen = new Set<string>();
-      const instructions = tweetsD?.data?.user?.result?.timeline_v2?.timeline?.instructions || [];
+      const userResult = tweetsD?.data?.user?.result;
+      const timeline = userResult?.timeline_v2?.timeline || userResult?.timeline?.timeline;
+      if (!timeline) return { error: 'UserTweets: unexpected response structure for @' + screenName };
+      const instructions = timeline.instructions || [];
       for (const inst of instructions) {
-        for (const entry of inst.entries || []) {
-          const c = entry.content;
+        const entries = inst.entries || (inst.entry ? [inst.entry] : []);
+        for (const entry of entries) {
+          const c = entry?.content;
+          // single tweet entry
           const tr = c?.itemContent?.tweet_results?.result;
           if (tr) {
             const tw = tr.tweet || tr;
+            const l = tw?.legacy || {};
+            if (!tw?.rest_id || seen.has(tw.rest_id)) continue;
+            seen.add(tw.rest_id);
+            const noteText = tw.note_tweet?.note_tweet_results?.result?.text;
+            tweets.push({
+              id: tw.rest_id, author: screenName, text: noteText || l.full_text || '',
+              likes: l.favorite_count || 0, retweets: l.retweet_count || 0,
+              replies: l.reply_count || 0, views: tw.views?.count ? parseInt(tw.views.count) : 0,
+              created_at: l.created_at || '', url: `https://x.com/${screenName}/status/${tw.rest_id}`,
+            });
+          }
+          // conversation/module entries
+          for (const item of c?.items || []) {
+            const nr = item.item?.itemContent?.tweet_results?.result;
+            if (!nr) continue;
+            const tw = nr.tweet || nr;
             const l = tw?.legacy || {};
             if (!tw?.rest_id || seen.has(tw.rest_id)) continue;
             seen.add(tw.rest_id);
