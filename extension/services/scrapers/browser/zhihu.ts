@@ -149,3 +149,67 @@ export async function searchZhihu(query: string, limit = 10): Promise<ZhihuResul
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
+
+export async function likeZhihu(targetUrl: string): Promise<{ status: string; state: string }> {
+  const tabId = await getTab(targetUrl);
+  await new Promise(r => setTimeout(r, 3000));
+  await checkLoginRedirect(tabId, 'Zhihu');
+  const data = await executeInPage(tabId, async (url: string) => {
+    try {
+      const isAnswer = url.includes('/answer/');
+      let btn: Element | null = null;
+      if (isAnswer) {
+        const answerId = url.match(/\/answer\/(\d+)/)?.[1];
+        const block = Array.from(document.querySelectorAll('article, .AnswerItem, [data-zop-question-answer]')).find(node => {
+          const dataId = node.getAttribute('data-answerid') || node.getAttribute('data-zop-question-answer') || '';
+          return dataId && dataId.includes(answerId || '');
+        });
+        const candidates = Array.from((block || document).querySelectorAll('button')).filter(node => {
+          const text = (node.textContent || '').trim();
+          return /赞同|赞/.test(text) && node.hasAttribute('aria-pressed') && !node.closest('[data-comment-id]');
+        });
+        btn = candidates.length === 1 ? candidates[0] : null;
+      } else {
+        const articleRoot = document.querySelector('article') || document.querySelector('.Post-Main') || document;
+        const candidates = Array.from((articleRoot as Element).querySelectorAll('button')).filter(node => {
+          const text = (node.textContent || '').trim();
+          return /赞同|赞/.test(text) && node.hasAttribute('aria-pressed');
+        });
+        btn = candidates.length === 1 ? candidates[0] : null;
+      }
+      if (!btn) return { status: 'error', state: 'like_button_not_found' };
+      if (btn.getAttribute('aria-pressed') === 'true') return { status: 'success', state: 'already_liked' };
+      (btn as HTMLElement).click();
+      await new Promise(r => setTimeout(r, 1200));
+      return btn.getAttribute('aria-pressed') === 'true'
+        ? { status: 'success', state: 'liked' }
+        : { status: 'unknown', state: 'click_dispatched' };
+    } catch (e: any) { return { error: e.message || 'Zhihu like failed' }; }
+  }, [targetUrl]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return data as any;
+}
+
+export async function getZhihuQuestion(questionId: string, limit = 5): Promise<any[]> {
+  const tabId = await getTab('https://www.zhihu.com/question/' + questionId);
+  await new Promise(r => setTimeout(r, 2000));
+  await checkLoginRedirect(tabId, 'Zhihu');
+  const data = await executeInPage(tabId, async (qid: string, lim: number) => {
+    try {
+      const url = 'https://www.zhihu.com/api/v4/questions/' + qid + '/answers?limit=' + lim + '&offset=0&sort_by=default&include=data[*].content,voteup_count,comment_count,author';
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) return { error: 'Zhihu question failed: HTTP ' + res.status };
+      const d = await res.json();
+      function stripHtml(html: string) {
+        return (html || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
+      }
+      return (d.data || []).map((item: any, i: number) => ({
+        rank: i + 1, author: item.author?.name || 'anonymous',
+        votes: item.voteup_count || 0, comments: item.comment_count || 0,
+        content: stripHtml(item.content || '').substring(0, 300),
+      }));
+    } catch (e: any) { return { error: e.message || 'Zhihu question scraper failed' }; }
+  }, [questionId, limit]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return data || [];
+}

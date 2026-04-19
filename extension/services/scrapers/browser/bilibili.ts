@@ -245,3 +245,180 @@ export async function searchBilibili(
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
+
+// ─── Bilibili Extended Operations ───────────────────────────────────
+
+export async function getBilibiliDynamic(limit = 20): Promise<any[]> {
+  const tabId = await getTab('https://www.bilibili.com');
+  await checkLoginRedirect(tabId, 'Bilibili');
+  const data = await executeInPage(tabId, async (lim: number) => {
+    try {
+      const res = await fetch('https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/all', { credentials: 'include' });
+      if (!res.ok) return { error: 'Bilibili dynamic failed: HTTP ' + res.status };
+      const payload = await res.json();
+      const items: any[] = payload?.data?.items ?? [];
+      return items.slice(0, lim).map((item: any, i: number) => {
+        const modules = item.modules ?? {};
+        const author = modules.module_author ?? {};
+        const desc = modules.module_dynamic?.desc?.text ?? '';
+        const archive = modules.module_dynamic?.major?.archive ?? {};
+        const stat = modules.module_stat ?? {};
+        return {
+          rank: i + 1, type: item.type ?? '',
+          title: archive.title || desc.slice(0, 80),
+          author: author.name ?? '', mid: author.mid ?? '',
+          likes: stat.like?.count ?? 0, comments: stat.comment?.count ?? 0,
+          url: archive.jump_url ? ('https:' + archive.jump_url) : ('https://t.bilibili.com/' + (item.id_str ?? '')),
+        };
+      });
+    } catch (e: any) { return { error: e.message || 'Bilibili dynamic scraper failed' }; }
+  }, [limit]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return (data as any[]) || [];
+}
+
+export async function getBilibiliHistory(limit = 30): Promise<any[]> {
+  const tabId = await getTab('https://www.bilibili.com');
+  await checkLoginRedirect(tabId, 'Bilibili');
+  const data = await executeInPage(tabId, async (lim: number) => {
+    try {
+      const res = await fetch('https://api.bilibili.com/x/web-interface/history/cursor?ps=' + lim + '&type=archive', { credentials: 'include' });
+      if (!res.ok) return { error: 'Bilibili history failed: HTTP ' + res.status };
+      const payload = await res.json();
+      const list: any[] = payload?.data?.list ?? [];
+      return list.slice(0, lim).map((item: any, i: number) => ({
+        rank: i + 1, title: item.title ?? '', author: item.author_name ?? '',
+        progress: item.progress ?? 0, duration: item.duration ?? 0,
+        url: item.history?.bvid ? 'https://www.bilibili.com/video/' + item.history.bvid : '',
+      }));
+    } catch (e: any) { return { error: e.message || 'Bilibili history scraper failed' }; }
+  }, [limit]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return (data as any[]) || [];
+}
+
+export async function getBilibiliFollowing(limit = 50): Promise<any[]> {
+  const tabId = await getTab('https://www.bilibili.com');
+  await checkLoginRedirect(tabId, 'Bilibili');
+  const data = await executeInPage(tabId, async (lim: number) => {
+    try {
+      const navRes = await fetch('https://api.bilibili.com/x/web-interface/nav', { credentials: 'include' });
+      const navData = await navRes.json();
+      const uid = navData?.data?.mid;
+      if (!uid) return { error: 'Not logged in to Bilibili' };
+      const res = await fetch('https://api.bilibili.com/x/relation/followings?vmid=' + uid + '&pn=1&ps=' + lim + '&order=desc', { credentials: 'include' });
+      if (!res.ok) return { error: 'Bilibili following failed: HTTP ' + res.status };
+      const payload = await res.json();
+      const list: any[] = payload?.data?.list ?? [];
+      return list.slice(0, lim).map((item: any, i: number) => ({
+        rank: i + 1, name: item.uname ?? '', mid: item.mid ?? '',
+        sign: item.sign ?? '', mutual: item.attribute === 6,
+        url: 'https://space.bilibili.com/' + item.mid,
+      }));
+    } catch (e: any) { return { error: e.message || 'Bilibili following scraper failed' }; }
+  }, [limit]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return (data as any[]) || [];
+}
+
+export async function getBilibiliUserVideos(mid: string, limit = 30): Promise<any[]> {
+  const tabId = await getTab('https://www.bilibili.com');
+  await checkLoginRedirect(tabId, 'Bilibili');
+  const data = await executeInPage(tabId, async (vmid: string, lim: number) => {
+    try {
+      const MIXIN_KEY_ENC_TAB = [46,47,18,2,53,8,23,32,15,50,10,31,58,3,45,35,27,43,5,49,33,9,42,19,29,28,14,39,12,38,41,13,37,48,7,16,24,55,40,61,26,17,0,1,60,51,30,4,22,25,54,21,56,59,6,63,57,62,11,36,20,34,44,52];
+      function getMixinKey(imgKey: string, subKey: string) { const raw = imgKey + subKey; return MIXIN_KEY_ENC_TAB.map((i: number) => raw[i] || '').join('').slice(0, 32); }
+      function md5(str: string) {
+        function sa(x: number,y: number){const l=(x&0xffff)+(y&0xffff);return((x>>16)+(y>>16)+(l>>16))<<16|l&0xffff;}
+        function rl(n: number,c: number){return n<<c|n>>>32-c;}
+        function cm(q: number,a: number,b: number,x: number,s: number,t: number){return sa(rl(sa(sa(a,q),sa(x,t)),s),b);}
+        function ff(a: number,b: number,c: number,d: number,x: number,s: number,t: number){return cm(b&c|~b&d,a,b,x,s,t);}
+        function gg(a: number,b: number,c: number,d: number,x: number,s: number,t: number){return cm(b&d|c&~d,a,b,x,s,t);}
+        function hh(a: number,b: number,c: number,d: number,x: number,s: number,t: number){return cm(b^c^d,a,b,x,s,t);}
+        function ii(a: number,b: number,c: number,d: number,x: number,s: number,t: number){return cm(c^(b|~d),a,b,x,s,t);}
+        function wth(n: number[]){const h='0123456789abcdef';let o='';for(let i=0;i<n.length*32;i+=8)o+=h.charAt(n[i>>5]>>>(i%32)&0xf)+h.charAt(n[i>>5]>>>((i%32)+4)&0xf);return o;}
+        function btw(s: string){const o:number[]=[];for(let i=0;i<s.length*8;i+=8)o[i>>5]|=(s.charCodeAt(i/8)&0xff)<<i%32;return o;}
+        const x=btw(str),len=str.length*8;x[len>>5]|=0x80<<len%32;x[(len+64>>>9<<4)+14]=len;let a=1732584193,b=-271733879,c=-1732584194,d=271733878;
+        for(let i=0;i<x.length;i+=16){const oa=a,ob=b,oc=c,od=d;a=ff(a,b,c,d,x[i],7,-680876936);d=ff(d,a,b,c,x[i+1],12,-389564586);c=ff(c,d,a,b,x[i+2],17,606105819);b=ff(b,c,d,a,x[i+3],22,-1044525330);a=ff(a,b,c,d,x[i+4],7,-176418897);d=ff(d,a,b,c,x[i+5],12,1200080426);c=ff(c,d,a,b,x[i+6],17,-1473231341);b=ff(b,c,d,a,x[i+7],22,-45705983);a=ff(a,b,c,d,x[i+8],7,1770035416);d=ff(d,a,b,c,x[i+9],12,-1958414417);c=ff(c,d,a,b,x[i+10],17,-42063);b=ff(b,c,d,a,x[i+11],22,-1990404162);a=ff(a,b,c,d,x[i+12],7,1804603682);d=ff(d,a,b,c,x[i+13],12,-40341101);c=ff(c,d,a,b,x[i+14],17,-1502002290);b=ff(b,c,d,a,x[i+15],22,1236535329);a=gg(a,b,c,d,x[i+1],5,-165796510);d=gg(d,a,b,c,x[i+6],9,-1069501632);c=gg(c,d,a,b,x[i+11],14,643717713);b=gg(b,c,d,a,x[i],20,-373897302);a=gg(a,b,c,d,x[i+5],5,-701558691);d=gg(d,a,b,c,x[i+10],9,38016083);c=gg(c,d,a,b,x[i+15],14,-660478335);b=gg(b,c,d,a,x[i+4],20,-405537848);a=gg(a,b,c,d,x[i+9],5,568446438);d=gg(d,a,b,c,x[i+14],9,-1019803690);c=gg(c,d,a,b,x[i+3],14,-187363961);b=gg(b,c,d,a,x[i+8],20,1163531501);a=gg(a,b,c,d,x[i+13],5,-1444681467);d=gg(d,a,b,c,x[i+2],9,-51403784);c=gg(c,d,a,b,x[i+7],14,1735328473);b=gg(b,c,d,a,x[i+12],20,-1926607734);a=hh(a,b,c,d,x[i+5],4,-378558);d=hh(d,a,b,c,x[i+8],11,-2022574463);c=hh(c,d,a,b,x[i+11],16,1839030562);b=hh(b,c,d,a,x[i],23,-35309556);a=hh(a,b,c,d,x[i+3],4,-1530992060);d=hh(d,a,b,c,x[i+6],11,1272893353);c=hh(c,d,a,b,x[i+9],16,-155497632);b=hh(b,c,d,a,x[i+12],23,-1094730640);a=hh(a,b,c,d,x[i+15],4,681279174);d=hh(d,a,b,c,x[i+2],11,-358537222);c=hh(c,d,a,b,x[i+5],16,-722521979);b=hh(b,c,d,a,x[i+8],23,76029189);a=hh(a,b,c,d,x[i+11],4,-640364487);d=hh(d,a,b,c,x[i+14],11,-421815835);c=hh(c,d,a,b,x[i+1],16,530742520);b=hh(b,c,d,a,x[i+4],23,-995338651);a=ii(a,b,c,d,x[i],6,-198630844);d=ii(d,a,b,c,x[i+7],10,1126891415);c=ii(c,d,a,b,x[i+14],15,-1416354905);b=ii(b,c,d,a,x[i+5],21,-57434055);a=ii(a,b,c,d,x[i+12],6,1700485571);d=ii(d,a,b,c,x[i+3],10,-1894986606);c=ii(c,d,a,b,x[i+10],15,-1051523);b=ii(b,c,d,a,x[i+1],21,-2054922799);a=ii(a,b,c,d,x[i+8],6,1873313359);d=ii(d,a,b,c,x[i+15],10,-30611744);c=ii(c,d,a,b,x[i+6],15,-1560198380);b=ii(b,c,d,a,x[i+13],21,1309151649);a=ii(a,b,c,d,x[i+4],6,-145523070);d=ii(d,a,b,c,x[i+11],10,-1120210379);c=ii(c,d,a,b,x[i+2],15,718787259);b=ii(b,c,d,a,x[i+9],21,-343485551);a=sa(a,oa);b=sa(b,ob);c=sa(c,oc);d=sa(d,od);}
+        return wth([a,b,c,d]);
+      }
+      const navRes = await fetch('https://api.bilibili.com/x/web-interface/nav', { credentials: 'include' });
+      const navData = await navRes.json();
+      const wbiImg = navData?.data?.wbi_img ?? {};
+      const imgKey = (wbiImg.img_url ?? '').split('/').pop()?.split('.')[0] ?? '';
+      const subKey = (wbiImg.sub_url ?? '').split('/').pop()?.split('.')[0] ?? '';
+      const mixinKey = getMixinKey(imgKey, subKey);
+      const wts = Math.floor(Date.now() / 1000);
+      const rawParams: Record<string,any> = { mid: vmid, pn: 1, ps: lim, order: 'pubdate', wts: String(wts) };
+      const sorted: Record<string,string> = {};
+      for (const key of Object.keys(rawParams).sort()) sorted[key] = String(rawParams[key]).replace(/[!'()*]/g,'');
+      const qs0 = new URLSearchParams(sorted).toString().replace(/\+/g,'%20');
+      sorted.w_rid = md5(qs0 + mixinKey);
+      const qs = new URLSearchParams(sorted).toString().replace(/\+/g,'%20');
+      const res = await fetch('https://api.bilibili.com/x/space/wbi/arc/search?' + qs, { credentials: 'include' });
+      if (!res.ok) return { error: 'Bilibili user-videos failed: HTTP ' + res.status };
+      const payload = await res.json();
+      const vlist: any[] = payload?.data?.list?.vlist ?? [];
+      return vlist.slice(0, lim).map((v: any, i: number) => ({
+        rank: i + 1, title: v.title ?? '', author: v.author ?? '',
+        play: v.play ?? 0, like: v.like ?? 0,
+        url: v.bvid ? 'https://www.bilibili.com/video/' + v.bvid : '',
+      }));
+    } catch (e: any) { return { error: e.message || 'Bilibili user-videos scraper failed' }; }
+  }, [mid, limit]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return (data as any[]) || [];
+}
+
+export async function getBilibiliComments(bvid: string, limit = 20): Promise<any[]> {
+  const tabId = await getTab('https://www.bilibili.com');
+  await checkLoginRedirect(tabId, 'Bilibili');
+  const data = await executeInPage(tabId, async (bv: string, lim: number) => {
+    try {
+      const MIXIN_KEY_ENC_TAB = [46,47,18,2,53,8,23,32,15,50,10,31,58,3,45,35,27,43,5,49,33,9,42,19,29,28,14,39,12,38,41,13,37,48,7,16,24,55,40,61,26,17,0,1,60,51,30,4,22,25,54,21,56,59,6,63,57,62,11,36,20,34,44,52];
+      function getMixinKey(imgKey: string, subKey: string) { const raw = imgKey + subKey; return MIXIN_KEY_ENC_TAB.map((i: number) => raw[i] || '').join('').slice(0, 32); }
+      function md5(str: string) {
+        function sa(x: number,y: number){const l=(x&0xffff)+(y&0xffff);return((x>>16)+(y>>16)+(l>>16))<<16|l&0xffff;}
+        function rl(n: number,c: number){return n<<c|n>>>32-c;}
+        function cm(q: number,a: number,b: number,x: number,s: number,t: number){return sa(rl(sa(sa(a,q),sa(x,t)),s),b);}
+        function ff(a: number,b: number,c: number,d: number,x: number,s: number,t: number){return cm(b&c|~b&d,a,b,x,s,t);}
+        function gg(a: number,b: number,c: number,d: number,x: number,s: number,t: number){return cm(b&d|c&~d,a,b,x,s,t);}
+        function hh(a: number,b: number,c: number,d: number,x: number,s: number,t: number){return cm(b^c^d,a,b,x,s,t);}
+        function ii(a: number,b: number,c: number,d: number,x: number,s: number,t: number){return cm(c^(b|~d),a,b,x,s,t);}
+        function wth(n: number[]){const h='0123456789abcdef';let o='';for(let i=0;i<n.length*32;i+=8)o+=h.charAt(n[i>>5]>>>(i%32)&0xf)+h.charAt(n[i>>5]>>>((i%32)+4)&0xf);return o;}
+        function btw(s: string){const o:number[]=[];for(let i=0;i<s.length*8;i+=8)o[i>>5]|=(s.charCodeAt(i/8)&0xff)<<i%32;return o;}
+        const x=btw(str),len=str.length*8;x[len>>5]|=0x80<<len%32;x[(len+64>>>9<<4)+14]=len;let a=1732584193,b=-271733879,c=-1732584194,d=271733878;
+        for(let i=0;i<x.length;i+=16){const oa=a,ob=b,oc=c,od=d;a=ff(a,b,c,d,x[i],7,-680876936);d=ff(d,a,b,c,x[i+1],12,-389564586);c=ff(c,d,a,b,x[i+2],17,606105819);b=ff(b,c,d,a,x[i+3],22,-1044525330);a=ff(a,b,c,d,x[i+4],7,-176418897);d=ff(d,a,b,c,x[i+5],12,1200080426);c=ff(c,d,a,b,x[i+6],17,-1473231341);b=ff(b,c,d,a,x[i+7],22,-45705983);a=ff(a,b,c,d,x[i+8],7,1770035416);d=ff(d,a,b,c,x[i+9],12,-1958414417);c=ff(c,d,a,b,x[i+10],17,-42063);b=ff(b,c,d,a,x[i+11],22,-1990404162);a=ff(a,b,c,d,x[i+12],7,1804603682);d=ff(d,a,b,c,x[i+13],12,-40341101);c=ff(c,d,a,b,x[i+14],17,-1502002290);b=ff(b,c,d,a,x[i+15],22,1236535329);a=gg(a,b,c,d,x[i+1],5,-165796510);d=gg(d,a,b,c,x[i+6],9,-1069501632);c=gg(c,d,a,b,x[i+11],14,643717713);b=gg(b,c,d,a,x[i],20,-373897302);a=gg(a,b,c,d,x[i+5],5,-701558691);d=gg(d,a,b,c,x[i+10],9,38016083);c=gg(c,d,a,b,x[i+15],14,-660478335);b=gg(b,c,d,a,x[i+4],20,-405537848);a=gg(a,b,c,d,x[i+9],5,568446438);d=gg(d,a,b,c,x[i+14],9,-1019803690);c=gg(c,d,a,b,x[i+3],14,-187363961);b=gg(b,c,d,a,x[i+8],20,1163531501);a=gg(a,b,c,d,x[i+13],5,-1444681467);d=gg(d,a,b,c,x[i+2],9,-51403784);c=gg(c,d,a,b,x[i+7],14,1735328473);b=gg(b,c,d,a,x[i+12],20,-1926607734);a=hh(a,b,c,d,x[i+5],4,-378558);d=hh(d,a,b,c,x[i+8],11,-2022574463);c=hh(c,d,a,b,x[i+11],16,1839030562);b=hh(b,c,d,a,x[i],23,-35309556);a=hh(a,b,c,d,x[i+3],4,-1530992060);d=hh(d,a,b,c,x[i+6],11,1272893353);c=hh(c,d,a,b,x[i+9],16,-155497632);b=hh(b,c,d,a,x[i+12],23,-1094730640);a=hh(a,b,c,d,x[i+15],4,681279174);d=hh(d,a,b,c,x[i+2],11,-358537222);c=hh(c,d,a,b,x[i+5],16,-722521979);b=hh(b,c,d,a,x[i+8],23,76029189);a=hh(a,b,c,d,x[i+11],4,-640364487);d=hh(d,a,b,c,x[i+14],11,-421815835);c=hh(c,d,a,b,x[i+1],16,530742520);b=hh(b,c,d,a,x[i+4],23,-995338651);a=ii(a,b,c,d,x[i],6,-198630844);d=ii(d,a,b,c,x[i+7],10,1126891415);c=ii(c,d,a,b,x[i+14],15,-1416354905);b=ii(b,c,d,a,x[i+5],21,-57434055);a=ii(a,b,c,d,x[i+12],6,1700485571);d=ii(d,a,b,c,x[i+3],10,-1894986606);c=ii(c,d,a,b,x[i+10],15,-1051523);b=ii(b,c,d,a,x[i+1],21,-2054922799);a=ii(a,b,c,d,x[i+8],6,1873313359);d=ii(d,a,b,c,x[i+15],10,-30611744);c=ii(c,d,a,b,x[i+6],15,-1560198380);b=ii(b,c,d,a,x[i+13],21,1309151649);a=ii(a,b,c,d,x[i+4],6,-145523070);d=ii(d,a,b,c,x[i+11],10,-1120210379);c=ii(c,d,a,b,x[i+2],15,718787259);b=ii(b,c,d,a,x[i+9],21,-343485551);a=sa(a,oa);b=sa(b,ob);c=sa(c,oc);d=sa(d,od);}
+        return wth([a,b,c,d]);
+      }
+      const viewRes = await fetch('https://api.bilibili.com/x/web-interface/view?bvid=' + bv, { credentials: 'include' });
+      if (!viewRes.ok) return { error: 'Failed to get video info: HTTP ' + viewRes.status };
+      const viewData = await viewRes.json();
+      const aid = viewData?.data?.aid;
+      if (!aid) return { error: 'Could not get video AID from BVID: ' + bv };
+      const navRes = await fetch('https://api.bilibili.com/x/web-interface/nav', { credentials: 'include' });
+      const navData = await navRes.json();
+      const wbiImg = navData?.data?.wbi_img ?? {};
+      const imgKey = (wbiImg.img_url ?? '').split('/').pop()?.split('.')[0] ?? '';
+      const subKey = (wbiImg.sub_url ?? '').split('/').pop()?.split('.')[0] ?? '';
+      const mixinKey = getMixinKey(imgKey, subKey);
+      const wts = Math.floor(Date.now() / 1000);
+      const rawParams: Record<string,any> = { oid: aid, type: 1, mode: 3, ps: lim, wts: String(wts) };
+      const sorted: Record<string,string> = {};
+      for (const key of Object.keys(rawParams).sort()) sorted[key] = String(rawParams[key]).replace(/[!'()*]/g,'');
+      const qs0 = new URLSearchParams(sorted).toString().replace(/\+/g,'%20');
+      sorted.w_rid = md5(qs0 + mixinKey);
+      const qs = new URLSearchParams(sorted).toString().replace(/\+/g,'%20');
+      const res = await fetch('https://api.bilibili.com/x/v2/reply/main?' + qs, { credentials: 'include' });
+      if (!res.ok) return { error: 'Bilibili comments failed: HTTP ' + res.status };
+      const payload = await res.json();
+      const replies: any[] = payload?.data?.replies ?? [];
+      return replies.slice(0, lim).map((r: any, i: number) => ({
+        rank: i + 1, author: r.member?.uname ?? '',
+        content: r.content?.message ?? '', likes: r.like ?? 0, replies: r.rcount ?? 0,
+      }));
+    } catch (e: any) { return { error: e.message || 'Bilibili comments scraper failed' }; }
+  }, [bvid, limit]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return (data as any[]) || [];
+}

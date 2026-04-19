@@ -514,3 +514,413 @@ export async function searchYouTube(query: string, options: YouTubeSearchOptions
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }
+
+// ─── YouTube Write & Read Operations ───────────────────────────────
+
+export async function likeYoutubeVideo(videoId: string): Promise<{ success: boolean; message: string }> {
+  const tabId = await getTab('https://www.youtube.com');
+  await new Promise(r => setTimeout(r, 2000));
+  const result = await executeInPage(tabId, async (vid: string) => {
+    async function getSapisidHash(origin: string) {
+      const cookies = document.cookie.split('; ');
+      let sapisid = '';
+      for (const c of cookies) {
+        const eq = c.indexOf('=');
+        if (eq === -1) continue;
+        const name = c.slice(0, eq);
+        const val = c.slice(eq + 1);
+        if (name === '__Secure-3PAPISID' || name === 'SAPISID') {
+          sapisid = val;
+          if (name === '__Secure-3PAPISID') break;
+        }
+      }
+      if (!sapisid) return null;
+      const time = Math.floor(Date.now() / 1000);
+      const msgBuffer = new TextEncoder().encode(time + ' ' + sapisid + ' ' + origin);
+      const hashBuffer = await crypto.subtle.digest('SHA-1', msgBuffer);
+      const hashHex = Array.from(new Uint8Array(hashBuffer)).map((b: number) => b.toString(16).padStart(2, '0')).join('');
+      return 'SAPISIDHASH ' + time + '_' + hashHex;
+    }
+    const cfg = (window as any).ytcfg?.data_ || {};
+    const apiKey = cfg.INNERTUBE_API_KEY;
+    const context = cfg.INNERTUBE_CONTEXT;
+    if (!apiKey || !context) return { error: 'YouTube config not found — please visit youtube.com first' };
+    const authHash = await getSapisidHash('https://www.youtube.com');
+    if (!authHash) return { error: 'Not logged in to YouTube (SAPISID missing)' };
+    const resp = await fetch('/youtubei/v1/like/like?key=' + apiKey + '&prettyPrint=false', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'Authorization': authHash, 'X-Origin': 'https://www.youtube.com' },
+      body: JSON.stringify({ context, target: { videoId: vid } }),
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      const errStatus = (body as any)?.error?.status || '';
+      if (errStatus === 'UNAUTHENTICATED' || resp.status === 401 || resp.status === 403) return { error: 'Not logged in to YouTube' };
+      return { error: 'HTTP ' + resp.status + (errStatus ? ' ' + errStatus : '') };
+    }
+    return { ok: true };
+  }, [videoId]);
+  if ((result as any)?.error) throw new Error((result as any).error);
+  return { success: true, message: 'Liked: ' + videoId };
+}
+
+export async function unlikeYoutubeVideo(videoId: string): Promise<{ success: boolean; message: string }> {
+  const tabId = await getTab('https://www.youtube.com');
+  await new Promise(r => setTimeout(r, 2000));
+  const result = await executeInPage(tabId, async (vid: string) => {
+    async function getSapisidHash(origin: string) {
+      const cookies = document.cookie.split('; ');
+      let sapisid = '';
+      for (const c of cookies) {
+        const eq = c.indexOf('=');
+        if (eq === -1) continue;
+        const name = c.slice(0, eq);
+        const val = c.slice(eq + 1);
+        if (name === '__Secure-3PAPISID' || name === 'SAPISID') {
+          sapisid = val;
+          if (name === '__Secure-3PAPISID') break;
+        }
+      }
+      if (!sapisid) return null;
+      const time = Math.floor(Date.now() / 1000);
+      const msgBuffer = new TextEncoder().encode(time + ' ' + sapisid + ' ' + origin);
+      const hashBuffer = await crypto.subtle.digest('SHA-1', msgBuffer);
+      const hashHex = Array.from(new Uint8Array(hashBuffer)).map((b: number) => b.toString(16).padStart(2, '0')).join('');
+      return 'SAPISIDHASH ' + time + '_' + hashHex;
+    }
+    const cfg = (window as any).ytcfg?.data_ || {};
+    const apiKey = cfg.INNERTUBE_API_KEY;
+    const context = cfg.INNERTUBE_CONTEXT;
+    if (!apiKey || !context) return { error: 'YouTube config not found' };
+    const authHash = await getSapisidHash('https://www.youtube.com');
+    if (!authHash) return { error: 'Not logged in to YouTube' };
+    const resp = await fetch('/youtubei/v1/like/removelike?key=' + apiKey + '&prettyPrint=false', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'Authorization': authHash, 'X-Origin': 'https://www.youtube.com' },
+      body: JSON.stringify({ context, target: { videoId: vid } }),
+    });
+    if (!resp.ok) return { error: 'HTTP ' + resp.status };
+    return { ok: true };
+  }, [videoId]);
+  if ((result as any)?.error) throw new Error((result as any).error);
+  return { success: true, message: 'Unliked: ' + videoId };
+}
+
+export async function subscribeYoutubeChannel(channelId: string): Promise<{ success: boolean; message: string }> {
+  const tabId = await getTab('https://www.youtube.com');
+  await new Promise(r => setTimeout(r, 2000));
+  const result = await executeInPage(tabId, async (chId: string) => {
+    async function getSapisidHash(origin: string) {
+      const cookies = document.cookie.split('; ');
+      let sapisid = '';
+      for (const c of cookies) {
+        const eq = c.indexOf('=');
+        if (eq === -1) continue;
+        const name = c.slice(0, eq);
+        const val = c.slice(eq + 1);
+        if (name === '__Secure-3PAPISID' || name === 'SAPISID') {
+          sapisid = val;
+          if (name === '__Secure-3PAPISID') break;
+        }
+      }
+      if (!sapisid) return null;
+      const time = Math.floor(Date.now() / 1000);
+      const msgBuffer = new TextEncoder().encode(time + ' ' + sapisid + ' ' + origin);
+      const hashBuffer = await crypto.subtle.digest('SHA-1', msgBuffer);
+      const hashHex = Array.from(new Uint8Array(hashBuffer)).map((b: number) => b.toString(16).padStart(2, '0')).join('');
+      return 'SAPISIDHASH ' + time + '_' + hashHex;
+    }
+    const cfg = (window as any).ytcfg?.data_ || {};
+    const apiKey = cfg.INNERTUBE_API_KEY;
+    const context = cfg.INNERTUBE_CONTEXT;
+    if (!apiKey || !context) return { error: 'YouTube config not found' };
+    const authHash = await getSapisidHash('https://www.youtube.com');
+    if (!authHash) return { error: 'Not logged in to YouTube' };
+    let channelIdResolved = chId;
+    if (chId.startsWith('@')) {
+      const resolveResp = await fetch('/youtubei/v1/navigation/resolve_url?key=' + apiKey + '&prettyPrint=false', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ context, url: 'https://www.youtube.com/' + chId }),
+      });
+      if (resolveResp.ok) {
+        const resolveData = await resolveResp.json().catch(() => ({}));
+        channelIdResolved = (resolveData as any).endpoint?.browseEndpoint?.browseId || chId;
+      }
+    }
+    const resp = await fetch('/youtubei/v1/subscription/subscribe?key=' + apiKey + '&prettyPrint=false', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'Authorization': authHash, 'X-Origin': 'https://www.youtube.com' },
+      body: JSON.stringify({ context, channelIds: [channelIdResolved] }),
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      const errStatus = (body as any)?.error?.status || '';
+      if (errStatus === 'UNAUTHENTICATED' || resp.status === 401 || resp.status === 403) return { error: 'Not logged in to YouTube' };
+      return { error: 'HTTP ' + resp.status };
+    }
+    return { ok: true, channelId: channelIdResolved };
+  }, [channelId]);
+  if ((result as any)?.error) throw new Error((result as any).error);
+  return { success: true, message: 'Subscribed to: ' + ((result as any).channelId || channelId) };
+}
+
+export async function unsubscribeYoutubeChannel(channelId: string): Promise<{ success: boolean; message: string }> {
+  const tabId = await getTab('https://www.youtube.com');
+  await new Promise(r => setTimeout(r, 2000));
+  const result = await executeInPage(tabId, async (chId: string) => {
+    async function getSapisidHash(origin: string) {
+      const cookies = document.cookie.split('; ');
+      let sapisid = '';
+      for (const c of cookies) {
+        const eq = c.indexOf('=');
+        if (eq === -1) continue;
+        const name = c.slice(0, eq);
+        const val = c.slice(eq + 1);
+        if (name === '__Secure-3PAPISID' || name === 'SAPISID') {
+          sapisid = val;
+          if (name === '__Secure-3PAPISID') break;
+        }
+      }
+      if (!sapisid) return null;
+      const time = Math.floor(Date.now() / 1000);
+      const msgBuffer = new TextEncoder().encode(time + ' ' + sapisid + ' ' + origin);
+      const hashBuffer = await crypto.subtle.digest('SHA-1', msgBuffer);
+      const hashHex = Array.from(new Uint8Array(hashBuffer)).map((b: number) => b.toString(16).padStart(2, '0')).join('');
+      return 'SAPISIDHASH ' + time + '_' + hashHex;
+    }
+    const cfg = (window as any).ytcfg?.data_ || {};
+    const apiKey = cfg.INNERTUBE_API_KEY;
+    const context = cfg.INNERTUBE_CONTEXT;
+    if (!apiKey || !context) return { error: 'YouTube config not found' };
+    const authHash = await getSapisidHash('https://www.youtube.com');
+    if (!authHash) return { error: 'Not logged in to YouTube' };
+    const resp = await fetch('/youtubei/v1/subscription/unsubscribe?key=' + apiKey + '&prettyPrint=false', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'Authorization': authHash, 'X-Origin': 'https://www.youtube.com' },
+      body: JSON.stringify({ context, channelIds: [chId] }),
+    });
+    if (!resp.ok) return { error: 'HTTP ' + resp.status };
+    return { ok: true };
+  }, [channelId]);
+  if ((result as any)?.error) throw new Error((result as any).error);
+  return { success: true, message: 'Unsubscribed from: ' + channelId };
+}
+
+export async function getYoutubeFeed(limit = 20): Promise<any[]> {
+  const tabId = await getTab('https://www.youtube.com');
+  await new Promise(r => setTimeout(r, 3000));
+  await checkLoginRedirect(tabId, 'YouTube');
+  const data = await executeInPage(tabId, (lim: number) => {
+    try {
+      const d = (window as any).ytInitialData;
+      if (!d) return { error: 'YouTube data not found — are you logged in?' };
+      const tabs = d.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
+      const richContents = tabs[0]?.tabRenderer?.content?.richGridRenderer?.contents || [];
+      function extractFromItem(item: any) {
+        const lvm = item.richItemRenderer?.content?.lockupViewModel;
+        if (lvm && lvm.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO') {
+          const meta = lvm.metadata?.lockupMetadataViewModel;
+          const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows || [];
+          const parts = rows.flatMap((r: any) => (r.metadataParts || []).map((p: any) => p.text?.content || '').filter(Boolean));
+          return { title: meta?.title?.content || '', channel: parts[0] || '', views: parts[1] || '', published: parts[2] || '', videoId: lvm.contentId };
+        }
+        const v = item.richItemRenderer?.content?.videoRenderer || item.videoRenderer;
+        if (v?.videoId) {
+          return {
+            title: v.title?.runs?.[0]?.text || '',
+            channel: v.ownerText?.runs?.[0]?.text || v.shortBylineText?.runs?.[0]?.text || '',
+            views: v.viewCountText?.simpleText || v.shortViewCountText?.simpleText || '',
+            duration: v.lengthText?.simpleText || '',
+            published: v.publishedTimeText?.simpleText || '',
+            videoId: v.videoId,
+          };
+        }
+        return null;
+      }
+      const videos: any[] = [];
+      for (const item of richContents) {
+        if (videos.length >= lim) break;
+        const v = extractFromItem(item);
+        if (v?.videoId) videos.push({ rank: videos.length + 1, ...v, url: 'https://www.youtube.com/watch?v=' + v.videoId });
+      }
+      return videos;
+    } catch (e: any) {
+      return { error: e.message || 'YouTube feed scraper failed' };
+    }
+  }, [Math.min(limit, 100)]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return (data as any[]) || [];
+}
+
+export async function getYoutubeHistory(limit = 30): Promise<any[]> {
+  const tabId = await getTab('https://www.youtube.com/feed/history');
+  await new Promise(r => setTimeout(r, 3000));
+  await checkLoginRedirect(tabId, 'YouTube');
+  const data = await executeInPage(tabId, (lim: number) => {
+    try {
+      const videos: any[] = [];
+      const seen = new Set<string>();
+      const root = document.querySelector('ytd-two-column-browse-results-renderer #primary ytd-section-list-renderer');
+      if (!root) return { error: 'YouTube history list not found — are you logged in?' };
+      function getText(el: Element | null) { return (el?.textContent || '').replace(/\s+/g, ' ').trim(); }
+      for (const section of root.querySelectorAll('ytd-item-section-renderer')) {
+        if (videos.length >= lim) break;
+        for (const renderer of section.querySelectorAll('yt-lockup-view-model, ytd-video-renderer, ytd-rich-item-renderer, ytd-compact-video-renderer')) {
+          if (videos.length >= lim) break;
+          const link = renderer.querySelector('a[href^="/watch?v="]') as HTMLAnchorElement | null;
+          const href = link?.getAttribute('href') || '';
+          if (!href || seen.has(href)) continue;
+          seen.add(href);
+          const title = link?.getAttribute('title') || getText(renderer.querySelector('#video-title')) || getText(renderer.querySelector('h3 a')) || '';
+          const channel = getText(renderer.querySelector('#channel-name a')) || getText(renderer.querySelector('ytd-channel-name')) || '';
+          const duration = getText(renderer.querySelector('ytd-thumbnail-overlay-time-status-renderer')) || getText(renderer.querySelector('yt-thumbnail-badge-view-model')) || '';
+          videos.push({ rank: videos.length + 1, title, channel, duration, url: 'https://www.youtube.com' + href });
+        }
+      }
+      return videos;
+    } catch (e: any) {
+      return { error: e.message || 'YouTube history scraper failed' };
+    }
+  }, [Math.min(limit, 200)]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return (data as any[]) || [];
+}
+
+export async function getYoutubeWatchLater(limit = 50): Promise<any[]> {
+  const tabId = await getTab('https://www.youtube.com/playlist?list=WL');
+  await new Promise(r => setTimeout(r, 3000));
+  await checkLoginRedirect(tabId, 'YouTube');
+  const data = await executeInPage(tabId, (lim: number) => {
+    try {
+      const d = (window as any).ytInitialData;
+      if (!d) return { error: 'YouTube data not found — are you logged in?' };
+      const tabs = d.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
+      const listContents = tabs[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents?.[0]?.playlistVideoListRenderer?.contents || [];
+      function extractVideos(items: any[]) {
+        return items.filter((i: any) => i.playlistVideoRenderer).map((i: any) => {
+          const v = i.playlistVideoRenderer;
+          const infoRuns = v.videoInfo?.runs || [];
+          return {
+            rank: parseInt(v.index?.simpleText || '0', 10),
+            title: v.title?.runs?.[0]?.text || '',
+            channel: v.shortBylineText?.runs?.[0]?.text || '',
+            duration: v.lengthText?.simpleText || '',
+            views: infoRuns[0]?.text || '',
+            published: infoRuns[2]?.text || '',
+            url: 'https://www.youtube.com/watch?v=' + v.videoId,
+          };
+        });
+      }
+      return extractVideos(listContents).slice(0, lim);
+    } catch (e: any) {
+      return { error: e.message || 'YouTube watch-later scraper failed' };
+    }
+  }, [Math.min(limit, 200)]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return (data as any[]) || [];
+}
+
+export async function getYoutubeSubscriptions(limit = 50): Promise<any[]> {
+  const tabId = await getTab('https://www.youtube.com/feed/channels');
+  await new Promise(r => setTimeout(r, 3000));
+  await checkLoginRedirect(tabId, 'YouTube');
+  const data = await executeInPage(tabId, (lim: number) => {
+    try {
+      const d = (window as any).ytInitialData;
+      if (!d) return { error: 'YouTube data not found — are you logged in?' };
+      function readText(value: any): string {
+        if (!value) return '';
+        if (typeof value.simpleText === 'string') return value.simpleText.trim();
+        if (Array.isArray(value.runs)) return value.runs.map((r: any) => r?.text || '').join('').trim();
+        return '';
+      }
+      const tabs = d.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
+      const shelfContents = tabs[0]?.tabRenderer?.content?.sectionListRenderer?.contents || [];
+      const channels: any[] = [];
+      for (const shelf of shelfContents) {
+        if (channels.length >= lim) break;
+        const items = shelf.itemSectionRenderer?.contents?.[0]?.shelfRenderer?.content?.expandedShelfContentsRenderer?.items || [];
+        for (const item of items) {
+          if (channels.length >= lim) break;
+          const ch = item.channelRenderer;
+          if (!ch) continue;
+          const name = readText(ch.title);
+          const baseUrl = ch.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl || '';
+          const handle = ch.channelHandleText ? readText(ch.channelHandleText) : (baseUrl.startsWith('/@') ? baseUrl.slice(1) : '');
+          const subscribers = readText(ch.subscriberCountText);
+          const url = baseUrl ? 'https://www.youtube.com' + baseUrl : '';
+          channels.push({ rank: channels.length + 1, name, handle, subscribers, url });
+        }
+      }
+      return channels;
+    } catch (e: any) {
+      return { error: e.message || 'YouTube subscriptions scraper failed' };
+    }
+  }, [Math.min(limit, 200)]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return (data as any[]) || [];
+}
+
+export async function getTikTokProfile(username: string): Promise<any> {
+  const tabId = await getTab('https://www.tiktok.com/explore');
+  await checkLoginRedirect(tabId, 'TikTok');
+  const data = await executeInPage(tabId, async (user: string) => {
+    try {
+      const uname = user.startsWith('@') ? user.slice(1) : user;
+      const res = await fetch('https://www.tiktok.com/@' + encodeURIComponent(uname), { credentials: 'include' });
+      if (!res.ok) return { error: 'User not found: ' + uname };
+      const html = await res.text();
+      const idx = html.indexOf('__UNIVERSAL_DATA_FOR_REHYDRATION__');
+      if (idx === -1) return { error: 'Could not parse TikTok profile data' };
+      const start = html.indexOf('>', idx) + 1;
+      const end = html.indexOf('</script>', start);
+      const json = JSON.parse(html.substring(start, end));
+      const ud = json['__DEFAULT_SCOPE__']?.['webapp.user-detail'];
+      const u = ud?.userInfo?.user;
+      const s = ud?.userInfo?.stats;
+      if (!u) return { error: 'User not found: ' + uname };
+      return {
+        username: u.uniqueId || uname, name: u.nickname || '',
+        bio: (u.signature || '').replace(/\n/g, ' ').substring(0, 120),
+        followers: s?.followerCount || 0, following: s?.followingCount || 0,
+        likes: s?.heartCount || 0, videos: s?.videoCount || 0,
+        verified: u.verified ? 'Yes' : 'No',
+      };
+    } catch (e: any) { return { error: e.message || 'TikTok profile scraper failed' }; }
+  }, [username]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return data;
+}
+
+export async function likeTikTok(videoUrl: string): Promise<{ status: string; likes: string; url: string }> {
+  const tabId = await getTab(videoUrl);
+  await new Promise(r => setTimeout(r, 6000));
+  await checkLoginRedirect(tabId, 'TikTok');
+  const data = await executeInPage(tabId, async (url: string) => {
+    try {
+      const btn = document.querySelector('[data-e2e="like-icon"]');
+      if (!btn) return { error: 'Like button not found — make sure you are logged in to TikTok' };
+      const container = btn.closest('button') || btn.closest('[role="button"]') || btn;
+      const aria = ((container as Element).getAttribute('aria-label') || '').toLowerCase();
+      const color = window.getComputedStyle(btn as Element).color;
+      const isLiked = aria.includes('unlike') || aria.includes('取消点赞') ||
+        (color && (color.includes('255, 65') || color.includes('fe2c55')));
+      if (isLiked) {
+        const countEl = document.querySelector('[data-e2e="like-count"]');
+        return { status: 'Already liked', likes: countEl ? (countEl as HTMLElement).textContent?.trim() || '-' : '-', url };
+      }
+      (container as HTMLElement).click();
+      await new Promise(r => setTimeout(r, 2000));
+      const countEl = document.querySelector('[data-e2e="like-count"]');
+      return { status: 'Liked', likes: countEl ? (countEl as HTMLElement).textContent?.trim() || '-' : '-', url };
+    } catch (e: any) { return { error: e.message || 'TikTok like failed' }; }
+  }, [videoUrl]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return data as any;
+}

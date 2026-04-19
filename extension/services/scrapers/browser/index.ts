@@ -3,13 +3,13 @@
  * internal APIs with the user's browser cookies.
  */
 
-export { searchReddit, fetchRedditHot } from './reddit';
+export { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe } from './reddit';
 export type { RedditResult, RedditHotResult } from './reddit';
 
-export { searchBilibili, fetchBilibiliHot, fetchBilibiliRanking } from './bilibili';
+export { searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments } from './bilibili';
 export type { BilibiliResult, BilibiliHotResult, BilibiliRankingResult } from './bilibili';
 
-export { searchZhihu, fetchZhihuHot } from './zhihu';
+export { searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion } from './zhihu';
 export type { ZhihuResult, ZhihuHotResult } from './zhihu';
 
 export { searchXueqiu, fetchXueqiuHot } from './xueqiu';

@@ -3,6 +3,27 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.8.0] - 2026-04-18
+
+### Added
+- **TikTok 扩展**: 获取用户 Profile(`TIKTOK_PROFILE`)、点赞视频(`TIKTOK_LIKE`)
+- **Reddit 扩展**: 点赞/踩(`REDDIT_UPVOTE`)、收藏/取消收藏(`REDDIT_SAVE`)、首页(`REDDIT_FRONTPAGE`)、读帖子+评论(`REDDIT_POST`)、用户信息(`REDDIT_USER`)、订阅/取消订阅(`REDDIT_SUBSCRIBE`)
+- **Bilibili 扩展**: 动态(`BILIBILI_DYNAMIC`)、历史记录(`BILIBILI_HISTORY`)、关注列表(`BILIBILI_FOLLOWING`)、用户视频(`BILIBILI_USER_VIDEOS`)、评论(`BILIBILI_COMMENTS`)
+- **Zhihu 扩展**: 点赞回答/文章(`ZHIHU_LIKE`)、获取问题回答(`ZHIHU_QUESTION`)
+
+## [0.7.6] - 2026-04-18
+
+### Added
+- **YouTube 写操作**: 点赞(`YOUTUBE_LIKE`)、取消点赞、订阅频道(`YOUTUBE_SUBSCRIBE`)、取消订阅，通过 InnerTube API + SAPISIDHASH 认证
+- **YouTube 读操作**: 获取主页推荐(`YOUTUBE_FEED`)、观看历史(`YOUTUBE_HISTORY`)、稍后观看(`YOUTUBE_WATCH_LATER`)、订阅频道列表(`YOUTUBE_SUBSCRIPTIONS`)
+- **Skill 新爬虫**: `crawl-eastmoney.js`（东方财富热股榜）、`crawl-nowcoder.js`（牛客网热搜）
+
+### Fixed
+- **Twitter 视频下载**: `VideoDownloadManager.downloadVideo` 改用 `chrome.downloads` API，视频现在会真正下载而非只在新标签页打开
+
+### Synced
+- opencli v1.7.4: 同步 YouTube 全量操作、东方财富/牛客热榜等新平台
+
 ## [0.7.5] - 2026-04-18
 
 ### Fixed

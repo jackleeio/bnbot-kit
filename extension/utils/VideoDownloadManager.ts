@@ -232,7 +232,14 @@ export class VideoDownloadManager {
   }
 
   private downloadVideo(tweetId: string, videoInfo: VideoInfo) {
-    console.log(`[BNBot VideoDownload] Opening video for tweet ${tweetId}:`, videoInfo.url);
-    window.open(videoInfo.url, '_blank');
+    const filename = `twitter-video-${tweetId}.mp4`;
+    chrome.runtime.sendMessage({ type: 'DOWNLOAD_VIDEO', url: videoInfo.url, filename }, (resp) => {
+      if (chrome.runtime.lastError || resp?.success === false) {
+        console.error('[BNBot VideoDownload] Download failed:', chrome.runtime.lastError?.message || resp?.error);
+        window.open(videoInfo.url, '_blank');
+      } else {
+        console.log(`[BNBot VideoDownload] Download started for tweet ${tweetId}`);
+      }
+    });
   }
 }

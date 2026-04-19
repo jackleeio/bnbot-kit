@@ -75,6 +75,8 @@ async function main() {
     [resolve(__dirname, 'crawl-x-kol.js'), ['ai']],
     [resolve(__dirname, 'crawl-x-kol.js'), ['crypto']],
     resolve(__dirname, 'crawl-watcha.js'),
+    resolve(__dirname, 'crawl-nowcoder.js'),
+    resolve(__dirname, 'crawl-eastmoney.js'),
   ];
 
   // Brand-specific crawlers (only when profile has the config)

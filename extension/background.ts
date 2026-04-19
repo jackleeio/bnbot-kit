@@ -5,8 +5,8 @@ import { isFirefox, isChrome } from './utils/browserCompat';
 import { WebSocketManager } from './utils/websocketManager';
 import { localRelayManager, LocalActionRequest } from './utils/localRelayManager';
 import { initTaskAlarmScheduler, syncSingleTaskAlarm, removeTaskAlarm, handleTaskExecutionResult, syncSingleDraftAlarm, removeDraftAlarm, handleDraftPublishResult } from './services/taskAlarmScheduler';
-import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers } from './services/scraperService';
-import { searchReddit, fetchRedditHot, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, searchZhihu, fetchZhihuHot, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote } from './services/scrapers/browser';
+import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok } from './services/scraperService';
+import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote } from './services/scrapers/browser';
 
 const GOOGLE_CLIENT_ID = '968791771361-on89kib06tl0kucdoo0s7jiop3tftp16.apps.googleusercontent.com';
 const OAUTH_REDIRECT_URI = chrome.identity.getRedirectURL();
@@ -1140,6 +1140,29 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   SCRAPER_FETCH_36KR_NEWS: (m) => fetch36KrNews(m.limit),
   SCRAPER_SEARCH_GOOGLE_NEWS: (m) => searchGoogleNews(m.query, m.limit),
   SCRAPER_FETCH_INSTAGRAM_EXPLORE: (m) => fetchInstagramExplore(m.limit),
+  YOUTUBE_LIKE: (m) => likeYoutubeVideo(m.videoId),
+  YOUTUBE_UNLIKE: (m) => unlikeYoutubeVideo(m.videoId),
+  YOUTUBE_SUBSCRIBE: (m) => subscribeYoutubeChannel(m.channelId),
+  YOUTUBE_UNSUBSCRIBE: (m) => unsubscribeYoutubeChannel(m.channelId),
+  YOUTUBE_FEED: (m) => getYoutubeFeed(m.limit),
+  YOUTUBE_HISTORY: (m) => getYoutubeHistory(m.limit),
+  YOUTUBE_WATCH_LATER: (m) => getYoutubeWatchLater(m.limit),
+  YOUTUBE_SUBSCRIPTIONS: (m) => getYoutubeSubscriptions(m.limit),
+  TIKTOK_PROFILE: (m) => getTikTokProfile(m.username),
+  TIKTOK_LIKE: (m) => likeTikTok(m.url),
+  REDDIT_UPVOTE: (m) => redditUpvote(m.postId, m.direction),
+  REDDIT_SAVE: (m) => redditSave(m.postId, m.undo),
+  REDDIT_FRONTPAGE: (m) => getRedditFrontpage(m.limit),
+  REDDIT_POST: (m) => getRedditPost(m.postId, m.limit, m.sort),
+  REDDIT_USER: (m) => getRedditUser(m.username),
+  REDDIT_SUBSCRIBE: (m) => redditSubscribe(m.subreddit, m.undo),
+  BILIBILI_DYNAMIC: (m) => getBilibiliDynamic(m.limit),
+  BILIBILI_HISTORY: (m) => getBilibiliHistory(m.limit),
+  BILIBILI_FOLLOWING: (m) => getBilibiliFollowing(m.limit),
+  BILIBILI_USER_VIDEOS: (m) => getBilibiliUserVideos(m.mid, m.limit),
+  BILIBILI_COMMENTS: (m) => getBilibiliComments(m.bvid, m.limit),
+  ZHIHU_LIKE: (m) => likeZhihu(m.url),
+  ZHIHU_QUESTION: (m) => getZhihuQuestion(m.questionId, m.limit),
 };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
