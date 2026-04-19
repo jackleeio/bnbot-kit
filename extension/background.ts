@@ -6,7 +6,7 @@ import { WebSocketManager } from './utils/websocketManager';
 import { localRelayManager, LocalActionRequest } from './utils/localRelayManager';
 import { initTaskAlarmScheduler, syncSingleTaskAlarm, removeTaskAlarm, handleTaskExecutionResult, syncSingleDraftAlarm, removeDraftAlarm, handleDraftPublishResult } from './services/taskAlarmScheduler';
 import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok } from './services/scraperService';
-import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote } from './services/scrapers/browser';
+import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread } from './services/scrapers/browser';
 
 const GOOGLE_CLIENT_ID = '968791771361-on89kib06tl0kucdoo0s7jiop3tftp16.apps.googleusercontent.com';
 const OAUTH_REDIRECT_URI = chrome.identity.getRedirectURL();
@@ -1163,6 +1163,13 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   BILIBILI_COMMENTS: (m) => getBilibiliComments(m.bvid, m.limit),
   ZHIHU_LIKE: (m) => likeZhihu(m.url),
   ZHIHU_QUESTION: (m) => getZhihuQuestion(m.questionId, m.limit),
+  TWITTER_TIMELINE: (m) => getTwitterTimeline(m.type, m.limit),
+  TWITTER_SEARCH: (m) => searchTwitter(m.query, m.filter, m.limit),
+  TWITTER_TRENDING: (m) => getTwitterTrending(m.limit),
+  TWITTER_PROFILE: (m) => getTwitterProfile(m.username),
+  TWITTER_BOOKMARKS: (m) => getTwitterBookmarks(m.limit),
+  TWITTER_USER_TWEETS: (m) => getTwitterUserTweets(m.username, m.limit),
+  TWITTER_THREAD: (m) => getTwitterThread(m.tweetId, m.limit),
 };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
