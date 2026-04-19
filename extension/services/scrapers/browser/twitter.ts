@@ -57,6 +57,15 @@ export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-yo
 
       const FEATURES = { rweb_video_screen_enabled: false, profile_label_improvements_pcf_label_in_post_enabled: true, rweb_tipjar_consumption_enabled: true, verified_phone_label_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true, responsive_web_graphql_timeline_navigation_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, premium_content_api_read_enabled: false, communities_web_enable_tweet_community_results_fetch: true, c9s_tweet_anatomy_moderator_badge_enabled: true, responsive_web_grok_analyze_button_fetch_trends_enabled: false, responsive_web_grok_analyze_post_followups_enabled: true, responsive_web_grok_share_attachment_enabled: true, articles_preview_enabled: true, responsive_web_edit_tweet_api_enabled: true, graphql_is_translatable_rweb_tweet_is_translatable_enabled: true, view_counts_everywhere_api_enabled: true, longform_notetweets_consumption_enabled: true, responsive_web_twitter_article_tweet_consumption_enabled: true, tweet_awards_web_tipping_enabled: false, freedom_of_speech_not_reach_fetch_enabled: true, standardized_nudges_misinfo: true, tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true, longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: true, responsive_web_enhance_cards_enabled: false };
 
+      function extractMedia(l: any) {
+        const mediaList = l?.extended_entities?.media || l?.entities?.media || [];
+        return mediaList.map((m: any) => ({
+          type: m.type,
+          url: m.media_url_https,
+          ...(m.video_info ? { variants: m.video_info.variants.filter((v: any) => v.content_type === 'video/mp4').sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0)).map((v: any) => v.url) } : {}),
+        }));
+      }
+
       function extractTweet(result: any, seen: Set<string>) {
         const tw = result?.tweet || result;
         const l = tw?.legacy || {};
@@ -65,11 +74,13 @@ export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-yo
         const u = tw.core?.user_results?.result;
         const author = u?.legacy?.screen_name || u?.core?.screen_name || 'unknown';
         const noteText = tw.note_tweet?.note_tweet_results?.result?.text;
+        const media = extractMedia(l);
         return {
           id: tw.rest_id, author, text: noteText || l.full_text || '',
           likes: l.favorite_count || 0, retweets: l.retweet_count || 0,
           replies: l.reply_count || 0, views: tw.views?.count ? parseInt(tw.views.count) : 0,
           url: `https://x.com/${author}/status/${tw.rest_id}`,
+          ...(media.length ? { media } : {}),
         };
       }
 
@@ -136,6 +147,15 @@ export async function searchTwitter(query: string, filter: 'Top' | 'Latest' | 'P
       };
       const FEATURES = { rweb_video_screen_enabled: false, profile_label_improvements_pcf_label_in_post_enabled: true, rweb_tipjar_consumption_enabled: true, verified_phone_label_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true, responsive_web_graphql_timeline_navigation_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, premium_content_api_read_enabled: false, communities_web_enable_tweet_community_results_fetch: true, c9s_tweet_anatomy_moderator_badge_enabled: true, responsive_web_grok_share_attachment_enabled: true, articles_preview_enabled: true, responsive_web_edit_tweet_api_enabled: true, graphql_is_translatable_rweb_tweet_is_translatable_enabled: true, view_counts_everywhere_api_enabled: true, longform_notetweets_consumption_enabled: true, responsive_web_twitter_article_tweet_consumption_enabled: true, tweet_awards_web_tipping_enabled: false, freedom_of_speech_not_reach_fetch_enabled: true, standardized_nudges_misinfo: true, tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true, longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: true, responsive_web_enhance_cards_enabled: false };
 
+      function extractMedia(l: any) {
+        const mediaList = l?.extended_entities?.media || l?.entities?.media || [];
+        return mediaList.map((m: any) => ({
+          type: m.type,
+          url: m.media_url_https,
+          ...(m.video_info ? { variants: m.video_info.variants.filter((v: any) => v.content_type === 'video/mp4').sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0)).map((v: any) => v.url) } : {}),
+        }));
+      }
+
       function extractTweet(result: any, seen: Set<string>) {
         const tw = result?.tweet || result;
         const l = tw?.legacy || {};
@@ -143,10 +163,12 @@ export async function searchTwitter(query: string, filter: 'Top' | 'Latest' | 'P
         seen.add(tw.rest_id);
         const u = tw.core?.user_results?.result;
         const author = u?.legacy?.screen_name || u?.core?.screen_name || 'unknown';
+        const media = extractMedia(l);
         return {
           id: tw.rest_id, author, text: l.full_text || '',
           likes: l.favorite_count || 0, retweets: l.retweet_count || 0,
           replies: l.reply_count || 0, url: `https://x.com/${author}/status/${tw.rest_id}`,
+          ...(media.length ? { media } : {}),
         };
       }
 
@@ -276,6 +298,14 @@ export async function getTwitterBookmarks(limit = 20): Promise<any[]> {
 
       const FEATURES = { rweb_video_screen_enabled: false, profile_label_improvements_pcf_label_in_post_enabled: true, responsive_web_profile_redirect_enabled: false, rweb_tipjar_consumption_enabled: false, verified_phone_label_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true, responsive_web_graphql_timeline_navigation_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, premium_content_api_read_enabled: false, communities_web_enable_tweet_community_results_fetch: true, c9s_tweet_anatomy_moderator_badge_enabled: true, articles_preview_enabled: true, responsive_web_edit_tweet_api_enabled: true, graphql_is_translatable_rweb_tweet_is_translatable_enabled: true, view_counts_everywhere_api_enabled: true, longform_notetweets_consumption_enabled: true, responsive_web_twitter_article_tweet_consumption_enabled: true, tweet_awards_web_tipping_enabled: false, freedom_of_speech_not_reach_fetch_enabled: true, standardized_nudges_misinfo: true, tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true, longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: false, responsive_web_enhance_cards_enabled: false };
 
+      function extractMedia(l: any) {
+        const mediaList = l?.extended_entities?.media || l?.entities?.media || [];
+        return mediaList.map((m: any) => ({
+          type: m.type, url: m.media_url_https,
+          ...(m.video_info ? { variants: m.video_info.variants.filter((v: any) => v.content_type === 'video/mp4').sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0)).map((v: any) => v.url) } : {}),
+        }));
+      }
+
       function extractTweet(result: any, seen: Set<string>) {
         const tw = result?.tweet || result;
         const l = tw?.legacy || {};
@@ -283,10 +313,12 @@ export async function getTwitterBookmarks(limit = 20): Promise<any[]> {
         seen.add(tw.rest_id);
         const u = tw.core?.user_results?.result;
         const author = u?.legacy?.screen_name || 'unknown';
+        const media = extractMedia(l);
         return {
           id: tw.rest_id, author, text: l.full_text || '',
           likes: l.favorite_count || 0, retweets: l.retweet_count || 0,
           url: `https://x.com/${author}/status/${tw.rest_id}`,
+          ...(media.length ? { media } : {}),
         };
       }
 
@@ -363,6 +395,14 @@ export async function getTwitterUserTweets(username: string, limit = 20): Promis
       if (!tweetsRes.ok) return { error: 'UserTweets HTTP ' + tweetsRes.status };
       const tweetsD = await tweetsRes.json();
 
+      function extractMedia(l: any) {
+        const mediaList = l?.extended_entities?.media || l?.entities?.media || [];
+        return mediaList.map((m: any) => ({
+          type: m.type, url: m.media_url_https,
+          ...(m.video_info ? { variants: m.video_info.variants.filter((v: any) => v.content_type === 'video/mp4').sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0)).map((v: any) => v.url) } : {}),
+        }));
+      }
+
       const tweets: any[] = [];
       const seen = new Set<string>();
       const userResult = tweetsD?.data?.user?.result;
@@ -373,7 +413,6 @@ export async function getTwitterUserTweets(username: string, limit = 20): Promis
         const entries = inst.entries || (inst.entry ? [inst.entry] : []);
         for (const entry of entries) {
           const c = entry?.content;
-          // single tweet entry
           const tr = c?.itemContent?.tweet_results?.result;
           if (tr) {
             const tw = tr.tweet || tr;
@@ -381,14 +420,15 @@ export async function getTwitterUserTweets(username: string, limit = 20): Promis
             if (!tw?.rest_id || seen.has(tw.rest_id)) continue;
             seen.add(tw.rest_id);
             const noteText = tw.note_tweet?.note_tweet_results?.result?.text;
+            const media = extractMedia(l);
             tweets.push({
               id: tw.rest_id, author: screenName, text: noteText || l.full_text || '',
               likes: l.favorite_count || 0, retweets: l.retweet_count || 0,
               replies: l.reply_count || 0, views: tw.views?.count ? parseInt(tw.views.count) : 0,
               created_at: l.created_at || '', url: `https://x.com/${screenName}/status/${tw.rest_id}`,
+              ...(media.length ? { media } : {}),
             });
           }
-          // conversation/module entries
           for (const item of c?.items || []) {
             const nr = item.item?.itemContent?.tweet_results?.result;
             if (!nr) continue;
@@ -397,11 +437,13 @@ export async function getTwitterUserTweets(username: string, limit = 20): Promis
             if (!tw?.rest_id || seen.has(tw.rest_id)) continue;
             seen.add(tw.rest_id);
             const noteText = tw.note_tweet?.note_tweet_results?.result?.text;
+            const media = extractMedia(l);
             tweets.push({
               id: tw.rest_id, author: screenName, text: noteText || l.full_text || '',
               likes: l.favorite_count || 0, retweets: l.retweet_count || 0,
               replies: l.reply_count || 0, views: tw.views?.count ? parseInt(tw.views.count) : 0,
               created_at: l.created_at || '', url: `https://x.com/${screenName}/status/${tw.rest_id}`,
+              ...(media.length ? { media } : {}),
             });
           }
         }
@@ -441,6 +483,14 @@ export async function getTwitterThread(tweetId: string, limit = 50): Promise<any
       const FEATURES = { responsive_web_graphql_exclude_directive_enabled: true, verified_phone_label_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true, responsive_web_graphql_timeline_navigation_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, longform_notetweets_consumption_enabled: true, longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: true, freedom_of_speech_not_reach_fetch_enabled: true };
       const FIELD_TOGGLES = { withArticleRichContentState: true, withArticlePlainText: false };
 
+      function extractMedia(l: any) {
+        const mediaList = l?.extended_entities?.media || l?.entities?.media || [];
+        return mediaList.map((m: any) => ({
+          type: m.type, url: m.media_url_https,
+          ...(m.video_info ? { variants: m.video_info.variants.filter((v: any) => v.content_type === 'video/mp4').sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0)).map((v: any) => v.url) } : {}),
+        }));
+      }
+
       const tweets: any[] = [];
       const seen = new Set<string>();
       let cursor: string | null = null;
@@ -467,7 +517,8 @@ export async function getTwitterThread(tweetId: string, limit = 50): Promise<any
               seen.add(tw.rest_id);
               const u = tw.core?.user_results?.result;
               const author = u?.legacy?.screen_name || 'unknown';
-              tweets.push({ id: tw.rest_id, author, text: tw.note_tweet?.note_tweet_results?.result?.text || l.full_text || '', likes: l.favorite_count || 0, retweets: l.retweet_count || 0, in_reply_to: l.in_reply_to_status_id_str || null, url: `https://x.com/${author}/status/${tw.rest_id}` });
+              const media = extractMedia(l);
+              tweets.push({ id: tw.rest_id, author, text: tw.note_tweet?.note_tweet_results?.result?.text || l.full_text || '', likes: l.favorite_count || 0, retweets: l.retweet_count || 0, in_reply_to: l.in_reply_to_status_id_str || null, url: `https://x.com/${author}/status/${tw.rest_id}`, ...(media.length ? { media } : {}) });
             }
             for (const item of c?.items || []) {
               const nr = item.item?.itemContent?.tweet_results?.result;
@@ -477,7 +528,8 @@ export async function getTwitterThread(tweetId: string, limit = 50): Promise<any
                 seen.add(tw.rest_id);
                 const u = tw.core?.user_results?.result;
                 const author = u?.legacy?.screen_name || 'unknown';
-                tweets.push({ id: tw.rest_id, author, text: tw.note_tweet?.note_tweet_results?.result?.text || l.full_text || '', likes: l.favorite_count || 0, retweets: l.retweet_count || 0, in_reply_to: l.in_reply_to_status_id_str || null, url: `https://x.com/${author}/status/${tw.rest_id}` });
+                const media = extractMedia(l);
+                tweets.push({ id: tw.rest_id, author, text: tw.note_tweet?.note_tweet_results?.result?.text || l.full_text || '', likes: l.favorite_count || 0, retweets: l.retweet_count || 0, in_reply_to: l.in_reply_to_status_id_str || null, url: `https://x.com/${author}/status/${tw.rest_id}`, ...(media.length ? { media } : {}) });
               }
             }
           }
