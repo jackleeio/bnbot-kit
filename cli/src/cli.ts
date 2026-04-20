@@ -257,11 +257,19 @@ export async function runCliAction(actionType: string, params: Record<string, un
       }));
     });
 
+    // Tracks whether we received a complete action_result before the
+    // socket closed. Without this, a server-side silent close (socket
+    // ends before any result is delivered) would fall through to the
+    // 'close' handler and exit 0 with no output — causing scheduled
+    // wrappers to falsely assume success ("silent-close bug").
+    let resolved = false;
+
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString());
         if (msg.requestId === requestId && msg.type === 'action_result') {
           clearTimeout(timeout);
+          resolved = true;
           if (msg.success) {
             console.log(JSON.stringify(msg.data, null, 2));
           } else {
@@ -277,6 +285,7 @@ export async function runCliAction(actionType: string, params: Record<string, un
 
     ws.on('error', (err) => {
       clearTimeout(timeout);
+      resolved = true;
       console.error(`Connection error: ${err.message}`);
       console.error('Make sure "bnbot serve" is running first.');
       process.exit(1);
@@ -284,6 +293,15 @@ export async function runCliAction(actionType: string, params: Record<string, un
 
     ws.on('close', () => {
       clearTimeout(timeout);
+      if (!resolved) {
+        // Socket closed without any action_result. This is an abnormal
+        // close (server crashed mid-request, extension reconnect while
+        // waiting, etc). Exit 1 with a clear error so callers (shell
+        // scripts, launchd wrappers) don't mistake it for success.
+        console.error('Server closed connection before sending a result');
+        console.error('Try: bnbot status, or restart with pkill -f "bnbot.*serve" && bnbot serve');
+        process.exit(1);
+      }
       resolve();
     });
   });

@@ -589,6 +589,21 @@ When the user picks a draft, ask whether to **publish now** or **save to drafts*
 
 > "要现在发还是存草稿？存草稿可以排期自动发。"
 
+**Publishing now via CDP** (skip draft system, go straight to X):
+```bash
+bnbot x post --engine debugger "<draft text>"
+bnbot x post --engine debugger "<text>" --media /path/to.png        # 1 image
+bnbot x post --engine debugger "<text>" --media img1.png,img2.png   # up to 4
+bnbot x post --engine debugger "<text>" --media clip.mp4            # video
+bnbot x thread --engine debugger '[{"text":"1/3"},{"text":"2/3"},{"text":"3/3"}]'
+```
+
+These go through the chrome.debugger path (trusted mouse events, CDP
+Input.insertText, DOM.setFileInputFiles, real /CreateTweet network
+response). See `references/cdp-scheduling.md` for the scheduling
+pattern when bnbot desktop owns the clock rather than the extension.
+
+
 ### Save single tweet to drafts
 ```bash
 # Save as draft (no schedule)

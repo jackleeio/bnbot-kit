@@ -153,10 +153,37 @@ export class BnbotWsServer {
   private handleExtensionConnect(ws: WebSocket): void {
     console.error('[BNBOT] Extension connected');
 
-    // Only allow one extension at a time
-    if (this.client && this.client.readyState === WebSocket.OPEN) {
+    const wasReplacement = this.client && this.client.readyState === WebSocket.OPEN;
+    if (wasReplacement) {
       console.error('[BNBOT] Replacing existing extension connection');
-      this.client.close(1000, 'Replaced by new connection');
+      this.client!.close(1000, 'Replaced by new connection');
+    }
+
+    // Fail any in-flight requests dispatched to the OLD extension — they
+    // will never be answered now. Without this, CLI clients waiting on
+    // them see silent WS closes (no error message) and exit 0 with no
+    // output ("silent-close bug"), causing scheduled wrappers to think
+    // the action succeeded when it did not.
+    if (this.pendingRequests.size > 0) {
+      console.error(`[BNBOT] Failing ${this.pendingRequests.size} stale pending request(s) from previous extension session`);
+      for (const [id, pending] of this.pendingRequests) {
+        clearTimeout(pending.timer);
+        const cliReq = this.cliPending.get(id);
+        if (cliReq) {
+          clearTimeout(cliReq.timer);
+          this.cliPending.delete(id);
+          if (cliReq.ws.readyState === WebSocket.OPEN) {
+            cliReq.ws.send(JSON.stringify({
+              type: 'action_result',
+              requestId: cliReq.originalRequestId,
+              success: false,
+              error: 'Extension reconnected mid-request; please retry',
+            }));
+          }
+        }
+        pending.reject(new Error('Extension reconnected'));
+      }
+      this.pendingRequests.clear();
     }
 
     this.client = ws;
