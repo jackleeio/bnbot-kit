@@ -217,6 +217,8 @@ function buildProgram(): Command {
     .description('Post a tweet')
     .option('-m, --media <url...>', 'Media file(s) or URL(s) to attach')
     .option('-d, --draft', 'Draft mode: fill composer without posting')
+    .option('--engine <engine>', 'Write engine: "dom" (content-script) or "debugger" (CDP)', 'dom')
+    .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(postCommand);
 
   // x close
@@ -234,29 +236,42 @@ function buildProgram(): Command {
   x.command('reply <url> <text>')
     .description('Reply to a tweet')
     .option('-m, --media <url...>', 'Media file(s) or URL(s) to attach')
+    .option('--engine <engine>', 'Write engine: "dom" (content-script) or "debugger" (CDP)', 'dom')
+    .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(replyCommand);
 
   // x quote
   x.command('quote <url> <text>')
     .description('Quote a tweet')
+    .option('-m, --media <url...>', 'Media file(s) or URL(s) to attach')
+    .option('--engine <engine>', 'Write engine: "dom" or "debugger"', 'dom')
+    .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(quoteCommand);
 
   // x like / unlike
   x.command('like <url>')
     .description('Like a tweet')
+    .option('--engine <engine>', 'Write engine: "dom" or "debugger"', 'dom')
+    .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(likeCommand);
 
   x.command('unlike <url>')
     .description('Unlike a tweet')
+    .option('--engine <engine>', 'Write engine: "dom" or "debugger"', 'dom')
+    .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(unlikeCommand);
 
   // x retweet / unretweet
   x.command('retweet <url>')
     .description('Retweet a tweet')
+    .option('--engine <engine>', 'Write engine: "dom" or "debugger"', 'dom')
+    .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(retweetCommand);
 
   x.command('unretweet <url>')
     .description('Unretweet a tweet')
+    .option('--engine <engine>', 'Write engine: "dom" or "debugger"', 'dom')
+    .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(unretweetCommand);
 
   // x follow / unfollow

@@ -6,6 +6,7 @@ import { WebSocketManager } from './utils/websocketManager';
 import { localRelayManager, LocalActionRequest } from './utils/localRelayManager';
 import { initTaskAlarmScheduler, syncSingleTaskAlarm, removeTaskAlarm, handleTaskExecutionResult, syncSingleDraftAlarm, removeDraftAlarm, handleDraftPublishResult } from './services/taskAlarmScheduler';
 import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok } from './services/scraperService';
+import { debuggerWriteHandlers } from './services/debugger';
 import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread } from './services/scrapers/browser';
 
 const GOOGLE_CLIENT_ID = '968791771361-on89kib06tl0kucdoo0s7jiop3tftp16.apps.googleusercontent.com';
@@ -169,6 +170,38 @@ localRelayManager.init({
           requestId: message.requestId,
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+      return;
+    }
+
+    // Handle debugger-based write actions directly in background.
+    // These open a background X tab, attach chrome.debugger, drive the
+    // page via CDP (Input.insertText / DOM.setFileInputFiles / clicks),
+    // then detach + close. Text-only for now; media paths work when
+    // Chrome can read the file.
+    const debuggerKey = Object.keys(debuggerWriteHandlers).find(k =>
+      message.actionType === k
+    );
+    if (debuggerKey) {
+      try {
+        const data = await debuggerWriteHandlers[debuggerKey](
+          (message.actionPayload ?? {}) as Record<string, unknown>,
+        );
+        startAllIdleTimers();
+        localRelayManager.sendActionResult({
+          type: 'action_result',
+          requestId: message.requestId,
+          success: true,
+          data,
+        });
+      } catch (error) {
+        startAllIdleTimers();
+        localRelayManager.sendActionResult({
+          type: 'action_result',
+          requestId: message.requestId,
+          success: false,
+          error: error instanceof Error ? error.message : 'Debugger write failed',
         });
       }
       return;

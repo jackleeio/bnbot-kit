@@ -13,7 +13,10 @@
 
 // ─── Tab pool with idle cleanup ────────────────────────────────────
 
-const IDLE_TIMEOUT = 5000; // 5s idle → close window
+// Idle window lifetime — 120s gives room for scroll + think + act flows
+// (user reads a tweet for 30-60s, decides to like/reply) without losing
+// the pooled session. Shorter bursts (read N then like N) still fit.
+const IDLE_TIMEOUT = 120_000; // 2 minutes
 interface PoolEntry {
   tabId: number;
   windowId: number;
@@ -307,6 +310,58 @@ export async function executeInPage<T = any>(
   }
 
   return result?.result?.value as T;
+}
+
+/**
+ * Ensure the debugger is attached to this tab (by page targetId) and
+ * return that targetId + the Page.enable/Network.enable etc. domains we
+ * need for write-flow orchestration. Public for `services/debugger/*`
+ * so write actions can reuse the scraper window pool and driver.
+ *
+ * Idempotent: safe to call multiple times; already-attached tabs return
+ * the cached targetId unchanged.
+ */
+export async function ensureDebuggerAttached(
+  tabId: number,
+  domains: string[] = ['Page', 'Runtime', 'DOM', 'Network'],
+): Promise<string> {
+  let targetId = attachedTabs.get(tabId);
+  if (!targetId) {
+    const allTargets = await chrome.debugger.getTargets();
+    const pageTarget = allTargets.find((t: any) => t.tabId === tabId && t.type === 'page');
+    if (!pageTarget) throw new Error(`No page target for tab ${tabId}`);
+    targetId = pageTarget.id;
+    try {
+      await chrome.debugger.attach({ targetId }, '1.3');
+    } catch (e: any) {
+      if (!e.message?.includes('already attached')) throw e;
+    }
+    attachedTabs.set(tabId, targetId);
+  }
+  for (const d of domains) {
+    try {
+      await chrome.debugger.sendCommand({ targetId }, `${d}.enable`, {});
+    } catch {
+      // Some domains return a benign "already enabled" error — ignore.
+    }
+  }
+  return targetId;
+}
+
+/** Thin wrapper for `chrome.debugger.sendCommand` that throws on
+ *  `lastError`. Targets the page by `targetId` (same semantics as
+ *  `executeInPage`). */
+export async function debuggerSend<T = unknown>(
+  targetId: string,
+  method: string,
+  params: Record<string, unknown> = {},
+): Promise<T> {
+  const result = await chrome.debugger.sendCommand(
+    { targetId },
+    method,
+    params as { [key: string]: unknown },
+  );
+  return result as T;
 }
 
 // ─── TikTok ─────────────────────────────────────────────────────────

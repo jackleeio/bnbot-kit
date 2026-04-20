@@ -6,7 +6,22 @@
  */
 
 import { runCliAction } from '../cli.js';
-import { resolveMediaListAsync } from '../tools/mediaUtils.js';
+import { resolveMediaListAsync, resolveMediaListAsPaths } from '../tools/mediaUtils.js';
+
+type WriteEngine = 'dom' | 'debugger';
+
+function normEngine(e?: string): WriteEngine {
+  return e === 'debugger' ? 'debugger' : 'dom';
+}
+
+/** Parse media option into an array of source strings. */
+function toSourceList(raw: string | string[] | undefined): string[] {
+  if (!raw) return [];
+  return (Array.isArray(raw) ? raw : [raw])
+    .flatMap((s) => String(s).split(','))
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
 
 const DEFAULT_PORT = 18900;
 
@@ -39,10 +54,23 @@ async function resolveMedia(
 
 // ── Tweet / Post ─────────────────────────────────────────────
 
-export async function postCommand(text: string, options: { media?: string | string[]; draft?: boolean }): Promise<void> {
+export async function postCommand(text: string, options: { media?: string | string[]; draft?: boolean; engine?: string; visible?: boolean }): Promise<void> {
   const isDraft = options.draft || false;
+  const engine = normEngine(options.engine);
   const preview = text.slice(0, 80) + (text.length > 80 ? '...' : '');
-  console.error(isDraft ? `Drafting: "${preview}"` : `Posting: "${preview}"`);
+  console.error(isDraft ? `Drafting: "${preview}"` : `Posting: "${preview}"` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
+
+  // Debugger engine: write actions go through chrome.debugger (CDP). No
+  // thread auto-split, no draft mode (X compose/post URL always publishes).
+  if (engine === 'debugger') {
+    if (isDraft) {
+      console.error('[BNBOT] --draft is not supported by --engine debugger yet; use default DOM engine for draft mode.');
+      process.exit(1);
+    }
+    const sources = toSourceList(options.media);
+    const mediaPaths = sources.length > 0 ? await resolveMediaListAsPaths(sources) : undefined;
+    return runCliAction('post_tweet_debugger', { text, mediaPaths, visible: !!options.visible }, getPort());
+  }
 
   const params: Record<string, unknown> = { text, draftOnly: isDraft };
   const media = await resolveMedia(options.media);
@@ -83,38 +111,68 @@ export async function threadCommand(tweetsJson: string): Promise<void> {
   return runCliAction('post_thread', { tweets }, getPort());
 }
 
-export async function replyCommand(url: string, text: string, options: { media?: string | string[] }): Promise<void> {
-  console.error(`Replying to: ${url}`);
+export async function replyCommand(url: string, text: string, options: { media?: string | string[]; engine?: string; visible?: boolean }): Promise<void> {
+  const engine = normEngine(options.engine);
+  console.error(`Replying to: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
+
+  if (engine === 'debugger') {
+    const sources = toSourceList(options.media);
+    const mediaPaths = sources.length > 0 ? await resolveMediaListAsPaths(sources) : undefined;
+    return runCliAction('reply_tweet_debugger', { tweetUrl: url, text, mediaPaths, visible: !!options.visible }, getPort());
+  }
+
   const params: Record<string, unknown> = { tweetUrl: url, text };
   const media = await resolveMedia(options.media);
   if (media) params.media = media;
   return runCliAction('submit_reply', params, getPort());
 }
 
-export async function quoteCommand(url: string, text: string): Promise<void> {
-  console.error(`Quoting: ${url}`);
+export async function quoteCommand(url: string, text: string, options?: { media?: string | string[]; engine?: string; visible?: boolean }): Promise<void> {
+  const engine = normEngine(options?.engine);
+  console.error(`Quoting: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
+  if (engine === 'debugger') {
+    const sources = toSourceList(options?.media);
+    const mediaPaths = sources.length > 0 ? await resolveMediaListAsPaths(sources) : undefined;
+    return runCliAction('quote_tweet_debugger', { tweetUrl: url, text, mediaPaths, visible: !!options?.visible }, getPort());
+  }
   return runCliAction('quote_tweet', { tweetUrl: url, text }, getPort());
 }
 
 // ── Engagement ───────────────────────────────────────────────
 
-export async function likeCommand(url: string): Promise<void> {
-  console.error(`Liking: ${url}`);
+export async function likeCommand(url: string, options?: { engine?: string; visible?: boolean }): Promise<void> {
+  const engine = normEngine(options?.engine);
+  console.error(`Liking: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
+  if (engine === 'debugger') {
+    return runCliAction('like_tweet_debugger', { tweetUrl: url, visible: !!options?.visible }, getPort());
+  }
   return runCliAction('like_tweet', { tweetUrl: url }, getPort());
 }
 
-export async function unlikeCommand(url: string): Promise<void> {
-  console.error(`Unliking: ${url}`);
+export async function unlikeCommand(url: string, options?: { engine?: string; visible?: boolean }): Promise<void> {
+  const engine = normEngine(options?.engine);
+  console.error(`Unliking: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
+  if (engine === 'debugger') {
+    return runCliAction('unlike_tweet_debugger', { tweetUrl: url, visible: !!options?.visible }, getPort());
+  }
   return runCliAction('unlike_tweet', { tweetUrl: url }, getPort());
 }
 
-export async function retweetCommand(url: string): Promise<void> {
-  console.error(`Retweeting: ${url}`);
+export async function retweetCommand(url: string, options?: { engine?: string; visible?: boolean }): Promise<void> {
+  const engine = normEngine(options?.engine);
+  console.error(`Retweeting: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
+  if (engine === 'debugger') {
+    return runCliAction('retweet_debugger', { tweetUrl: url, visible: !!options?.visible }, getPort());
+  }
   return runCliAction('retweet', { tweetUrl: url }, getPort());
 }
 
-export async function unretweetCommand(url: string): Promise<void> {
-  console.error(`Unretweeting: ${url}`);
+export async function unretweetCommand(url: string, options?: { engine?: string; visible?: boolean }): Promise<void> {
+  const engine = normEngine(options?.engine);
+  console.error(`Unretweeting: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
+  if (engine === 'debugger') {
+    return runCliAction('unretweet_debugger', { tweetUrl: url, visible: !!options?.visible }, getPort());
+  }
   return runCliAction('unretweet', { tweetUrl: url }, getPort());
 }
 

@@ -125,3 +125,64 @@ export function resolveMediaList(sources: string[]): Array<{ type: string; url: 
 export async function resolveMediaListAsync(sources: string[]): Promise<Array<{ type: 'photo' | 'video'; url: string }>> {
   return Promise.all(sources.map((src) => resolveSingleMediaSource(src)));
 }
+
+/**
+ * Resolve a list of media sources (local paths / http URLs / data URIs)
+ * into absolute **on-disk** file paths suitable for Chrome's
+ * `DOM.setFileInputFiles` CDP command. Local paths pass through; remote
+ * URLs and data URIs get written to a temp file under the OS tmpdir.
+ *
+ * Used exclusively by the debugger-engine write path — the DOM engine
+ * uses data URLs.
+ */
+export async function resolveMediaListAsPaths(sources: string[]): Promise<string[]> {
+  const fs = await import('node:fs');
+  const fsp = await import('node:fs/promises');
+  const path = await import('node:path');
+  const os = await import('node:os');
+  const crypto = await import('node:crypto');
+
+  const out: string[] = [];
+  const tmpDir = path.join(os.tmpdir(), 'bnbot-cdp-media');
+  await fsp.mkdir(tmpDir, { recursive: true });
+
+  for (const raw of sources) {
+    if (!raw) continue;
+    const src = String(raw).trim();
+    if (!src) continue;
+
+    if (src.startsWith('data:')) {
+      const match = /^data:([^;,]+);base64,(.+)$/.exec(src);
+      if (!match) throw new Error(`unsupported data URL: ${src.slice(0, 32)}…`);
+      const mime = match[1];
+      const ext = mime.split('/')[1] || 'bin';
+      const id = crypto.randomBytes(8).toString('hex');
+      const filePath = path.join(tmpDir, `${id}.${ext}`);
+      await fsp.writeFile(filePath, Buffer.from(match[2], 'base64'));
+      out.push(filePath);
+      continue;
+    }
+
+    if (isHttpUrl(src)) {
+      const resp = await fetch(src);
+      if (!resp.ok) throw new Error(`failed to fetch ${src}: HTTP ${resp.status}`);
+      const buf = Buffer.from(await resp.arrayBuffer());
+      const ct = resp.headers.get('content-type') || '';
+      const ext = ct.split('/')[1]?.split(';')[0]
+        || src.split('.').pop()?.split('?')[0]
+        || 'bin';
+      const id = crypto.randomBytes(8).toString('hex');
+      const filePath = path.join(tmpDir, `${id}.${ext}`);
+      await fsp.writeFile(filePath, buf);
+      out.push(filePath);
+      continue;
+    }
+
+    // Local path — resolve tilde + make absolute so Chrome can find it.
+    const resolved = src.replace(/^~/, process.env.HOME || '');
+    const abs = path.isAbsolute(resolved) ? resolved : path.resolve(resolved);
+    if (!fs.existsSync(abs)) throw new Error(`media not found: ${abs}`);
+    out.push(abs);
+  }
+  return out;
+}
