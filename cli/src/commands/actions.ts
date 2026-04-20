@@ -186,8 +186,12 @@ export async function unfollowCommand(username: string): Promise<void> {
   return runCliAction('unfollow_user', { username }, getPort());
 }
 
-export async function deleteCommand(url: string): Promise<void> {
-  console.error(`Deleting: ${url}`);
+export async function deleteCommand(url: string, options: { engine?: string; visible?: boolean } = {}): Promise<void> {
+  const engine = normEngine(options.engine);
+  console.error(`Deleting: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
+  if (engine === 'debugger') {
+    return runCliAction('delete_tweet_debugger', { tweetUrl: url, visible: !!options.visible }, getPort());
+  }
   return runCliAction('delete_tweet', { tweetUrl: url }, getPort());
 }
 

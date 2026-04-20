@@ -41,6 +41,10 @@ const SEL = {
   // and "Quote". The Quote option is rendered as an anchor pointing to
   // /compose/post inside a role=menu container.
   quoteMenuOption: '[role="menu"] a[href="/compose/post"]',
+  // Delete: main tweet's three-dot menu, then the confirmation modal.
+  caretMain: 'article[data-testid="tweet"] [data-testid="caret"]',
+  menu: '[role="menu"]',
+  confirmDelete: '[data-testid="confirmationSheetConfirm"]',
 } as const
 
 export interface WriteResult {
@@ -402,6 +406,67 @@ export async function quoteViaDebugger(args: QuoteArgs): Promise<WriteResult> {
     }
   } finally {
     if (restore) await restore().catch(() => {})
+  }
+}
+
+// ============ Delete ============
+
+export interface DeleteArgs {
+  tweetUrl: string
+  visible?: boolean
+}
+
+/** Delete flow:
+ *    1. Navigate to the tweet detail page
+ *    2. Click the three-dot menu on the main tweet (article caret)
+ *    3. Find the "Delete/删除" menu item by text content and click it
+ *    4. Confirm via confirmationSheetConfirm
+ *    5. Wait for /DeleteTweet GraphQL response
+ */
+export async function deleteViaDebugger(args: DeleteArgs): Promise<WriteResult> {
+  const started = Date.now()
+  const tweetId = extractTweetId(args.tweetUrl)
+  if (!tweetId) {
+    return {
+      success: false,
+      error: `cannot parse tweet id from ${args.tweetUrl}`,
+      durationMs: 0,
+    }
+  }
+  try {
+    const target = await prepareTab(`https://x.com/i/status/${tweetId}`)
+    await waitForSelector(target.targetId, SEL.caretMain, 10_000)
+    await jitter(200, 500)
+    await clickSelector(target.targetId, SEL.caretMain)
+
+    await waitForSelector(target.targetId, SEL.menu, 5_000)
+    // Find the menu item containing "delete" or "删除" and click it by
+    // dispatching el.click() — we can't rely on a stable data-testid for
+    // this entry (X rotates them).
+    const clicked = await evalExpr<boolean>(
+      target.targetId,
+      `(function(){const items=document.querySelectorAll('[role="menuitem"]');for(const el of items){const t=(el.textContent||'').toLowerCase();if(t.includes('delete')||t.includes('删除')){el.click();return true;}}return false;})()`,
+    )
+    if (!clicked) {
+      throw new Error('delete menu item not found — not your tweet?')
+    }
+
+    const responsePromise = waitForJsonResponse<unknown>(
+      target,
+      '/DeleteTweet',
+      15_000,
+    )
+    await waitForSelector(target.targetId, SEL.confirmDelete, 5_000)
+    await jitter(200, 400)
+    await clickSelector(target.targetId, SEL.confirmDelete)
+    await responsePromise
+    return { success: true, tweetId, durationMs: Date.now() - started }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+      durationMs: Date.now() - started,
+    }
   }
 }
 

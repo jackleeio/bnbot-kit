@@ -12,6 +12,7 @@
  */
 
 import {
+  deleteViaDebugger,
   likeViaDebugger,
   postViaDebugger,
   quoteViaDebugger,
@@ -89,6 +90,12 @@ export const debuggerWriteHandlers: Record<string, (payload: Payload) => Promise
       tweetUrl: str(payload, 'tweetUrl'),
       text: str(payload, 'text'),
       mediaPaths: strArrayOrUndef(payload, 'mediaPaths'),
+      visible: bool(payload, 'visible'),
+    }),
+
+  delete_tweet_debugger: async (payload) =>
+    deleteViaDebugger({
+      tweetUrl: str(payload, 'tweetUrl'),
       visible: bool(payload, 'visible'),
     }),
 }

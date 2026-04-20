@@ -286,6 +286,8 @@ function buildProgram(): Command {
   // x delete
   x.command('delete <url>')
     .description('Delete a tweet')
+    .option('--engine <engine>', 'Write engine: "dom" (default) or "debugger" (chrome.debugger / CDP)', 'dom')
+    .option('--visible', 'Bring the automation window to front during the action')
     .action(deleteCommand);
 
   // x bookmark / unbookmark
