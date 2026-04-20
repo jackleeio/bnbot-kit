@@ -11,18 +11,22 @@
  */
 
 import {
+  type AttachedTarget,
   bringTabToFront,
   clickSelector,
   evalExpr,
   focusAndType,
   jitter,
   prepareTab,
+  registerEventListener,
   setFileInputFiles,
   sleep,
+  trustedClickSelector,
   waitForAnySelector,
   waitForJsonResponse,
   waitForSelector,
 } from './debuggerOps'
+import { debuggerSend } from '../scraperService'
 
 // Selectors — keep in sync with X's data-testid markup.
 const SEL = {
@@ -45,6 +49,12 @@ const SEL = {
   caretMain: 'article[data-testid="tweet"] [data-testid="caret"]',
   menu: '[role="menu"]',
   confirmDelete: '[data-testid="confirmationSheetConfirm"]',
+  // Thread: "+" button inside the composer toolbar. Scoped to the
+  // modal dialog — /compose/post on a background tab renders the
+  // composer as a dialog overlay with a stale duplicate of
+  // tweetTextarea_0RichTextInputContainer also present in the DOM
+  // behind it, so unscoped selectors can hit the wrong instance.
+  addButton: '[role="dialog"] [data-testid="toolBar"] [data-testid="addButton"]',
 } as const
 
 export interface WriteResult {
@@ -52,6 +62,153 @@ export interface WriteResult {
   tweetId?: string
   error?: string
   durationMs: number
+}
+
+/** Poll until submit is both aria-enabled AND no progress circle is
+ *  still animating on the attachments. X briefly un-disables the submit
+ *  button during video upload's intermediate state (upload done, transcode
+ *  pending) — clicking then makes /CreateTweet a no-op. Requiring BOTH
+ *  signals avoids the flicker. Logs a progress snapshot when it changes. */
+async function waitUntilClickableWithProgress(
+  targetId: string,
+  selector: string,
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  let lastSnapshot = ''
+  let stableReadings = 0
+  while (Date.now() < deadline) {
+    const state = await evalExpr<{
+      clickable: boolean
+      hasProgress: boolean
+      progressLabel: string | null
+      attachments: number
+    }>(
+      targetId,
+      `(function(){
+        const btn = document.querySelector(${JSON.stringify(selector)});
+        const clickable = !!btn && btn.getAttribute('aria-disabled') !== 'true' && !btn.hasAttribute('disabled');
+        // Media-specific progress only. The footer's char-counter is also
+        // role=progressbar but always present — we must NOT match it.
+        const circles = document.querySelectorAll('[data-testid="attachments"] [data-testid="dual-phase-countdown-circle"]');
+        let progressLabel = null;
+        for (const c of circles) {
+          const a = c.getAttribute('aria-valuenow') || c.getAttribute('aria-label');
+          if (a) { progressLabel = a; break; }
+          const t = (c.textContent || '').trim();
+          if (t) { progressLabel = t; break; }
+        }
+        const attachments = document.querySelectorAll('[data-testid="attachments"] img, [data-testid="attachments"] video').length;
+        return { clickable, hasProgress: circles.length > 0, progressLabel, attachments };
+      })()`,
+    )
+    const ready = state.clickable && !state.hasProgress
+    if (ready) {
+      stableReadings += 1
+      // Require 2 consecutive ready readings (~1s) to filter out flicker.
+      if (stableReadings >= 2) {
+        console.log(`[debugger] submit stable (attachments=${state.attachments})`)
+        return
+      }
+    } else {
+      stableReadings = 0
+    }
+    const snap = `attachments=${state.attachments} clickable=${state.clickable} hasProgress=${state.hasProgress} progress=${state.progressLabel ?? 'n/a'}`
+    if (snap !== lastSnapshot) {
+      console.log(`[debugger] ${snap}`)
+      lastSnapshot = snap
+    }
+    await sleep(500)
+  }
+  throw new Error(`timed out waiting for stable clickable state on ${selector}`)
+}
+
+/** Wait until N unique media_ids reach the "ready" state via the
+ *  `/media/upload.json` chunked protocol:
+ *    - image: single upload call, response has media_id_string, no
+ *      processing_info → ready immediately
+ *    - video: INIT → APPEND(s) → FINALIZE (processing_info.state=
+ *      'pending'|'in_progress') → STATUS polls until 'succeeded'
+ *  We listen to every response and track unique media_ids that reach
+ *  ready state. Dumps progress_percent to console for visibility.
+ *  This is strictly better than DOM polling — it's X's authoritative
+ *  server-side signal, not a UI flicker proxy. */
+function waitForMediaReady(
+  target: AttachedTarget,
+  expectedCount: number,
+  timeoutMs: number,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const ready = new Set<string>()
+    const lastProgress = new Map<string, number>()
+    let settled = false
+    const cleanup = registerEventListener(target.targetId, async (method, raw) => {
+      if (settled || method !== 'Network.responseReceived') return
+      const p = raw as { requestId: string; response: { url: string; status: number } }
+      const url = p?.response?.url || ''
+      if (!url.includes('/media/upload')) return
+      try {
+        const body = await debuggerSend<{ body: string; base64Encoded: boolean }>(
+          target.targetId,
+          'Network.getResponseBody',
+          { requestId: p.requestId },
+        )
+        const text = body.base64Encoded ? atob(body.body) : body.body
+        if (!text) return
+        let json: Record<string, unknown>
+        try {
+          json = JSON.parse(text)
+        } catch {
+          return
+        }
+        const idRaw = (json.media_id_string ?? json.media_id) as string | number | undefined
+        if (idRaw === undefined) return
+        const mediaId = String(idRaw)
+        const info = json.processing_info as
+          | { state?: string; progress_percent?: number; error?: { message?: string } }
+          | undefined
+        if (!info) {
+          ready.add(mediaId)
+          console.log(`[debugger][upload] ${mediaId} ready (image path)`)
+        } else if (info.state === 'succeeded') {
+          ready.add(mediaId)
+          console.log(`[debugger][upload] ${mediaId} succeeded`)
+        } else if (info.state === 'failed') {
+          settled = true
+          cleanup()
+          reject(
+            new Error(
+              `media ${mediaId} failed: ${info.error?.message || JSON.stringify(info)}`,
+            ),
+          )
+          return
+        } else {
+          const pct = info.progress_percent ?? 0
+          if (lastProgress.get(mediaId) !== pct) {
+            lastProgress.set(mediaId, pct)
+            console.log(`[debugger][upload] ${mediaId} ${info.state} ${pct}%`)
+          }
+        }
+        if (ready.size >= expectedCount) {
+          settled = true
+          cleanup()
+          resolve()
+        }
+      } catch {
+        // Swallow — body may be unreachable for some requests.
+      }
+    })
+    setTimeout(() => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(
+        new Error(
+          `timed out waiting for media ready (${ready.size}/${expectedCount} succeeded)`,
+        ),
+      )
+    }, timeoutMs)
+  })
 }
 
 function extractTweetId(input: string): string | null {
@@ -106,27 +263,25 @@ export async function replyViaDebugger(args: ReplyArgs): Promise<WriteResult> {
     await jitter(250, 500)
 
     if (args.mediaPaths && args.mediaPaths.length > 0) {
+      const readyPromise = waitForMediaReady(target, args.mediaPaths.length, 180_000)
       await setFileInputFiles(target.targetId, SEL.fileInput, args.mediaPaths)
-      await waitForSelector(target.targetId, SEL.attachmentsReady, 30_000)
-      await jitter(600, 1200)
+      await readyPromise
+      await waitForSelector(target.targetId, SEL.attachmentsReady, 10_000)
+      await jitter(400, 800)
     }
 
     // Arm response listener before clicking submit.
     const responsePromise = waitForJsonResponse<CreateTweetResponse>(
       target,
       '/CreateTweet',
-      20_000,
+      25_000,
     )
     const submitSel = await waitForAnySelector(
       target.targetId,
       [SEL.submitInline, SEL.submitModal],
       5_000,
     )
-    const clickable = await evalExpr<boolean>(
-      target.targetId,
-      `(function(){const el=document.querySelector(${JSON.stringify(submitSel)});return !!el && el.getAttribute('aria-disabled') !== 'true';})()`,
-    )
-    if (!clickable) throw new Error('submit button not clickable')
+    await waitUntilClickableWithProgress(target.targetId, submitSel, 120_000)
     await clickSelector(target.targetId, submitSel)
 
     const body = await responsePromise
@@ -166,21 +321,26 @@ export async function postViaDebugger(args: PostArgs): Promise<WriteResult> {
     await jitter(250, 500)
 
     if (args.mediaPaths && args.mediaPaths.length > 0) {
+      const readyPromise = waitForMediaReady(target, args.mediaPaths.length, 180_000)
       await setFileInputFiles(target.targetId, SEL.fileInput, args.mediaPaths)
-      await waitForSelector(target.targetId, SEL.attachmentsReady, 30_000)
-      await jitter(800, 1500)
+      await readyPromise
+      await waitForSelector(target.targetId, SEL.attachmentsReady, 10_000)
+      await jitter(400, 800)
     }
 
     const responsePromise = waitForJsonResponse<CreateTweetResponse>(
       target,
       '/CreateTweet',
-      20_000,
+      25_000,
     )
     const submitSel = await waitForAnySelector(
       target.targetId,
       [SEL.submitModal, SEL.submitInline],
       5_000,
     )
+    // For video, X keeps submit disabled until transcode completes.
+    // Poll + log progress.
+    await waitUntilClickableWithProgress(target.targetId, submitSel, 120_000)
     await clickSelector(target.targetId, submitSel)
 
     const body = await responsePromise
@@ -378,26 +538,143 @@ export async function quoteViaDebugger(args: QuoteArgs): Promise<WriteResult> {
     await jitter(250, 500)
 
     if (args.mediaPaths && args.mediaPaths.length > 0) {
+      const readyPromise = waitForMediaReady(target, args.mediaPaths.length, 180_000)
       await setFileInputFiles(target.targetId, SEL.fileInput, args.mediaPaths)
-      await waitForSelector(target.targetId, SEL.attachmentsReady, 30_000)
-      await jitter(600, 1200)
+      await readyPromise
+      await waitForSelector(target.targetId, SEL.attachmentsReady, 10_000)
+      await jitter(400, 800)
     }
 
     const responsePromise = waitForJsonResponse<CreateTweetResponse>(
       target,
       '/CreateTweet',
-      20_000,
+      25_000,
     )
     const submitSel = await waitForAnySelector(
       target.targetId,
       [SEL.submitModal, SEL.submitInline],
       5_000,
     )
+    await waitUntilClickableWithProgress(target.targetId, submitSel, 120_000)
     await clickSelector(target.targetId, submitSel)
 
     const body = await responsePromise
     const createdId = body?.data?.create_tweet?.tweet_results?.result?.rest_id
     return { success: true, tweetId: createdId, durationMs: Date.now() - started }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+      durationMs: Date.now() - started,
+    }
+  } finally {
+    if (restore) await restore().catch(() => {})
+  }
+}
+
+// ============ Thread ============
+
+export interface ThreadTweet {
+  text: string
+  mediaPaths?: string[]
+}
+
+export interface ThreadArgs {
+  tweets: ThreadTweet[]
+  visible?: boolean
+}
+
+export interface ThreadResult extends WriteResult {
+  /** rest_id of the ROOT tweet (the first one). Subsequent replies'
+   *  ids are not returned — X batches them on submit and we only wait
+   *  for the first response to avoid coupling to N outbound requests. */
+  rootId?: string
+  count?: number
+}
+
+/** Thread flow:
+ *    1. Open compose/post
+ *    2. For each tweet:
+ *       - focus tweetTextarea_i and type its text
+ *       - if media, setFileInputFiles + wait attachments ready
+ *       - if not last, click addButton inside dialog toolbar, then
+ *         wait for tweetTextarea_{i+1} to mount
+ *    3. Click submit (the modal button sends the whole chain)
+ *    4. Wait for the first /CreateTweet response — that's the root id. */
+export async function postThreadViaDebugger(args: ThreadArgs): Promise<ThreadResult> {
+  const started = Date.now()
+  const tweets = args.tweets
+  if (!Array.isArray(tweets) || tweets.length === 0) {
+    return { success: false, error: 'tweets array is empty', durationMs: 0 }
+  }
+  let restore: (() => Promise<void>) | null = null
+  try {
+    const target = await prepareTab('https://x.com/compose/post')
+    restore = await bringTabToFront(target.tabId)
+    await waitForSelector(target.targetId, SEL.replyTextarea, 15_000)
+    await jitter(400, 900)
+
+    for (let i = 0; i < tweets.length; i++) {
+      const t = tweets[i]
+      const containerSel = `[role="dialog"] [data-testid="tweetTextarea_${i}RichTextInputContainer"]`
+      const textareaSel = `[role="dialog"] [data-testid="tweetTextarea_${i}"]`
+      await waitForSelector(target.targetId, containerSel, 10_000)
+      // Click the container first — X lazy-mounts the inner contenteditable
+      // on interaction for slots i>0. Clicking the container triggers it.
+      if (i > 0) {
+        await clickSelector(target.targetId, containerSel)
+        await sleep(150)
+      }
+      await waitForSelector(target.targetId, textareaSel, 5_000)
+      await focusAndType(target.targetId, textareaSel, t.text)
+      await jitter(200, 400)
+
+      if (t.mediaPaths && t.mediaPaths.length > 0) {
+        // Multiple textareas can coexist in the dialog, so we scope the
+        // file input to the current slot. X renders one fileInput per
+        // active tweet slot — the last one matches the current index.
+        const readyPromise = waitForMediaReady(target, t.mediaPaths.length, 180_000)
+        await setFileInputFiles(target.targetId, SEL.fileInput, t.mediaPaths)
+        await readyPromise
+        await waitForSelector(target.targetId, SEL.attachmentsReady, 10_000)
+        await jitter(400, 800)
+      }
+
+      if (i < tweets.length - 1) {
+        await waitForSelector(target.targetId, SEL.addButton, 5_000)
+        // Use trusted mouse events — X's addButton only responds to
+        // real user clicks, not synthesized .click().
+        await trustedClickSelector(target.targetId, SEL.addButton)
+        await waitForSelector(
+          target.targetId,
+          `[role="dialog"] [data-testid="tweetTextarea_${i + 1}RichTextInputContainer"]`,
+          10_000,
+        )
+        await jitter(300, 600)
+      }
+    }
+
+    const responsePromise = waitForJsonResponse<CreateTweetResponse>(
+      target,
+      '/CreateTweet',
+      25_000,
+    )
+    const submitSel = await waitForAnySelector(
+      target.targetId,
+      [SEL.submitModal, SEL.submitInline],
+      5_000,
+    )
+    await waitUntilClickableWithProgress(target.targetId, submitSel, 120_000)
+    await clickSelector(target.targetId, submitSel)
+    const body = await responsePromise
+    const rootId = body?.data?.create_tweet?.tweet_results?.result?.rest_id
+    return {
+      success: true,
+      rootId,
+      tweetId: rootId,
+      count: tweets.length,
+      durationMs: Date.now() - started,
+    }
   } catch (err) {
     return {
       success: false,

@@ -100,14 +100,30 @@ export async function closeCommand(options: { save?: boolean }): Promise<void> {
   return runCliAction('close_composer', { save: isSave }, getPort());
 }
 
-export async function threadCommand(tweetsJson: string): Promise<void> {
+export async function threadCommand(tweetsJson: string, options: { engine?: string; visible?: boolean } = {}): Promise<void> {
   let tweets: unknown;
   try {
     tweets = JSON.parse(tweetsJson);
   } catch {
     fail('Invalid JSON for thread tweets. Expected: \'[{"text":"..."},{"text":"..."}]\'');
   }
-  console.error('Posting thread...');
+  const engine = normEngine(options.engine);
+  console.error('Posting thread...' + (engine === 'debugger' ? ' [engine=debugger]' : ''));
+  if (engine === 'debugger') {
+    if (!Array.isArray(tweets) || tweets.length === 0) {
+      fail('Thread requires a non-empty array');
+    }
+    // For each tweet, resolve media sources (URL / data URI / local path)
+    // to absolute local paths for DOM.setFileInputFiles.
+    const resolved = await Promise.all(
+      (tweets as Array<{ text: string; media?: string | string[] }>).map(async (t) => {
+        const sources = toSourceList(t.media);
+        const mediaPaths = sources.length > 0 ? await resolveMediaListAsPaths(sources) : undefined;
+        return { text: t.text, mediaPaths };
+      })
+    );
+    return runCliAction('post_thread_debugger', { tweets: resolved, visible: !!options.visible }, getPort());
+  }
   return runCliAction('post_thread', { tweets }, getPort());
 }
 

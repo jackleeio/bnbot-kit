@@ -275,7 +275,10 @@ export class BnbotWsServer {
       actionPayload: message.actionPayload,
     };
 
-    // Set up timeout
+    // Set up timeout — CDP write actions with potential media (video
+    // transcode can take >60s) get a longer budget than the default.
+    const isDebuggerWrite = message.actionType.endsWith('_debugger');
+    const effectiveTimeout = isDebuggerWrite ? 240_000 : DEFAULT_TIMEOUT;
     const timer = setTimeout(() => {
       this.pendingRequests.delete(internalId);
       this.cliPending.delete(internalId);
@@ -284,10 +287,10 @@ export class BnbotWsServer {
           type: 'action_result',
           requestId: originalRequestId,
           success: false,
-          error: `Action '${message.actionType}' timed out after ${DEFAULT_TIMEOUT / 1000}s`,
+          error: `Action '${message.actionType}' timed out after ${effectiveTimeout / 1000}s`,
         }));
       }
-    }, DEFAULT_TIMEOUT);
+    }, effectiveTimeout);
 
     // Track the CLI request
     this.cliPending.set(internalId, { ws: cliWs, originalRequestId, timer });

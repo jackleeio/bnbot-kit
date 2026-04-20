@@ -230,6 +230,8 @@ function buildProgram(): Command {
   // x thread
   x.command('thread <tweets-json>')
     .description('Post a tweet thread (JSON array)')
+    .option('--engine <engine>', 'Write engine: "dom" (default) or "debugger" (chrome.debugger / CDP)', 'dom')
+    .option('--visible', 'Bring the automation window to front during the action')
     .action(threadCommand);
 
   // x reply

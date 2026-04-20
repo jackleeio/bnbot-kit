@@ -22,10 +22,28 @@ import {
   getTab,
 } from '../scraperService'
 
-type DebuggerEventListener = (method: string, params: unknown) => void
+export type DebuggerEventListener = (method: string, params: unknown) => void
 
 const eventListeners = new Map<string, Set<DebuggerEventListener>>()
 let globalEventHandlerInstalled = false
+
+/** Register a listener for all CDP events on a given target. Callers
+ *  are responsible for filtering by event method. Returns a cleanup
+ *  function; safe to call multiple times. */
+export function registerEventListener(
+  targetId: string,
+  listener: DebuggerEventListener,
+): () => void {
+  ensureGlobalEventHandler()
+  if (!eventListeners.has(targetId)) eventListeners.set(targetId, new Set())
+  eventListeners.get(targetId)!.add(listener)
+  let unregistered = false
+  return () => {
+    if (unregistered) return
+    unregistered = true
+    eventListeners.get(targetId)?.delete(listener)
+  }
+}
 
 /** Install a single global CDP-event handler that multiplexes by
  *  targetId into our `eventListeners` map. We only install it once to
@@ -56,23 +74,43 @@ export interface AttachedTarget {
  *  debugger, enable the domains write actions need. Returns the tab +
  *  target ids. Safe to call back-to-back in one action — cheap idempotent
  *  resolver. */
+const viewportApplied = new Set<string>()
+
 export async function prepareTab(url: string): Promise<AttachedTarget> {
   const tabId = await getTab(url)
   // If the pooled tab already exists on a different URL, navigate it.
   const current = await chrome.tabs.get(tabId).catch(() => null)
-  if (current?.url && !current.url.startsWith(url)) {
-    // `getTab` already guarantees hostname match — we just need to
-    // push the path/query to the right tweet/compose URL.
-    await chrome.tabs.update(tabId, { url })
-    await waitForStatusComplete(tabId, 15_000)
-  }
+  const needsNav = !current?.url || !current.url.startsWith(url)
   const targetId = await ensureDebuggerAttached(tabId, [
     'Page',
     'Runtime',
     'DOM',
     'Network',
+    'Emulation',
   ])
   ensureGlobalEventHandler()
+  // Force a desktop viewport regardless of the OS-level window size.
+  // X's composer serves its mobile layout (no addButton, different
+  // testids) at narrow widths — pool windows can be small, so we pin
+  // the device metrics via CDP. React on X only reads width at mount,
+  // so on first attach we must re-render by navigating or reloading.
+  const firstApply = !viewportApplied.has(targetId)
+  await debuggerSend(targetId, 'Emulation.setDeviceMetricsOverride', {
+    width: 1280,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  }).catch(() => {})
+  viewportApplied.add(targetId)
+  if (needsNav) {
+    await chrome.tabs.update(tabId, { url })
+    await waitForStatusComplete(tabId, 15_000)
+  } else if (firstApply) {
+    // URL already right but we just applied viewport override — React
+    // has cached mobile layout, force a reload so it re-mounts at 1280.
+    await debuggerSend(targetId, 'Page.reload', { ignoreCache: false }).catch(() => {})
+    await waitForStatusComplete(tabId, 15_000)
+  }
   return { tabId, targetId }
 }
 
@@ -86,25 +124,21 @@ export async function bringTabToFront(tabId: number): Promise<() => Promise<void
   if (!windowId) return async () => {}
   const win = await chrome.windows.get(windowId).catch(() => null)
   const priorState = win?.state
-  const priorFocused = win?.focused ?? false
   try {
+    // Un-minimize without focusing — focused:true on macOS can pull
+    // offscreen windows back into view. 'normal' state alone removes
+    // Chrome's input-event throttling.
     await chrome.windows.update(windowId, {
-      focused: true,
       state: 'normal',
+      focused: false,
     })
   } catch {
-    // Best-effort — if focus/state change fails, continue anyway.
+    // Best-effort.
   }
   return async () => {
-    // Restore: only re-minimize if it was minimized before. Don't force
-    // re-minimize if the user manually brought it up during the action.
     try {
       if (priorState === 'minimized') {
         await chrome.windows.update(windowId, { state: 'minimized' })
-      } else if (!priorFocused) {
-        // Nothing to do — un-focusing isn't really supported. The
-        // minimized state was our disguise; without it we just leave
-        // the window where it is.
       }
     } catch {
       // ignore
@@ -181,6 +215,27 @@ export async function waitForSelector(
   throw new Error(`timed out waiting for selector ${selector}`)
 }
 
+/** Poll the page until a button-like selector is no longer
+ *  aria-disabled. Useful after attaching video: X keeps submit disabled
+ *  while the upload/transcode is processing, even though the visible
+ *  `[data-testid="attachments"]` node already appeared. */
+export async function waitUntilClickable(
+  targetId: string,
+  selector: string,
+  timeoutMs = 60_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const ready = await evalExpr<boolean>(
+      targetId,
+      `(function(){const el=document.querySelector(${JSON.stringify(selector)});return !!el && el.getAttribute('aria-disabled') !== 'true' && !el.hasAttribute('disabled');})()`,
+    )
+    if (ready) return
+    await sleep(300)
+  }
+  throw new Error(`timed out waiting for clickable ${selector}`)
+}
+
 /** Wait for ANY one of the selectors, return which matched. */
 export async function waitForAnySelector(
   targetId: string,
@@ -205,6 +260,35 @@ export async function waitForAnySelector(
 export async function clickSelector(targetId: string, selector: string): Promise<void> {
   const script = `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(!el)throw new Error('not found: '+${JSON.stringify(selector)});el.scrollIntoView({block:'center'});el.click();return true;})()`
   await evalExpr<boolean>(targetId, script)
+}
+
+/** Dispatch a REAL (trusted) mouse click via CDP at the element's
+ *  center. Necessary for buttons whose React handlers only fire on
+ *  trusted pointer events (element.click() is synthesized and skipped). */
+export async function trustedClickSelector(
+  targetId: string,
+  selector: string,
+): Promise<void> {
+  const rect = await evalExpr<{ x: number; y: number } | null>(
+    targetId,
+    `(function(){const el=document.querySelector(${JSON.stringify(selector)});if(!el)return null;el.scrollIntoView({block:'center'});const r=el.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`,
+  )
+  if (!rect) throw new Error(`trustedClick: not found ${selector}`)
+  // Dispatch a full mouse press+release at the element's center.
+  await debuggerSend(targetId, 'Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x: rect.x,
+    y: rect.y,
+    button: 'left',
+    clickCount: 1,
+  })
+  await debuggerSend(targetId, 'Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: rect.x,
+    y: rect.y,
+    button: 'left',
+    clickCount: 1,
+  })
 }
 
 export async function focusSelector(targetId: string, selector: string): Promise<void> {

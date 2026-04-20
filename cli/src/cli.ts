@@ -16,7 +16,7 @@ import { randomUUID } from 'crypto';
 import { resolveMediaListAsync } from './tools/mediaUtils.js';
 
 const DEFAULT_PORT = 18900;
-const CLI_TIMEOUT = 120000; // 120s
+const CLI_TIMEOUT = 300000; // 5 min — covers debugger write actions with video transcode
 
 /**
  * Map of CLI tool names (kebab-case) to WebSocket action types (snake_case).
