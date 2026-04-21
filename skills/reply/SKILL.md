@@ -92,6 +92,11 @@ Output each as:
 bnbot x reply --engine debugger -- "<source-url>" "<picked draft>"
 ```
 
+**Verify the CLI's JSON output before claiming success.** Only write
+to `reply-rate.json` + `reply-YYYYMMDD.jsonl` if `success: true` in
+stdout. If the command failed or timed out, do NOT tell the user
+"posted" / "recorded"; report the raw stdout and let the user decide.
+
 ## Type: image
 
 ### 3b. Design the image

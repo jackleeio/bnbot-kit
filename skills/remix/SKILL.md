@@ -169,8 +169,15 @@ If the source tweet has media you want to remix (image / video):
 3. Don't `--media` a URL pointing at `video.twimg.com` directly — the
    CDP upload path needs a local file.
 
-After success, `bnbot x post` prints JSON `{success, tweetId, ...}`.
-Echo `https://x.com/<handle>/status/<tweetId>` back to the user.
+After success, `bnbot x post` / `bnbot x quote` prints JSON
+`{success: true, tweetId: "...", durationMs: N}`. Echo
+`https://x.com/<handle>/status/<tweetId>` back to the user.
+
+**Only write to `remix-seen.json` after confirming `success: true` in
+stdout.** If the command timed out or returned `success: false`, don't
+pretend it worked — report the raw output honestly. Fake success
+poisons the dedup file and leaves the user thinking the retry limit is
+exhausted.
 
 ### 6. Log
 

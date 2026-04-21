@@ -343,44 +343,93 @@ interface NetworkResponseEvent {
   response: { url: string; status: number }
 }
 
+interface NetworkLoadingFinishedEvent {
+  requestId: string
+}
+
+/**
+ * Wait for a JSON response whose URL contains `urlPattern`.
+ *
+ * Uses a two-phase listener:
+ *   1. `Network.responseReceived` — when headers arrive. Record the
+ *      requestId → url pair if the URL matches our pattern. We DO NOT
+ *      try to read the body here: headers-arrived does NOT mean the
+ *      body has been streamed, and `getResponseBody` would reject with
+ *      "No resource with given identifier found" / "Response body not
+ *      yet available", killing the whole promise.
+ *   2. `Network.loadingFinished` — body is fully streamed. Look up the
+ *      requestId, fetch the body, parse, resolve.
+ *
+ * If `getResponseBody` still fails (e.g. the tab closed mid-request),
+ * we retry a couple times before giving up and letting the next
+ * matching request (if any) be the one that resolves.
+ */
 export async function waitForJsonResponse<T = unknown>(
   target: AttachedTarget,
-  urlPattern: string,
+  urlPattern: string | string[],
   timeoutMs = 15_000,
 ): Promise<T> {
+  const patterns = Array.isArray(urlPattern) ? urlPattern : [urlPattern]
   return new Promise<T>((resolve, reject) => {
     let settled = false
     const key = target.targetId
+    // requestId → url for requests whose URL we care about.
+    const pending = new Map<string, string>()
     if (!eventListeners.has(key)) eventListeners.set(key, new Set())
-    const listener: DebuggerEventListener = async (method, raw) => {
-      if (method !== 'Network.responseReceived' || settled) return
-      const params = raw as NetworkResponseEvent
-      if (!params?.response?.url?.includes(urlPattern)) return
-      try {
-        const body = await debuggerSend<{ body: string; base64Encoded: boolean }>(
-          target.targetId,
-          'Network.getResponseBody',
-          { requestId: params.requestId },
-        )
-        const text = body.base64Encoded ? atob(body.body) : body.body
-        const parsed = JSON.parse(text) as T
-        if (settled) return
-        settled = true
-        eventListeners.get(key)?.delete(listener)
-        resolve(parsed)
-      } catch (err) {
-        if (settled) return
-        settled = true
-        eventListeners.get(key)?.delete(listener)
-        reject(err instanceof Error ? err : new Error(String(err)))
-      }
-    }
-    eventListeners.get(key)!.add(listener)
-    setTimeout(() => {
+
+    const finish = (err: Error | null, value?: T) => {
       if (settled) return
       settled = true
       eventListeners.get(key)?.delete(listener)
-      reject(new Error(`timed out waiting for response matching ${urlPattern}`))
+      if (err) reject(err)
+      else resolve(value as T)
+    }
+
+    const tryReadBody = async (requestId: string): Promise<T | null> => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const body = await debuggerSend<{ body: string; base64Encoded: boolean }>(
+            target.targetId,
+            'Network.getResponseBody',
+            { requestId },
+          )
+          const text = body.base64Encoded ? atob(body.body) : body.body
+          return JSON.parse(text) as T
+        } catch {
+          // Body buffer may not be ready immediately even on
+          // loadingFinished (rare, but observed). Back off briefly.
+          await sleep(150)
+        }
+      }
+      return null
+    }
+
+    const matches = (url: string): boolean => patterns.some((p) => url.includes(p))
+
+    const listener: DebuggerEventListener = async (method, raw) => {
+      if (settled) return
+      if (method === 'Network.responseReceived') {
+        const params = raw as NetworkResponseEvent
+        const url = params?.response?.url
+        if (url && matches(url)) {
+          pending.set(params.requestId, url)
+        }
+        return
+      }
+      if (method === 'Network.loadingFinished') {
+        const params = raw as NetworkLoadingFinishedEvent
+        if (!pending.has(params.requestId)) return
+        pending.delete(params.requestId)
+        const parsed = await tryReadBody(params.requestId)
+        if (parsed !== null) finish(null, parsed)
+        // If null (all retries failed), keep listening — another
+        // matching request may arrive before the timeout.
+      }
+    }
+
+    eventListeners.get(key)!.add(listener)
+    setTimeout(() => {
+      finish(new Error(`timed out waiting for response matching ${patterns.join(' | ')}`))
     }, timeoutMs)
   })
 }

@@ -220,12 +220,33 @@ function extractTweetId(input: string): string | null {
 
 interface CreateTweetResponse {
   data?: {
+    // Short tweets (≤ 280 chars) → /CreateTweet → data.create_tweet
     create_tweet?: {
       tweet_results?: {
         result?: { rest_id?: string }
       }
     }
+    // Long tweets (> 280 chars, including long quotes) → /CreateNoteTweet
+    //  → data.notetweet_create (same shape, different key).
+    notetweet_create?: {
+      tweet_results?: {
+        result?: { rest_id?: string }
+      }
+    }
   }
+}
+
+/** Patterns the CDP listener should match when we're waiting for a
+ *  tweet-creation response. X picks between two endpoints based on
+ *  whether the body is a long (note) tweet — we accept either. */
+const CREATE_TWEET_URL_PATTERNS = ['/CreateTweet', '/CreateNoteTweet']
+
+/** Pull the new tweet's rest_id out of either response shape. */
+function extractCreatedId(body: CreateTweetResponse | undefined): string | undefined {
+  return (
+    body?.data?.create_tweet?.tweet_results?.result?.rest_id ??
+    body?.data?.notetweet_create?.tweet_results?.result?.rest_id
+  )
 }
 
 // ============ Reply ============
@@ -273,7 +294,7 @@ export async function replyViaDebugger(args: ReplyArgs): Promise<WriteResult> {
     // Arm response listener before clicking submit.
     const responsePromise = waitForJsonResponse<CreateTweetResponse>(
       target,
-      '/CreateTweet',
+      CREATE_TWEET_URL_PATTERNS,
       25_000,
     )
     const submitSel = await waitForAnySelector(
@@ -285,7 +306,7 @@ export async function replyViaDebugger(args: ReplyArgs): Promise<WriteResult> {
     await clickSelector(target.targetId, submitSel)
 
     const body = await responsePromise
-    const createdId = body?.data?.create_tweet?.tweet_results?.result?.rest_id
+    const createdId = extractCreatedId(body)
     return { success: true, tweetId: createdId, durationMs: Date.now() - started }
   } catch (err) {
     return {
@@ -330,7 +351,7 @@ export async function postViaDebugger(args: PostArgs): Promise<WriteResult> {
 
     const responsePromise = waitForJsonResponse<CreateTweetResponse>(
       target,
-      '/CreateTweet',
+      CREATE_TWEET_URL_PATTERNS,
       25_000,
     )
     const submitSel = await waitForAnySelector(
@@ -344,7 +365,7 @@ export async function postViaDebugger(args: PostArgs): Promise<WriteResult> {
     await clickSelector(target.targetId, submitSel)
 
     const body = await responsePromise
-    const createdId = body?.data?.create_tweet?.tweet_results?.result?.rest_id
+    const createdId = extractCreatedId(body)
     return { success: true, tweetId: createdId, durationMs: Date.now() - started }
   } catch (err) {
     return {
@@ -547,7 +568,7 @@ export async function quoteViaDebugger(args: QuoteArgs): Promise<WriteResult> {
 
     const responsePromise = waitForJsonResponse<CreateTweetResponse>(
       target,
-      '/CreateTweet',
+      CREATE_TWEET_URL_PATTERNS,
       25_000,
     )
     const submitSel = await waitForAnySelector(
@@ -559,7 +580,7 @@ export async function quoteViaDebugger(args: QuoteArgs): Promise<WriteResult> {
     await clickSelector(target.targetId, submitSel)
 
     const body = await responsePromise
-    const createdId = body?.data?.create_tweet?.tweet_results?.result?.rest_id
+    const createdId = extractCreatedId(body)
     return { success: true, tweetId: createdId, durationMs: Date.now() - started }
   } catch (err) {
     return {
@@ -656,7 +677,7 @@ export async function postThreadViaDebugger(args: ThreadArgs): Promise<ThreadRes
 
     const responsePromise = waitForJsonResponse<CreateTweetResponse>(
       target,
-      '/CreateTweet',
+      CREATE_TWEET_URL_PATTERNS,
       25_000,
     )
     const submitSel = await waitForAnySelector(
@@ -667,7 +688,7 @@ export async function postThreadViaDebugger(args: ThreadArgs): Promise<ThreadRes
     await waitUntilClickableWithProgress(target.targetId, submitSel, 120_000)
     await clickSelector(target.targetId, submitSel)
     const body = await responsePromise
-    const rootId = body?.data?.create_tweet?.tweet_results?.result?.rest_id
+    const rootId = extractCreatedId(body)
     return {
       success: true,
       rootId,

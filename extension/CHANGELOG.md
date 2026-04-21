@@ -3,6 +3,15 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.9.5] - 2026-04-21
+
+### Fixed
+- **CDP write ops 永远 timeout 的严重 bug**: `waitForJsonResponse` 之前只监听 `Network.responseReceived`（headers 到了就触发），然后立即 `getResponseBody` —— body 还没完整传完，直接 reject 整个 promise，CLI 报 timeout。**改成** 监听 `Network.loadingFinished`（body 完整传完），加 3 次 retry 兜底。
+- **Quote / 长推文发送时监听错 endpoint**: quote 推走 `/CreateNoteTweet`（而不是 `/CreateTweet`），response 在 `data.notetweet_create` 不在 `data.create_tweet`。所有 4 个写命令（post / reply / quote / thread）改成同时监听两个 URL patterns，response 解析 fallback 两个路径（`extractCreatedId` helper）。
+
+### Changed
+- **Sidebar 下半部分紧凑布局修正**: 设置齿轮 + 用户头像从独立 flex container 合并到 tab 按钮下方同一 flex group，间距统一 16px。
+
 ## [0.9.4] - 2026-04-21
 
 ### Changed

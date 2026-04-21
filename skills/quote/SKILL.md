@@ -97,7 +97,22 @@ Pick [1|2|3], [edit N], [redraft], or [skip]?
 bnbot x quote --engine debugger -- "<source-url>" "<picked draft>"
 ```
 
-After success, return the new tweet URL.
+**Verify the command's stdout before claiming success.** `bnbot x quote`
+returns JSON like `{"success": true, "tweetId": "...", "durationMs": N}`
+on success, or `{"success": false, ...}` / exit-1 on failure. If
+`success` is not `true`:
+
+- Do NOT write to `quote-seen.json`.
+- Do NOT tell the user "dedup recorded" or "posted, use timeline scrape
+  to verify".
+- Report the failure honestly: what the CLI said, what state was not
+  updated, and suggest next steps (retry / check logs / confirm
+  extension + daemon online).
+
+The `/remix` feedback loop depends on honest failure reporting — faking
+success contaminates downstream dedup data.
+
+After a REAL success, return the new tweet URL to the user.
 
 ## State & logging
 

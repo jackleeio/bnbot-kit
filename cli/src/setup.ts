@@ -15,8 +15,19 @@ import { homedir } from 'os';
 import { execSync } from 'child_process';
 
 // Default permission whitelist for the bnbot desktop agent. Keeps users
-// from being asked for approval every time the agent runs `bnbot x ...`.
-const BNBOT_PERMISSION_PATTERNS = ['Bash(bnbot *)', 'Bash(bnbot)'];
+// from being asked for approval every time the agent runs `bnbot x ...`
+// or invokes one of the bundled bnbot skills (/reply /quote /remix ...).
+const BNBOT_PERMISSION_PATTERNS = [
+  'Bash(bnbot *)',
+  'Bash(bnbot)',
+  'Skill(quote)',
+  'Skill(reply)',
+  'Skill(remix)',
+  'Skill(auto-reply)',
+  'Skill(inbox-triage)',
+  'Skill(inbox-watch)',
+  'Skill(schedule)',
+];
 
 /**
  * Write / merge default permissions into ~/.bnbot/settings.json so the

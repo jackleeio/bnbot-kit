@@ -437,12 +437,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </button>
         </div>
-      </div>
 
-      {/* Spacer to push User Profile to bottom */}
-      <div style={{ flex: 0 }} />
-
-      {/* User Profile Button with Menu */}
+      {/* User Profile Button with Menu — sits right below settings in the
+          same flex group so its 16px gap matches every other nav item. */}
       <div
         ref={menuRef}
         style={{ position: 'relative' }}
@@ -643,6 +640,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <UserCircle size={18} strokeWidth={isProfileActive || showMenu ? 2.5 : 2} />
           )}
         </button>
+      </div>
       </div>
 
     </div>
