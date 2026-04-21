@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Zap, Bot, TrendingUp, UserCircle, Sparkles, LogOut, Languages, AtSign, Crown, ScanEye, CalendarDays, MessageSquare, Settings, Wallet, Send, Check, X, ExternalLink, BarChart3, RefreshCw } from 'lucide-react';
+import { Zap, TrendingUp, UserCircle, Sparkles, LogOut, Languages, AtSign, Crown, ScanEye, CalendarDays, MessageSquare, Settings, Wallet, Send, Check, X, ExternalLink, BarChart3, RefreshCw } from 'lucide-react';
 import { commandService } from '../services/commandService';
 import { telegramService, TelegramStatus } from '../services/telegramService';
 import { SteeringWheel } from './icons/SteeringWheel';
@@ -70,9 +70,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const currentVersion = chrome.runtime?.getManifest?.()?.version || '0.0.0';
 
   const navItems = [
-    { id: Tab.CHAT, icon: MessageSquare, label: t.sidebar.chat },
+    // Chat tab removed — chat lives in the bnbot desktop app now;
+    // extension is pure browser executor. ChatPanel render path is
+    // kept for legacy panel-to-chat transitions used elsewhere.
     { id: Tab.ANALYSIS, icon: TrendingUp, label: t.sidebar.analysis },
-    { id: Tab.AUTO_REPLY, icon: Bot, label: t.sidebar.autoReply || 'Auto Reply' },
+    // Auto Reply tab removed — see /auto-reply, /inbox-watch skills.
     { id: Tab.BOOST, icon: Zap, label: t.sidebar.boost },
     { id: Tab.DRAFTS, icon: CalendarDays, label: t.sidebar.drafts },
     { id: Tab.X_ANALYTICS, icon: BarChart3, label: t.common.xAnalytics },
