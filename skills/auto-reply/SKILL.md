@@ -425,8 +425,8 @@ Claude runs the full loop headless. For each candidate:
 2. filter by safety + niche
 3. score each via the formula above
 4. pick top scoring, read FULL text
-5. if score ≥ 50: draft → post reply (no approval)
-6. if 30 ≤ score < 50: post like only
+5. decide action (quote / reply / like / skip) per §Final decision rule
+6. post via CDP (no approval)
 7. sleep 90–180s jitter
 8. repeat until duration or max hit
 
@@ -435,6 +435,65 @@ Session auto-exits when done. State persists across sessions via
 
 **Auto mode skips user approval but applies ALL safety + strategy
 rules strictly.** If profile voice isn't loaded → abort immediately.
+
+### Visibility / audit trail
+
+Auto mode is hands-off but NOT opaque. Claude MUST print and persist
+the scoring breakdown so the user can audit every decision.
+
+**During the run — stream to console**, one block per candidate:
+
+```
+[2/8] @UnicornBitcoin  (200k followers, blue)  L346 RT105 R24 V9678  age=0.4h
+  reply_ev=8_200   quote_ev=1_450   fit=core-niche   agrees=true
+  → REPLY  (AAVE breaking, on-niche, reply rank=2, blue +0)
+  draft: "上一次主流借贷协议..."
+  [posted 2046... in 6.6s]
+  sleeping 127s…
+```
+
+For `skip`, still print the line (one-liner) — user should see WHY
+the tweet was rejected (e.g. `→ SKIP (off-topic: vulture bird)`).
+
+**At session end — write a markdown report**:
+
+```
+~/.bnbot/logs/auto-reply-session-<YYYYMMDD-HHMM>.md
+```
+
+Format:
+
+```markdown
+# Auto-reply session · 2026-04-21 12:30 · 3m 00s
+
+Source: following
+Profile: jackleeio (mimic @KKaWSB)
+Mode: --auto --max=1
+
+## Summary
+- Scraped: 15 candidates
+- Hard-filtered: 3 reply-in-thread · 2 dead-on-arrival · 1 suppressed
+- Scored: 9 candidates
+- Actions: 0 quote · 1 reply · 2 like · 12 skip
+- Posted: 1 (https://x.com/jackleeio/status/2046...)
+
+## Candidates
+
+| Rank | Author | EV reply | EV quote | Fit | Action | Reason |
+|---|---|---|---|---|---|---|
+| 1 | @UnicornBitcoin | 8,200 | 1,450 | core-niche | reply | AAVE breaking, top-3 |
+| 2 | @TheBlockCo | 3,749 | — | core-niche | like | On-niche + endorsed |
+| 3 | @AMAZlNGNATURE | 9,594 | 5,800 | off-topic | skip | vulture bird, not Web3/AI |
+| 4 | @dvassallo | 103 | — | adjacent | skip | rank 13, buried |
+| … | | | | | | |
+
+## Drafts posted
+
+- @UnicornBitcoin → `上一次主流借贷协议...`
+```
+
+The report is both a debug trace and an audit log. User can review
+after a scheduled session ran overnight and sanity-check the decisions.
 
 ### C. Scheduled auto-pilot (the flagship use case)
 
