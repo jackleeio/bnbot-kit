@@ -3,6 +3,15 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.9.1] - 2026-04-21
+
+### Removed
+- **AnalyzeButtonInjector 整个清掉**: 推文页注入的五个按钮全部下线 — AI 回复、AI 图片回复、AI 引用、Analyze (推文分析)、Thread Summary (线程合并)。这些 AI 写+读的入口迁移到桌面 agent 的 `/reply` / `/quote` / `/remix` skill。
+- **TweetContextPanel.tsx**: 已经不渲染了，彻底删文件。
+- **ChatPanel `contextActions`**: 推文详情页 chat 模式下的 3×3 action grid 下线。
+- **App.tsx `bnbot-analyze-tweet` 事件监听**: 连带下线。
+- **`locales/{zh,en}.ts xAgent` 块**: 整段删除 (analyze/reply/quote/similar/threads/factCheck/imageReply/summary 等字段全部下线)。
+
 ## [0.9.0] - 2026-04-21
 
 ### Removed

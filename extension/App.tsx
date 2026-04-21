@@ -6,7 +6,6 @@ import { BoostPanel } from './components/panels/BoostPanel';
 import { AnalysisPanel } from './components/panels/AnalysisPanel';
 import { CreditsPanel } from './components/panels/CreditsPanel';
 import { LoginPanel } from './components/panels/LoginPanel';
-import { TweetContextPanel } from './components/panels/TweetContextPanel';
 import { SchedulePanel } from './components/panels/SchedulePanel';
 // AutoPilotPanel removed — autopilot lives in bnbot CLI /auto-reply + /inbox-watch skills.
 import { XBalancePanel } from './components/panels/XBalancePanel';
@@ -782,39 +781,6 @@ function AppContent() {
 
     window.addEventListener('bnbot-open-boost-tab', handleOpenBoostTab);
 
-    // Listen for analyze-tweet event from injected BNBot icon on tweet detail pages
-    const handleAnalyzeTweet = (e: Event) => {
-      const { tweetId, action } = (e as CustomEvent).detail || {};
-      // Handle login request from inline AI reply
-      if (action === 'login') {
-        setShowLoginModal(true);
-        setIsCollapsed(false);
-        return;
-      }
-      if (tweetId) {
-        setCurrentTweetId(tweetId);
-        setIsCollapsed(false);
-        // Check login first
-        if (!user) {
-          setShowLoginModal(true);
-          return;
-        }
-        // Convert action to chat message
-        if (action === 'quote' || action === 'analyze' || action === 'imageReply' || action === 'summary') {
-          const xAgent = (t.chat as any)?.xAgent;
-          const actionMessages: Record<string, string> = {
-            quote: xAgent?.quoteQuery || 'Draft a quote tweet that adds value to this conversation.',
-            analyze: xAgent?.analyzeQuery || "Analyze this tweet's sentiment and impact.",
-            imageReply: xAgent?.imageReplyQuery || 'Generate an image replying to this tweet',
-            summary: xAgent?.summaryQuery || 'Merge all tweets from this thread into one',
-          };
-          setPendingAgentMessage(actionMessages[action]);
-        }
-        setActiveTab(Tab.CHAT);
-      }
-    };
-    window.addEventListener('bnbot-analyze-tweet', handleAnalyzeTweet);
-
     const handleOpenSidebar = () => {
       setIsCollapsed(false);
     };
@@ -822,7 +788,6 @@ function AppContent() {
 
     return () => {
       window.removeEventListener('bnbot-open-boost-tab', handleOpenBoostTab);
-      window.removeEventListener('bnbot-analyze-tweet', handleAnalyzeTweet);
       window.removeEventListener('bnbot-open-sidebar', handleOpenSidebar);
     };
   }, []);

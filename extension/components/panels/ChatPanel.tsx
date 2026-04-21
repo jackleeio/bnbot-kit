@@ -3429,17 +3429,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onLoginClick, onCreditsCli
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showComposeDropdown]);
 
-  // Contextual Actions for X Agent Mode
-  const contextActions = [
-    { label: t.chat.xAgent.analyze, icon: BarChart2, query: t.chat.xAgent.analyzeQuery },
-    { label: t.chat.xAgent.reply, icon: MessageCircle, query: t.chat.xAgent.replyQuery },
-    { label: t.chat.xAgent.imageReply, icon: Image, query: t.chat.xAgent.imageReplyQuery },
-    { label: t.chat.xAgent.quote, icon: MessageSquarePlus, query: t.chat.xAgent.quoteQuery },
-    { label: t.chat.xAgent.similar, icon: Users, query: t.chat.xAgent.similarQuery },
-    { label: t.chat.xAgent.threads, icon: Layers, query: t.chat.xAgent.threadsQuery },
-    { label: t.chat.xAgent.factCheck, icon: ShieldCheck, query: t.chat.xAgent.factCheckQuery },
-    { label: t.chat.xAgent.summary, icon: FileText, query: t.chat.xAgent.summaryQuery },
-  ];
 
   // Scroll logic
   // Handle Esc key to close preview
@@ -4541,63 +4530,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onLoginClick, onCreditsCli
                 </div>
               )}
 
-              {/* Context Mode Hero / Actions */}
-              {contextTweetId && (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 16px' }}>
-                  <div className="mb-6">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div style={{ width: '20px', height: '2px', backgroundColor: 'var(--accent-color)', borderRadius: '1px' }} />
-                      <span className="text-[10px] font-semibold tracking-[0.15em] uppercase text-[var(--text-secondary)]">
-                        {t.chat.xAgent.title}
-                      </span>
-                    </div>
-                    <p className="text-sm text-[var(--text-secondary)] pl-7">
-                      {t.chat.xAgent.subtitle}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 w-full">
-                    {contextActions.map((action, i) => (
-                      <button
-                        key={action.label}
-                        onClick={async () => {
-                          if (onLoginClick) {
-                            const user = await authService.getUser();
-                            if (!user) { onLoginClick(); return; }
-                          }
-                          const hiddenPrompt = await buildContextPromptAsync(contextTweetId, apiTweetData, action.query);
-                          handleSubmit(undefined, hiddenPrompt, action.query);
-                        }}
-                        className="group relative flex flex-col items-center justify-center gap-2.5 py-5 w-full rounded-xl cursor-pointer overflow-hidden"
-                        style={{
-                          backgroundColor: 'var(--bg-secondary)',
-                          transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = 'translateY(-2px)';
-                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(250,204,21,0.12)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'translateY(0)';
-                          e.currentTarget.style.boxShadow = 'none';
-                        }}
-                      >
-                        <div
-                          className="absolute inset-0 opacity-0 group-hover:opacity-100"
-                          style={{
-                            background: 'linear-gradient(135deg, rgba(250,204,21,0.06) 0%, transparent 60%)',
-                            transition: 'opacity 0.2s ease',
-                          }}
-                        />
-                        <div className="relative text-[var(--text-secondary)] group-hover:text-[var(--accent-color)]" style={{ transition: 'color 0.15s ease' }}>
-                          <action.icon size={20} strokeWidth={1.5} />
-                        </div>
-                        <span className="relative text-[11px] font-medium text-[var(--text-primary)]">{action.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* Context hero / action grid removed — reply / image-reply / quote / analyze / summary
+                  等 AI 写+读入口全部迁移到桌面 agent (/reply /quote /remix skill)。 */}
 
               {/* Standard Suggestions - Hide if in context mode */}
             </div>

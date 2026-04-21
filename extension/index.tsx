@@ -8,7 +8,6 @@ import { MarkdownPasteProcessor } from './utils/MarkdownPasteProcessor';
 import { BoostChecker } from './utils/BoostChecker';
 import { xUserStore } from './stores/xUserStore';
 import { HomeTimelineMonitor } from './utils/HomeTimelineMonitor';
-import { AnalyzeButtonInjector } from './utils/AnalyzeButtonInjector';
 import { HomeBoostChecker } from './utils/HomeBoostChecker';
 import { VideoDownloadManager } from './utils/VideoDownloadManager';
 // 初始化 commandService 消息监听器，确保 LOCAL_ACTION（OpenClaw MCP）在内容脚本加载时就能处理
@@ -466,10 +465,6 @@ const mount = () => {
   // Start the Twitter Injector
   const injector = new TwitterInjector();
   injector.start();
-
-  // Start the Analyze Button Injector (BNBot icon next to Grok on all tweets)
-  const analyzeInjector = new AnalyzeButtonInjector();
-  analyzeInjector.start();
 
   // Initialize Ad Blocker
   initAdBlocker();
