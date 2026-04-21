@@ -14,7 +14,7 @@ import { draftService } from '../../services/draftService';
 import { ChatMessage } from '../../types';
 import { useLanguage } from '../LanguageContext';
 import { useTheme } from '../ThemeContext';
-import { ComposeIcon, ReplyIcon, XIcon, TwitterBirdIcon, WeChatIcon, TikTokIcon, BitcoinIcon, GeminiIcon, BananaIcon, XiaohongshuIcon } from '../icons';
+import { ComposeIcon, ReplyIcon, XIcon, WeChatIcon, TikTokIcon, BitcoinIcon, GeminiIcon, BananaIcon, XiaohongshuIcon } from '../icons';
 import { navigateToUrl } from '../../utils/navigationUtils';
 import { TextSelectionPopover } from './TextSelectionPopover';
 import { RewrittenTimeline, RewrittenTimelineData } from './RewrittenTimeline';
@@ -419,7 +419,6 @@ const getSuggestions = (t: ReturnType<typeof import('../LanguageContext').useLan
   { title: t.chat.suggestions.search, subtitle: t.chat.suggestions.searchSub, icon: Search, color: "#4f46e5", query: t.chat.suggestions.searchQuery },
   { title: t.chat.suggestions.bookmarkSummary, subtitle: t.chat.suggestions.bookmarkSummarySub, icon: Bookmark, color: "#f59e0b", query: t.chat.suggestions.bookmarkSummaryQuery },
   { title: t.chat.suggestions.tiktokRepost, subtitle: t.chat.suggestions.tiktokRepostSub, icon: TikTokIcon, color: "#000000", query: t.chat.suggestions.tiktokRepostQuery },
-  { title: t.chat.suggestions.tweetRepost, subtitle: t.chat.suggestions.tweetRepostSub, icon: TwitterBirdIcon, color: "#1d9bf0", query: t.chat.suggestions.tweetRepostQuery },
   { title: t.chat.suggestions.wechatRepost, subtitle: t.chat.suggestions.wechatRepostSub, icon: WeChatIcon, color: "#07C160", query: t.chat.suggestions.wechatRepostQuery },
   { title: t.chat.suggestions.xiaohongshuRepost, subtitle: t.chat.suggestions.xiaohongshuRepostSub, icon: XiaohongshuIcon, color: "#FF2442", query: t.chat.suggestions.xiaohongshuRepostQuery },
   { title: t.chat.suggestions.xBoost, subtitle: t.chat.suggestions.xBoostSub, icon: Zap, color: "#f0b90b", query: t.chat.suggestions.xBoostQuery },
@@ -3392,7 +3391,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onLoginClick, onCreditsCli
   const [isThreadMode, setIsThreadMode] = useState(false);
   const [isWechatMode, setIsWechatMode] = useState(false);
   const [isTiktokMode, setIsTiktokMode] = useState(false);
-  const [isTweetRepostMode, setIsTweetRepostMode] = useState(false);
   const [isXiaohongshuMode, setIsXiaohongshuMode] = useState(false);
   const [wechatRecreate, setWechatRecreate] = useState(false); // false = 搬运原文, true = 二次创作
   const [xiaohongshuRecreate, setXiaohongshuRecreate] = useState(false); // false = 搬运原文, true = 二次创作
@@ -3436,7 +3434,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onLoginClick, onCreditsCli
     { label: t.chat.xAgent.analyze, icon: BarChart2, query: t.chat.xAgent.analyzeQuery },
     { label: t.chat.xAgent.reply, icon: MessageCircle, query: t.chat.xAgent.replyQuery },
     { label: t.chat.xAgent.imageReply, icon: Image, query: t.chat.xAgent.imageReplyQuery },
-    { label: t.chat.xAgent.rewrite, icon: PenTool, query: t.chat.xAgent.rewriteQuery },
     { label: t.chat.xAgent.quote, icon: MessageSquarePlus, query: t.chat.xAgent.quoteQuery },
     { label: t.chat.xAgent.similar, icon: Users, query: t.chat.xAgent.similarQuery },
     { label: t.chat.xAgent.threads, icon: Layers, query: t.chat.xAgent.threadsQuery },
@@ -3713,11 +3710,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onLoginClick, onCreditsCli
         setTimeout(() => setInputError(null), 6000);
         return;
       }
-      if (isTweetRepostMode && !trimmed.includes('x.com') && !trimmed.includes('twitter.com')) {
-        setInputError(t.chat.suggestions.invalidTweetLink);
-        setTimeout(() => setInputError(null), 6000);
-        return;
-      }
       if (isThreadMode && !trimmed.includes('x.com') && !trimmed.includes('twitter.com')) {
         setInputError(t.chat.suggestions.invalidTweetLink);
         setTimeout(() => setInputError(null), 6000);
@@ -3775,11 +3767,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onLoginClick, onCreditsCli
       displayContent = textToSend;
     }
 
-    if (isTweetRepostMode && !overrideInput) {
-      textToSend = t.chat.suggestions.tweetRepostQuery + ' ' + input;
-      displayContent = textToSend;
-    }
-
     if (quotedText && !overrideInput) {
       // If we have quoted text, prepend/append it or format it
       // Based on user request "Draft a quote tweet for..." replacement
@@ -3826,9 +3813,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onLoginClick, onCreditsCli
       }
       if (isXiaohongshuMode) {
         setIsXiaohongshuMode(false);
-      }
-      if (isTweetRepostMode) {
-        setIsTweetRepostMode(false);
       }
     }
 
@@ -5664,7 +5648,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onLoginClick, onCreditsCli
           }}
         />
         {/* Floating banners - absolutely positioned to prevent layout shift */}
-        {(quotedText || isSearchMode || isComposeMode || isThreadMode || isWechatMode || isXiaohongshuMode || isTiktokMode || isTweetRepostMode) && (
+        {(quotedText || isSearchMode || isComposeMode || isThreadMode || isWechatMode || isXiaohongshuMode || isTiktokMode) && (
           <div style={{ position: 'absolute', bottom: '100%', left: 8, right: 8, marginBottom: -6 }}>
             {quotedText && (
               <div className="flex items-center gap-2 p-2 bg-[var(--bg-secondary)] border-l-2 border-[var(--accent-color)] rounded-r-lg text-xs text-[var(--text-secondary)] animate-in slide-in-from-bottom-2 fade-in duration-200 shadow-sm">
@@ -5841,22 +5825,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onLoginClick, onCreditsCli
                 </button>
               </div>
             )}
-            {isTweetRepostMode && (
-              <div className="flex items-center gap-2 p-2 px-3 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl text-xs text-[var(--text-secondary)] animate-in slide-in-from-bottom-2 fade-in duration-200 shadow-sm">
-                <TwitterBirdIcon size={18} style={{ flexShrink: 0 }} />
-                <div className="flex-1 font-medium text-[var(--text-primary)]">
-                  {t.chat.suggestions.tweetRepostInputInstruction}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsTweetRepostMode(false)}
-                  className="p-1 rounded-full hover:bg-[var(--hover-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-                  title="Close"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            )}
           </div>
         )}
         {selectedImages.length > 0 && (
@@ -5940,7 +5908,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onLoginClick, onCreditsCli
               }
             }}
             onPaste={handlePaste}
-            placeholder={isSearchMode ? t.chat.suggestions.searchPlaceholder : isComposeMode ? t.chat.suggestions.composePlaceholder : isThreadMode ? t.chat.suggestions.threadPlaceholder : isWechatMode ? t.chat.suggestions.wechatPlaceholder : isXiaohongshuMode ? t.chat.suggestions.xiaohongshuPlaceholder : isTiktokMode ? t.chat.suggestions.tiktokPlaceholder : isTweetRepostMode ? t.chat.suggestions.tweetRepostPlaceholder : t.chat.askAnything}
+            placeholder={isSearchMode ? t.chat.suggestions.searchPlaceholder : isComposeMode ? t.chat.suggestions.composePlaceholder : isThreadMode ? t.chat.suggestions.threadPlaceholder : isWechatMode ? t.chat.suggestions.wechatPlaceholder : isXiaohongshuMode ? t.chat.suggestions.xiaohongshuPlaceholder : isTiktokMode ? t.chat.suggestions.tiktokPlaceholder : t.chat.askAnything}
             rows={1}
             disabled={isLoading}
             style={{

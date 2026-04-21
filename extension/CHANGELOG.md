@@ -3,6 +3,19 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.9.0] - 2026-04-21
+
+### Removed
+- **Auto-reply / autopilot / scheduler**: 1500+ LOC 移动到 bnbot CLI + `/auto-reply`、`/inbox-triage`、`/inbox-watch` skill（extension 不再判断，只做 CDP 执行层）。
+- **Chat / Auto Reply 侧边栏 Tab**: 从 Sidebar 去掉。
+- **二创 (Tweet Remix / AI 复写)**: 侧边栏 suggestion 卡片、推文详情页"二创"按钮、xAgent AI 复写 action、相关 i18n 全部移除。能力迁移到 bnbot 桌面 app 的 `/remix` skill。
+- **notificationHandlers**: notification 分类 / 处理全部改走 `/inbox-triage` skill。
+- **Draft alarm scheduler**: 定时发布改走 `bnbot calendar` 单 tick 调度 + `~/.bnbot/calendar/<date>.json`。
+
+### Changed
+- **commandService**: `start_autopilot` / `stop_autopilot` / `get_status` / `handleScheduledTrigger` 等 bridge action 改为抛错并提示调用方走 CLI。
+- **background**: 去掉 taskAlarmScheduler 启动和 7 个调度相关的 message 路由。
+
 ## [0.8.0] - 2026-04-18
 
 ### Added

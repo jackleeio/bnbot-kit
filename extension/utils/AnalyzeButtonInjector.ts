@@ -124,13 +124,6 @@ export class AnalyzeButtonInjector {
       }
     }
 
-    // Inject "AI 复写" button in the tweet detail page header (right side)
-    if (window.location.pathname.includes('/status/')) {
-      const backBtn = document.querySelector('[data-testid="app-bar-back"]');
-      if (backBtn && !document.querySelector('.bnbot-rewrite-btn')) {
-        this.injectRewriteButton(backBtn as HTMLElement);
-      }
-    }
   }
 
   private extractTweetId(tweet: HTMLElement): string | null {
@@ -355,53 +348,6 @@ export class AnalyzeButtonInjector {
 
     wrapper.appendChild(btn);
     scrollList.appendChild(wrapper);
-  }
-
-  private injectRewriteButton(backBtn: HTMLElement): void {
-    // Navigate up to the header row to find the right-side container
-    // Structure: header row > [left(back), center(title), right(empty)]
-    // backBtn is inside the left container. Go up to the header row.
-    let headerRow: HTMLElement | null = backBtn;
-    for (let i = 0; i < 6; i++) {
-      headerRow = headerRow?.parentElement || null;
-      if (!headerRow) return;
-      // The header row has 3 children (left, center, right)
-      if (headerRow.children.length === 3) break;
-    }
-    if (!headerRow || headerRow.children.length < 3) return;
-
-    const rightContainer = headerRow.children[2] as HTMLElement;
-    if (!rightContainer) return;
-
-    // Find the inner flex div (the empty one)
-    const innerDiv = rightContainer.querySelector('div') as HTMLElement;
-    if (!innerDiv) return;
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'bnbot-rewrite-btn';
-    btn.style.cssText = 'cursor: pointer; background-color: transparent; border: 1px solid rgb(207, 217, 222); border-radius: 9999px; padding: 6px 12px; display: inline-flex; align-items: center; justify-content: center;';
-    btn.innerHTML = `
-      <div style="display: flex; align-items: center; gap: 4px; line-height: 1;">
-        <img src="${chrome.runtime?.getURL?.('assets/images/bnbot-rounded-logo-5.png') || ''}" style="width:14px;height:14px;border-radius:50%;flex-shrink:0;" />
-        <span style="font-size: 13px; font-weight: 700; color: rgb(15, 20, 25); line-height: 1;">二创</span>
-      </div>
-    `;
-    btn.title = 'AI Rewrite';
-
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const match = window.location.pathname.match(/\/status\/(\d+)/);
-      const tweetId = match?.[1];
-      if (tweetId) {
-        window.dispatchEvent(
-          new CustomEvent('bnbot-analyze-tweet', { detail: { tweetId, action: 'rewrite' } })
-        );
-      }
-    });
-
-    innerDiv.appendChild(btn);
   }
 
   private async handleInlineAIReply(aiBtn: HTMLElement, replyBtn: HTMLElement): Promise<void> {

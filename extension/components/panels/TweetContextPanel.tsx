@@ -58,8 +58,6 @@ export const TweetContextPanel: React.FC<TweetContextPanelProps> = ({ tweetId, o
                 let query: string;
                 if (pendingAction === 'reply') {
                     query = xAgent?.replyQuery || 'Generate a witty and engaging reply to this tweet.';
-                } else if (pendingAction === 'rewrite') {
-                    query = xAgent?.rewriteQuery || 'Rewrite this tweet for me';
                 } else if (pendingAction === 'imageReply') {
                     query = xAgent?.imageReplyQuery || 'Generate an image replying to this tweet';
                 } else if (pendingAction === 'quote') {

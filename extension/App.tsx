@@ -800,10 +800,9 @@ function AppContent() {
           return;
         }
         // Convert action to chat message
-        if (action === 'rewrite' || action === 'quote' || action === 'analyze' || action === 'imageReply' || action === 'summary') {
+        if (action === 'quote' || action === 'analyze' || action === 'imageReply' || action === 'summary') {
           const xAgent = (t.chat as any)?.xAgent;
           const actionMessages: Record<string, string> = {
-            rewrite: xAgent?.rewriteQuery || 'Rewrite this tweet for me',
             quote: xAgent?.quoteQuery || 'Draft a quote tweet that adds value to this conversation.',
             analyze: xAgent?.analyzeQuery || "Analyze this tweet's sentiment and impact.",
             imageReply: xAgent?.imageReplyQuery || 'Generate an image replying to this tweet',
