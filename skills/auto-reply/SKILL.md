@@ -120,46 +120,240 @@ Auto-pilot mode is primarily for **traffic and lead-gen via reply
 exposure on viral tweets**. The scoring layer below decides which
 candidates are worth engaging.
 
-### Exposure score formula (Claude applies inline on scrape data)
+### Expected-exposure formula (Claude applies inline on scrape data)
+
+**Output is an ABSOLUTE predicted-view number for YOUR reply**, not a
+0–100 relative score. Thresholds cut on impressions because that's the
+actual traffic-farming metric. Formula ported from the extension's
+`exposurePredictionService.ts` v1.1.
 
 Each candidate has: `likes, retweets, replies, views, createdAt,
-authorFollowers, isBlue`. Compute a 0–100 score before drafting:
+authorFollowers, isBlue`. Your own profile: `userFollowers`, `userIsBlue`.
 
-```
-# 1. Tweet age (hours since posted)
+```python
+# ============ 0. Hard filters — skip before scoring ============
+# a) Reply-in-thread: text starts with @handle — someone else's sub-reply,
+#    tiny standalone reach.
+if text.lstrip().startswith('@'): return SKIP
+
+# b) Dead-on-arrival: 0 engagement after 15min grace → author's own
+#    audience isn't engaging, ours won't either.
 ageHours = (now - createdAt) / 3600
+if ageHours > 0.25 and (likes + retweets + replies) == 0: return SKIP
 
-# 2. Timing — fresher = more reach
-if ageHours < 1:     timingScore = 40    # golden window
-elif ageHours < 3:   timingScore = 25    # good
-elif ageHours < 12:  timingScore = 10    # late
-else:                timingScore = 0     # dead, skip
+# c) Tiny penetration (< 0.1% of author followers seeing it) after 30min
+#    → tweet is getting algorithmically suppressed.
+if ageHours > 0.5 and views < authorFollowers * 0.001: return SKIP
 
-# 3. Engagement velocity (L/hr + RT×10/hr + reply×5/hr)
-velocity = (likes + retweets*10 + replies*5) / max(ageHours, 0.25)
-velocityScore = min(30, log10(velocity + 1) * 15)
+# ============ 1. Half-life decay (bigger accounts peak later) ============
+if   authorFollowers > 500_000: halfLife = 4.0   # hrs
+elif authorFollowers > 50_000:  halfLife = 2.5
+elif authorFollowers > 5_000:   halfLife = 1.5
+else:                            halfLife = 1.0
 
-# 4. Author reach
-if authorFollowers > 100_000: authorScore = 30    # mega — but Claude
-                                                   # should consider the
-                                                   # rank penalty (many
-                                                   # replies, yours buried)
-elif authorFollowers > 10_000: authorScore = 20
-elif authorFollowers > 1_000:  authorScore = 12
-elif authorFollowers > 200:    authorScore = 5
-else:                          authorScore = 0    # dead-end
+decay = 0.5 ** (ageHours / halfLife)   # future reach multiplier
 
-# 5. Blue penalty (non-blue reply = -50% reach)
-blueMultiplier = 1.0 if userIsBlue else 0.5
+# ============ 2. Projected parent total views ============
+# Linear extrapolation + decay for remaining future.
+observedVps = views / max(ageHours, 0.1)   # current views per hour
+futureViews = observedVps * halfLife * decay * 2   # rough remaining
+projectedParent = views + futureViews
 
-# 6. Reply density penalty (if replies > 100, your reply drowns)
-if replies < 5:        rankBonus = 1.0
-elif replies < 20:     rankBonus = 0.8
-elif replies < 100:    rankBonus = 0.5
-else:                  rankBonus = 0.2
+# ============ 3. Predicted rank of YOUR reply ============
+# Rank score: how far up the visible ladder your reply lands.
+rankScore = 0
+rankScore += min(0.15, log10(userFollowers + 1) / 20)
+if userIsBlue: rankScore += 0.25
+if replies < 5:    rankScore += 0.30
+elif replies < 20: rankScore += 0.18
+elif replies < 50: rankScore += 0.10
+else:              rankScore += 0.03
+rankScore = min(0.8, rankScore)
 
-totalScore = (timingScore + velocityScore + authorScore) * blueMultiplier * rankBonus
+predictedRank = max(1, ceil(replies * (1 - rankScore)) + 1)
+
+# ============ 4. Rank → share of parent views (X's actual curve) ============
+def rankShare(r):
+    if r <= 0: r = 1
+    if r <= 3:   return [0.25, 0.18, 0.12][r-1]           # gold
+    if r <= 10:  return 0.08 * (0.75 ** (r - 4))          # silver
+    if r <= 30:  return 0.02 * (0.80 ** (r - 10))         # bronze
+    return 0.005                                           # folded
+
+# ============ 5. Expected views on YOUR reply ============
+# Non-blue users take a -50% reach hit per X's own policy.
+blueMult = 1.0 if userIsBlue else 0.5
+expectedViews = projectedParent * rankShare(predictedRank) * blueMult
 ```
+
+### Action set — 4 choices, not 3
+
+Three exposure surfaces, each with a different reach profile. Always
+pick the action with the highest **expected views** that also passes
+the content quality gate.
+
+| Action | Where it shows up | Reach source |
+|---|---|---|
+| `quote` | **Your** timeline + For-You algorithm picks | `userFollowers × engagement_rate × quote_boost` |
+| `reply` | Inside parent's thread | `parentViews × rankShare(predictedRank)` |
+| `like` | Nowhere visible, algo signal only | ≈ 0 direct, indirect ranking boost |
+| `skip` | — | — |
+
+### Expected views — per action
+
+`reply_expected_views` — from the formula above.
+
+`quote_expected_views`:
+```python
+# Your timeline reach on a quote tweet.
+# Baseline: ~25% of your followers see an organic post (X's average).
+# Quote tweets with substantive commentary get a mild algorithmic boost
+# because X rewards remix content. Boost is small (~1.15x) and dies
+# for quotes with empty or one-liner commentary.
+baseReach = userFollowers * 0.25
+quoteBoost = 1.15 if substantive_commentary_planned else 0.85
+# Parent-content-quality multiplier: interesting source content gets
+# more organic re-engagement on your quote.
+parentQualityMult = (1 + log10(parentLikes + 1) / 4) * (1 if ageHours < 12 else 0.5)
+quote_expected_views = baseReach * quoteBoost * parentQualityMult
+```
+
+### Persona fit gate — runs BEFORE the EV thresholds
+
+EV tells you the traffic potential. **Persona fit** tells you whether
+engaging damages or builds the brand. Both must pass.
+
+Load `<skill-path>/config/profiles/<handle>.json`. Extract:
+- `domains`: explicit niche keywords (array; empty = infer from samples)
+- `sampleTweets`: ground-truth topic distribution
+- `avoid`: keywords that must never appear in candidate tweets
+
+**Fit check** — output: `core-niche` / `adjacent` / `off-topic` / `avoid`:
+
+```
+# Hard reject: avoid keyword present
+if any(kw in tweet.text for kw in profile.avoid): return 'avoid'
+
+# Tier 1 — core niche: matches profile.domains OR
+# matches topic cluster of 30%+ of sampleTweets
+if match_domain_keywords(tweet.text, profile.domains) or
+   topic_cluster_match(tweet.text, sampleTweets) >= 0.3:
+    return 'core-niche'
+
+# Tier 2 — adjacent: one-hop related (matches 10-30% cluster)
+if topic_cluster_match(tweet.text, sampleTweets) >= 0.1:
+    return 'adjacent'
+
+# Tier 3 — off-topic
+return 'off-topic'
+```
+
+**Fit × action gate** — tight rule for quotes, relaxed for replies:
+
+| Fit | quote | reply | like | skip |
+|---|---|---|---|---|
+| `core-niche` | ✅ ok | ✅ ok | ✅ ok | — |
+| `adjacent` | ❌ NO (brand dilution) | ✅ ok if EV high | ✅ ok | — |
+| `off-topic` | ❌ NO | ❌ NO (looks spam-bot) | ⚠️ only if low cadence | ✅ |
+| `avoid` | ❌ NO | ❌ NO | ❌ NO | ✅ always |
+
+Rationale: quote goes on YOUR timeline, so your followers see it. One
+off-niche quote = "why did Jack tweet about a vulture bird?" — loses
+cred. Reply is forgivable because it's inside someone else's thread —
+tangential is fine as long as the substance is real.
+
+### Final decision rule
+
+```
+fit = persona_fit(tweet)
+agrees = does_user_endorse_this_take(tweet)   # Claude's judgment: "would
+                                                # the user, given their voice
+                                                # profile + domain, nod at this?"
+
+if fit == 'avoid':       return SKIP
+if fit == 'off-topic':   return SKIP           # don't like, don't anything
+
+# Quote — strictest gate
+if fit == 'core-niche' and \
+   quote_expected_views > reply_expected_views and \
+   quote_expected_views >= 2000 and \
+   quote_daily_quota_remaining > 0:
+    return QUOTE
+
+# Reply — moderate gate
+if reply_expected_views >= 5000 and fit in ('core-niche', 'adjacent'):
+    return REPLY
+
+# Like — endorsement-gated, NOT EV-gated
+# "I'm web3, you said something I agree with on web3 → I like."
+if fit == 'core-niche' and agrees and like_daily_quota_remaining > 0:
+    return LIKE
+
+return SKIP
+```
+
+### Why likes are endorsement-gated, not EV-gated
+
+Likes bring near-zero direct traffic. Their value is:
+- signalling "I'm in this conversation" to the author + algorithm
+- building a positive breadcrumb trail with on-niche creators
+
+That only pays off if the like is a **true endorsement** of an
+on-niche tweet. Random likes = bot behaviour. Scope to:
+
+1. `fit == 'core-niche'` — squarely in your domain
+2. Claude judges "the user would agree with this take" — i.e. the
+   content matches the user's known stance (inferred from sampleTweets
+   + profile.bio + profile.tone)
+3. Keep a small daily budget so the likes stay meaningful
+
+| Daily caps |  |
+|---|---|
+| reply | ≤ 30 |
+| quote | ≤ 1 |
+| like | ≤ 10 — small, only for on-niche tweets you endorse |
+| total writes | ≤ 40 |
+
+If the candidate is on-niche but you'd actually disagree / be neutral
+→ skip the like. Don't thumb-up what you'd shake your head at.
+
+### When to QUOTE instead of reply (content rules)
+
+Quote is strictly better when **ALL** of these hold:
+
+1. **Source content is standalone-shareable** — makes sense to someone
+   seeing it on your timeline without the thread context
+2. **You have something to add** — contrast, extend, counter, personal
+   anecdote, data angle. Pure "+1 / good point" = don't quote, just like.
+3. **Topically relevant to your audience** — matches profile.domains or
+   inferred niche from sampleTweets
+4. **Reply would be buried** — predictedRank > 10 (your reply drowns)
+5. **Evergreen-ish** — not pure breaking news where an RT would do
+
+If any of those fail → reply / like / skip instead.
+
+### Quote draft rules
+
+Quote commentary lives on YOUR timeline — held to the SAME voice
+profile as your original tweets. NOT a reply-style short comment.
+
+- Matches user's `style.maxTweetLength` (trim accordingly)
+- Follows `persona.md` + profile `styleReference` (e.g. for jackleeio:
+  mimic @KKaWSB — 冷静叙事, 数字锚定, 零感叹)
+- Adds YOUR take — don't paraphrase the quoted tweet
+- Can extend, contrast, or personal-anecdote, not summarize
+
+### Thresholds per account size
+
+| User followers | reply ≥ | quote ≥ |
+|---|---|---|
+| < 500 (new) | 1,500 views | 500 views |
+| 500 – 5,000 | 5,000 views | 2,000 views |
+| 5,000 – 50,000 | 10,000 views | 5,000 views |
+| > 50,000 | 20,000 views | 15,000 views |
+
+Bigger accounts shouldn't quote trivial content — the placement cost is
+higher (your timeline slot), so only high-value source material qualifies.
 
 **Decision thresholds**:
 - score ≥ 50 → `reply` (substantive draft)
@@ -179,14 +373,31 @@ from `profile.sampleTweets` style / topic.
 - Same general topic (by keyword cluster) ≤ 2 replies / 24h — don't
   look like an issue-campaigner
 
-### Like vs reply mix (anti-bot signature)
+### Reply drafts must match the voice profile
 
-For candidates that pass the score threshold, roll dice:
-- **60% `like` only** (cheap, supportive)
-- **40% `reply`** (substantive draft via the normal flow)
+EVERY reply draft — not just quotes — follows the same voice rules as
+the user's original tweets. If `profile.styleReference.accounts` is
+set (e.g. jackleeio mimics @KKaWSB), apply that style to the reply:
 
-A real person doesn't reply to everything they like. Pure reply-only
-history patterns shadowban faster.
+- **Language**: strict to `profile.language` (e.g. jackleeio = zh;
+  never mix EN words/sentences into a zh reply)
+- **Tone**: per `styleReference.analysis.tone` (e.g. 冷静叙事型，不煽情)
+- **Sentence patterns**: per `styleReference.analysis.sentencePatterns`
+  (e.g. 数字锚定；短句断句；反转/留白结尾；零废话)
+- **Forbidden fillers**: "值得一提的是" / "不得不说" / "让我们" / "what a
+  great take" / "I'd argue" / em-dash flourishes
+- **Emoji**: `emojiLevel: 'minimal'` → ≤ 1 emoji, and only if the
+  voice profile uses them; usually skip entirely
+- **Hashtags**: never in replies (`hashtagMax: 1` applies to posts,
+  replies = 0)
+
+Reply length: shorter than posts (typically ≤ 140 chars), but keep
+the voice. A 3-line reply with one concrete fact + one short take
+reads more like the user than a 240-char paragraph.
+
+For accounts with `styleReference.blendMode: 'mimic'` — it's not just
+about your tweets, **the reply style also mimics the reference**. A
+jackleeio reply should read like @KKaWSB wrote it.
 
 ## Running the loop
 
@@ -278,25 +489,37 @@ Format:
 ## Evaluation prompt (use when scoring a tweet)
 
 ```
-Given this tweet and the user's voice profile, decide whether to reply.
+Given this tweet, the user's voice profile, and the pre-computed
+exposure numbers, pick the best action.
 
 Tweet:
   author: @<handle>  (followers: <N>, verified: <bool>)
-  text: """<text>"""
-  engagement: <likes>L / <retweets>RT / <replies>RP
-  posted: <relative time>
+  text: """<FULL text, verbatim — NOT truncated>"""
+  engagement: <likes>L / <retweets>RT / <replies>RP / <views>V
+  posted: <ageHours>h ago
 
-User voice profile: <summary>
-User's do-not-reply topics: <list>
+Pre-computed:
+  reply_expected_views: <N>      (your reply's forecast impressions)
+  quote_expected_views: <N>      (your quote's forecast impressions)
+  persona_fit: core-niche | adjacent | off-topic | avoid
+  quote_daily_quota_left: <0|1>
+  like_daily_quota_left: <N>
 
-Recent replies (last 6h to this user): <bool>
+Judge:
+  endorses: true | false  (would the user agree with this take based
+                           on their voice profile + sampleTweets stance?)
 
 Decide:
-  action: reply | like | skip
-  reason: 1 sentence
-  draft:  if action=reply, write the draft (≤ 240 chars, matches voice,
-          no AI-tone words from persona.md, no em-dash, no "I'd argue",
-          no "what a great take", etc.)
+  action: quote | reply | like | skip
+  reason: 1 sentence referencing fit + (EV for reply/quote,
+          endorsement for like)
+  draft:  required if action ∈ {quote, reply}
+          - matches profile.style.maxTweetLength  (posts) or ≤140 (reply)
+          - follows profile.styleReference.blendMode + analysis
+          - forbidden fillers: 值得一提的是 / 不得不说 / 让我们 / I'd argue /
+            what a great take / em-dash flourishes / hashtags in replies
+          - for jackleeio: Chinese only, no EN mixed, mimic @KKaWSB
+            (数字锚定 / 短句断句 / 反转或留白收尾 / 零感叹)
 ```
 
 ## Don't do
