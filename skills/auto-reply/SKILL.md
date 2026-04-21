@@ -16,6 +16,27 @@ and post via CDP. This skill replaces the Chrome extension's
 `autoReplyService` (1542 LOC) — the intel moves to Claude, the execution
 stays as a thin CDP call.
 
+## Preflight checks (run at session start)
+
+Before any scrape or write:
+
+1. **Extension + daemon online** — `bnbot status` (NOT `curl :18900`;
+   that port is pure WebSocket, doesn't respond to HTTP). Output should
+   show "Server ✓" AND "Extension ✓ connected". If extension isn't
+   connected, tell the user to load the Chrome extension, don't retry.
+
+2. **Voice profile loaded** — preferred path
+   `~/.bnbot/skills/bnbot/config/profiles/<handle>.json` (symlink to
+   bnbot-kit/skill/config/profiles/). If no profile matches the current
+   user, ABORT — auto mode without a voice profile produces generic
+   AI slop that hurts the account.
+
+3. **State directories exist** — `mkdir -p ~/.bnbot/state
+   ~/.bnbot/logs`.
+
+If any of these fails, abort with a clear error and do NOT proceed to
+scrape. Don't burn the rate limit on broken plumbing.
+
 ## Inputs Claude needs to gather
 
 Before starting, ask the user (or use defaults from saved profile):

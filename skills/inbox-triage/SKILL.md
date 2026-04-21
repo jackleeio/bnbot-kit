@@ -51,8 +51,50 @@ Map type → action:
 | `like` | someone liked user's post | skip (FYI only) |
 | `retweet` | someone reposted user's post | skip (or like-back if relationship) |
 | `follow` | someone followed user | follow back if niche-aligned, else skip |
-| `new_post` | accounts user follows posted (single or aggregated) | skip in inbox-triage; surface in `/auto-reply --type=following` instead |
+| `new_post` | accounts user follows posted (single or aggregated) | **score & evaluate** — see §"new_post engagement" below |
 | `other` | unclassified | skip |
+
+### 2b. new_post engagement (in-line with `/auto-reply`)
+
+A `new_post` notification is X telling you "an account you follow just
+posted RIGHT NOW". This is high-value:
+
+- highest freshness window (minutes after posting → reply rank 1-3)
+- pre-curated by X (only accounts you follow, often big V's)
+- best traffic-leverage moment per the rank-share curve
+
+So `/inbox-triage` SHOULD evaluate these for reply / quote / like /
+skip — same scoring + persona fit + endorsement gates as
+`/auto-reply`. Don't drop them just because they came via the
+notifications endpoint.
+
+**Evaluation steps for each new_post item with a `targetTweet`:**
+
+1. Compute exposure-prediction scores using the same formula as
+   `/auto-reply` (`reply_expected_views`, `quote_expected_views`)
+2. Compute `persona_fit` using profile.domains + sampleTweets cluster
+3. Apply the same final decision rule:
+   - quote if core-niche + EV high + daily quota left
+   - reply if EV ≥ 5,000 + fit ∈ {core-niche, adjacent}
+   - like if core-niche + Claude endorses the take + daily quota left
+   - else skip
+4. **Aggregated new_post entries** (those without a single
+   targetTweet — X grouped multiple users like "qinbafrank 和另外 8
+   人的新帖子通知"): skip in this cycle, defer to
+   `/auto-reply --source=following` for those (because we don't have
+   the actual tweet text to score).
+
+For new_post items, present drafts for approval the same way as
+mentions/replies — show the parent tweet, the predicted exposure, and
+the proposed action.
+
+### Daily caps shared with `/auto-reply`
+
+The same global state (`~/.bnbot/state/auto-reply-rate.json`,
+`~/.bnbot/state/auto-reply-seen.json`, daily quota counters) applies.
+A reply done via `/inbox-triage` counts against the same 30/day cap
+as `/auto-reply`. Don't double-engage the same author across the two
+skills within the 6h cooldown.
 | `mention_in_reply_chain` | user was @'d in a thread | reply if relevant |
 
 Output a table first for user approval:
@@ -98,12 +140,27 @@ bnbot x follow --engine debugger "<handle>"
 
 Jitter between actions (30–60s sleep) to avoid rate-limit triggers.
 
-### 5. Mark processed
+### 5. Mark processed (ALWAYS — even if 0 actions)
 
-Write seen notifications to `~/.bnbot/state/inbox-seen.json`:
+Even if NO replies / likes / follows are executed this cycle, the
+agent MUST still:
+
+1. Update `~/.bnbot/state/inbox-seen.json` with EVERY scraped item's
+   id (action='skip' for the no-op ones). Without this, the next run
+   re-evaluates the same 37 like/follow notifications and burns model
+   tokens repeating the analysis.
+2. Update `~/.bnbot/state/inbox-lastrun.json` with `{lastRun, counts}`.
+3. Write a session markdown report to
+   `~/.bnbot/logs/inbox-session-<YYYYMMDD-HHMM>.md` — same format as
+   `/auto-reply`'s session report (summary table + per-item decision +
+   any drafts posted). User must be able to audit no-op runs as
+   readily as active ones.
+
 ```json
+// inbox-seen.json
 {
-  "notificationId": {"ts": "...", "type": "mention", "action": "reply"}
+  "notificationId": {"ts": "...", "type": "mention", "action": "reply"},
+  "anotherId":      {"ts": "...", "type": "like",    "action": "skip"}
 }
 ```
 
