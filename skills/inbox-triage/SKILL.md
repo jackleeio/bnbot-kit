@@ -202,63 +202,21 @@ Load user's niche from the voice profile: `<skill-path>/config/profiles/<handle>
 └── inbox-YYYYMMDD.jsonl         # full audit trail
 ```
 
-## Auto-monitoring (15-min poller)
+## Auto-monitoring → use `/inbox-watch`
 
-Persistent background polling for high-freshness reply opportunities.
-A launchd agent (`com.bnbot.inbox-tick`) wakes every N minutes, scrapes
-notifications via WS daemon (cheap, no Claude), and ONLY spawns a
-headless `bnbot -p '/inbox-triage --auto'` session when fresh actionable
-items (mention / reply / quote / new_post) appear.
+For hands-off background polling (15-min default), use the sibling
+skill `/inbox-watch`. It controls the `com.bnbot.inbox-tick` launchd
+agent that scrapes notifications periodically and triggers
+`/inbox-triage --auto` only when fresh actionable items appear.
 
-### Lifecycle commands (Claude maps user intent → these)
+This skill (`/inbox-triage`) stays focused on the **manual one-shot**
+path — interactive mode with draft approval per item. When invoked
+with `--auto` (e.g. by the inbox-tick spawn), it runs without
+approval but with all safety gates active.
 
-| User says | Command |
-|---|---|
-| "开始自动监听 inbox" / "auto-monitor on" | `bnbot inbox install && bnbot inbox start` |
-| "停一下自动监听" / "pause" | `bnbot inbox stop` (plist preserved, restart with start) |
-| "彻底卸了" / "uninstall" | `bnbot inbox uninstall` |
-| "看看在不在跑" / "status" | `bnbot inbox status` |
-| "改成 5 分钟一次" | `bnbot inbox stop && bnbot inbox install --interval=300 && bnbot inbox start` |
-
-Default interval is **15 min** (900s). Conservative — catches most
-reply rank 1-3 opportunities while looking like a real person checking
-notifications, not a polling bot. Tighten with `--interval` if user
-wants more aggressive freshness chasing.
-
-### Why install + start are separate
-
-`install` writes the plist with `RunAtLoad=false` — agent is configured
-but doesn't run. User has to explicitly say "start it" before any
-auto-engagement happens. Prevents accidental "I just wanted to install
-it to test" → 30 replies/day going out.
-
-### What the tick does
-
-```
-tick wakes (every interval seconds)
-  ↓
-WS scrape notifications (200ms, no Claude)
-  ↓
-dedupe vs ~/.bnbot/state/inbox-seen.json
-  ↓
-for non-actionable fresh items (like/follow/retweet/other):
-  mark seen with action=skip, write
-  ↓
-if 0 fresh actionable items: exit (cheap path, no spawn)
-  ↓
-else: spawn detached `bnbot -p '/inbox-triage --auto' --model=sonnet`
-       which loads this skill, applies EV + persona-fit + endorsement
-       gates, posts via CDP, writes session report
-  ↓
-tick exits (the spawned bnbot session runs to completion independently)
-```
-
-### Manual one-shot
-
-User explicitly invoking `/inbox-triage` in their REPL still works the
-same as before — interactive mode with draft approval. The tick is for
-hands-off background polling; the skill itself stays interactive by
-default.
+Shared state across both skills: `~/.bnbot/state/inbox-*.json`,
+`~/.bnbot/state/auto-reply-rate.json` (per-user 6h cooldown applies
+across them).
 
 ## Don't do
 
