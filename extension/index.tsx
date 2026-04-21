@@ -8,6 +8,7 @@ import { MarkdownPasteProcessor } from './utils/MarkdownPasteProcessor';
 import { BoostChecker } from './utils/BoostChecker';
 import { xUserStore } from './stores/xUserStore';
 import { HomeBoostChecker } from './utils/HomeBoostChecker';
+import { BnbotFabInjector } from './utils/BnbotFabInjector';
 import { VideoDownloadManager } from './utils/VideoDownloadManager';
 // 初始化 commandService 消息监听器，确保 LOCAL_ACTION（OpenClaw MCP）在内容脚本加载时就能处理
 import { commandService } from './services/commandService';
@@ -464,6 +465,10 @@ const mount = () => {
   // Start the Twitter Injector
   const injector = new TwitterInjector();
   injector.start();
+
+  // Start the floating BNBot FAB (right-bottom, above X's Grok drawer)
+  const bnbotFab = new BnbotFabInjector();
+  bnbotFab.start();
 
   // Initialize Ad Blocker
   initAdBlocker();

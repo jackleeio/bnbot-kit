@@ -43,6 +43,10 @@ function AppContent() {
   const [chatResetKey, setChatResetKey] = useState(0);
   const [globalChatResetTrigger, setGlobalChatResetTrigger] = useState(0); // Add reset trigger for global Chat
   const [tweetHighlightEnabled, setTweetHighlightEnabled] = useState(true);
+  // Popup bottom/right follow the FAB's dynamic position. Updated via
+  // `bnbot-fab-aligned` event broadcast by BnbotFabInjector. Defaults
+  // match the CSS fallback so the first paint isn't a jump.
+  const [fabPosition, setFabPosition] = useState({ bottom: 90, right: 20, height: 54 });
   const [showCollapseButton, setShowCollapseButton] = useState(true);
   const [collapseButtonHovered, setCollapseButtonHovered] = useState(false);
   const [isArticleFocusMode, setIsArticleFocusMode] = useState(false);
@@ -756,9 +760,32 @@ function AppContent() {
     };
     window.addEventListener('bnbot-open-sidebar', handleOpenSidebar);
 
+    // Floating FAB dispatches this to toggle the popup open/closed.
+    const handleTogglePopup = () => {
+      setIsCollapsed((prev) => !prev);
+    };
+    window.addEventListener('bnbot-toggle-popup', handleTogglePopup);
+
+    // FAB broadcasts its own position when it re-aligns above Grok.
+    // The popup anchors itself `height + 12px` above the FAB so it
+    // doesn't cover the trigger.
+    const handleFabAligned = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && typeof detail.bottom === 'number') {
+        setFabPosition({
+          bottom: detail.bottom,
+          right: detail.right,
+          height: detail.height ?? 54,
+        });
+      }
+    };
+    window.addEventListener('bnbot-fab-aligned', handleFabAligned);
+
     return () => {
       window.removeEventListener('bnbot-open-boost-tab', handleOpenBoostTab);
       window.removeEventListener('bnbot-open-sidebar', handleOpenSidebar);
+      window.removeEventListener('bnbot-toggle-popup', handleTogglePopup);
+      window.removeEventListener('bnbot-fab-aligned', handleFabAligned);
     };
   }, []);
 
@@ -841,40 +868,33 @@ function AppContent() {
 
     // Changed to fixed positioning to float over the Twitter UI
     // pointer-events-none on wrapper, pointer-events-auto on interactive elements
-    <div className={theme} style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: '486px', zIndex: 99999, pointerEvents: 'none', display: 'flex', alignItems: 'stretch', justifyContent: 'flex-end' }}>
+    <div
+      className={theme}
+      style={{
+        position: 'fixed',
+        // Anchor above the FAB — add FAB height + 12px gap, so the popup
+        // never overlaps the trigger.
+        bottom: `${fabPosition.bottom + fabPosition.height + 12}px`,
+        right: `${fabPosition.right}px`,
+        width: isCollapsed ? 0 : '420px',
+        height: isCollapsed ? 0 : `min(640px, calc(100vh - ${fabPosition.bottom + fabPosition.height + 40}px))`,
+        zIndex: 9997,
+        pointerEvents: isCollapsed ? 'none' : 'auto',
+        display: 'flex',
+        overflow: 'hidden',
+        borderRadius: '16px',
+        boxShadow: isCollapsed ? 'none' : '0 8px 32px rgba(0, 0, 0, 0.18)',
+        transition: 'opacity 0.15s ease, transform 0.15s ease',
+        opacity: isCollapsed ? 0 : 1,
+        transform: isCollapsed ? 'translateY(8px)' : 'translateY(0)',
+        backgroundColor: 'var(--bg-primary)',
+      }}
+    >
 
-      {/* Layout Wrapper - only this part captures clicks */}
-      <div style={{ position: 'relative', display: 'flex', width: '100%', height: '100%', pointerEvents: 'none' }}>
-
-        {/* Tail Button (Show when collapsed, but hide in article editor mode) */}
-        {!isArticleEditorMode && (
-          <button
-            onClick={() => setIsCollapsed(false)}
-            style={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              zIndex: 50,
-              backgroundColor: 'white',
-              color: 'black',
-              padding: '6px',
-              borderTopLeftRadius: '0',
-              borderBottomLeftRadius: '8px',
-              borderLeft: '1px solid rgba(0, 0, 0, 0.08)',
-              borderBottom: '1px solid rgba(0, 0, 0, 0.08)',
-              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
-              display: 'flex',
-              alignItems: 'center',
-              cursor: 'pointer',
-              transition: 'transform 0.3s ease-out',
-              transform: isCollapsed ? 'translateX(0)' : 'translateX(100%)',
-              pointerEvents: 'auto',
-            }}
-            title={t.common.openBNBot}
-          >
-            <img src={chrome.runtime?.getURL?.('assets/images/bnbot-rounded-logo-5.png') || ''} style={{ width: 24, height: 24 }} alt="BNBot" />
-          </button>
-        )}
+      {/* Popup main container — FAB (content script) toggles `bnbot-toggle-popup`
+          to show/hide this card. No more tail button or collapse button: the
+          FAB is the only trigger now. */}
+      <div style={{ position: 'relative', display: 'flex', width: '100%', height: '100%' }}>
 
         {/* Main App Container */}
         <div
@@ -882,59 +902,12 @@ function AppContent() {
             width: '100%',
             height: '100%',
             backgroundColor: 'var(--bg-primary)',
-            borderTopLeftRadius: '0',
-            borderBottomLeftRadius: '0',
             overflow: 'visible',
-            boxShadow: 'none',
-            borderTop: 'none',
-            borderBottom: '1px solid var(--border-color)',
-            borderLeft: '1px solid var(--border-color)',
             display: 'flex',
             position: 'relative',
             zIndex: 40,
-            transition: 'transform 0.3s ease-in-out',
-            transform: isCollapsed ? 'translateX(110%)' : 'translateX(0)',
-            pointerEvents: 'auto',
           }}
         >
-          {/* Collapse Button - with hover zone */}
-          <div
-            onMouseEnter={() => setCollapseButtonHovered(true)}
-            onMouseLeave={() => setCollapseButtonHovered(false)}
-            style={{
-              position: 'absolute',
-              top: '0',
-              left: '-26px',
-              zIndex: 50,
-              width: '26px',
-              height: '40px',
-            }}
-          >
-            <button
-              onClick={() => setIsCollapsed(true)}
-              style={{
-                color: 'var(--text-secondary)',
-                width: '25px',
-                height: '24px',
-                cursor: 'pointer',
-                backgroundColor: 'var(--bg-primary)',
-                border: '1px solid var(--border-color)',
-                borderTop: 'none',
-                borderRight: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '0',
-                opacity: (showCollapseButton || collapseButtonHovered) ? 1 : 0,
-                transition: 'opacity 1s ease',
-                WebkitTransition: 'opacity 1s ease',
-              }}
-              title={t.common.collapse}
-            >
-              <ChevronRight size={14} strokeWidth={1.5} />
-            </button>
-          </div>
-
           <main style={{
             flex: 1,
             backgroundColor: 'transparent',

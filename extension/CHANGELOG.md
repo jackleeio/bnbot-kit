@@ -3,6 +3,26 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.9.4] - 2026-04-21
+
+### Changed
+- **FAB / popup 联动定位**: FAB 每次对齐 Grok 时广播 `bnbot-fab-aligned` event，popup 监听并把自己锚在 FAB 上方 12px（`bottom = fab.bottom + fab.height + 12`），避免 popup 盖住 FAB。max-height 也跟 FAB 位置联动。
+- **FAB 尺寸对齐 Grok**: 从 44×44 改为 **54×54**（跟 GrokDrawerHeader 一致），logo 从 28 → 32，圆角 12 → 14。
+- **FAB 水平居中对齐 Grok 垂直中线**: `right` 不再写死 20px，按 Grok 的 `right` edge 动态计算。
+- **Sidebar 紧凑布局**: 设置齿轮 + 用户头像从 `marginTop: auto` 改为 `marginTop: 16px`，跟功能 tab 紧挨着（统一 16px gap），去掉中部大块留白。
+
+## [0.9.3] - 2026-04-21
+
+### Changed
+- **Sidebar → 右下 popup**: 面板从占满整个右侧 slide-in 改成右下浮层（420×min(640, viewport-180)）。触发入口改成独立 FAB，位置在 X 的 Grok drawer 上方（`right: 20px; bottom: 90px`）。
+- 点 FAB 弹出 / 关闭，popup 带圆角阴影 + fade/translate 动画。
+
+### Added
+- **`utils/BnbotFabInjector.ts`**: 独立 content-script 注入 FAB（44×44 圆角卡片 + logo），不依赖 X 的 DOM 层级（`position: fixed`），抗 X 布局更新。
+
+### Removed
+- **旧"Tail Button"和"Collapse Button"**: FAB 接管显隐，不再需要边缘 slide 触发器和折叠按钮。
+
 ## [0.9.2] - 2026-04-21
 
 ### Removed

@@ -308,7 +308,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
 
 
-      <div style={{ marginTop: 'auto', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
+      <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
         {/* Settings Button with Popover */}
         <div
           style={{ position: 'relative' }}
