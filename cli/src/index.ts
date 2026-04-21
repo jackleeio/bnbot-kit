@@ -61,6 +61,8 @@ import {
 import {
   inboxTickCommand,
   inboxInstallCommand,
+  inboxStartCommand,
+  inboxStopCommand,
   inboxUninstallCommand,
   inboxStatusCommand,
 } from './commands/inboxTick.js';
@@ -234,17 +236,28 @@ function buildProgram(): Command {
 
   inbox
     .command('install')
-    .description('Install com.bnbot.inbox-tick launchd agent (5-min cadence)')
+    .description('Write the launchd plist (does NOT start it — run `bnbot inbox start` after)')
+    .option('--interval <sec>', 'Tick interval in seconds (default 900 = 15 min)', '900')
     .action(inboxInstallCommand);
 
   inbox
+    .command('start')
+    .description('Bootstrap the launchd agent — begin polling at the configured interval')
+    .action(inboxStartCommand);
+
+  inbox
+    .command('stop')
+    .description('Bootout the launchd agent — pause polling (plist preserved)')
+    .action(inboxStopCommand);
+
+  inbox
     .command('uninstall')
-    .description('Remove the inbox-tick launchd agent')
+    .description('Stop polling AND delete the plist file')
     .action(inboxUninstallCommand);
 
   inbox
     .command('status')
-    .description('Show inbox-tick state: installed?, last run, seen count')
+    .description('Show installed?, running?, last tick, seen count')
     .action(inboxStatusCommand);
 
   // ── Draft commands ──────────────────────────────────────

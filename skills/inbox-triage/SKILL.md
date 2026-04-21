@@ -202,24 +202,63 @@ Load user's niche from the voice profile: `<skill-path>/config/profiles/<handle>
 └── inbox-YYYYMMDD.jsonl         # full audit trail
 ```
 
-## Scheduling
+## Auto-monitoring (15-min poller)
 
-Pair with `/schedule` for daily automation:
+Persistent background polling for high-freshness reply opportunities.
+A launchd agent (`com.bnbot.inbox-tick`) wakes every N minutes, scrapes
+notifications via WS daemon (cheap, no Claude), and ONLY spawns a
+headless `bnbot -p '/inbox-triage --auto'` session when fresh actionable
+items (mention / reply / quote / new_post) appear.
+
+### Lifecycle commands (Claude maps user intent → these)
+
+| User says | Command |
+|---|---|
+| "开始自动监听 inbox" / "auto-monitor on" | `bnbot inbox install && bnbot inbox start` |
+| "停一下自动监听" / "pause" | `bnbot inbox stop` (plist preserved, restart with start) |
+| "彻底卸了" / "uninstall" | `bnbot inbox uninstall` |
+| "看看在不在跑" / "status" | `bnbot inbox status` |
+| "改成 5 分钟一次" | `bnbot inbox stop && bnbot inbox install --interval=300 && bnbot inbox start` |
+
+Default interval is **15 min** (900s). Conservative — catches most
+reply rank 1-3 opportunities while looking like a real person checking
+notifications, not a polling bot. Tighten with `--interval` if user
+wants more aggressive freshness chasing.
+
+### Why install + start are separate
+
+`install` writes the plist with `RunAtLoad=false` — agent is configured
+but doesn't run. User has to explicitly say "start it" before any
+auto-engagement happens. Prevents accidental "I just wanted to install
+it to test" → 30 replies/day going out.
+
+### What the tick does
 
 ```
-/schedule 每天 9 点自动清通知
+tick wakes (every interval seconds)
+  ↓
+WS scrape notifications (200ms, no Claude)
+  ↓
+dedupe vs ~/.bnbot/state/inbox-seen.json
+  ↓
+for non-actionable fresh items (like/follow/retweet/other):
+  mark seen with action=skip, write
+  ↓
+if 0 fresh actionable items: exit (cheap path, no spawn)
+  ↓
+else: spawn detached `bnbot -p '/inbox-triage --auto' --model=sonnet`
+       which loads this skill, applies EV + persona-fit + endorsement
+       gates, posts via CDP, writes session report
+  ↓
+tick exits (the spawned bnbot session runs to completion independently)
 ```
 
-Claude registers a launchd plist running:
+### Manual one-shot
 
-```bash
-cd ~/Projects/bnbot && bun run src/entrypoints/cli.tsx -p \
-  "/inbox-triage — 清今天的通知，常规决策可以批量处理；模糊的留给我看" \
-  --model=sonnet
-```
-
-Without `--model=sonnet` this may pick whatever the default is; Sonnet
-is a good balance of judgment quality + cost for this loop.
+User explicitly invoking `/inbox-triage` in their REPL still works the
+same as before — interactive mode with draft approval. The tick is for
+hands-off background polling; the skill itself stays interactive by
+default.
 
 ## Don't do
 

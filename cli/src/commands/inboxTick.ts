@@ -181,12 +181,21 @@ export async function inboxTickCommand(): Promise<void> {
   logLine(`tick: spawned bnbot pid=${child.pid}`);
 }
 
-export async function inboxInstallCommand(): Promise<void> {
+const DEFAULT_INTERVAL_SEC = 900; // 15 min — conservative default, user can override with --interval
+
+export async function inboxInstallCommand(options: { interval?: string } = {}): Promise<void> {
   await ensureDirs();
+  const intervalSec = parseInt(options.interval || String(DEFAULT_INTERVAL_SEC), 10);
+  if (!Number.isFinite(intervalSec) || intervalSec < 60) {
+    console.error(`Invalid --interval: ${options.interval}. Must be ≥ 60 seconds.`);
+    process.exit(1);
+  }
   const bnbotBin = process.execPath;
   const cliEntry = process.argv[1] || '';
   const shellCmd = `command -v bnbot > /dev/null && bnbot inbox tick || ${bnbotBin} ${cliEntry} inbox tick`;
   const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${TICK_LABEL}.plist`);
+  // RunAtLoad=false — install writes the plist but does NOT start it.
+  // User runs `bnbot inbox start` when ready to actually go live.
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -198,22 +207,47 @@ export async function inboxInstallCommand(): Promise<void> {
     <string>-lc</string>
     <string>${shellCmd}</string>
   </array>
-  <key>StartInterval</key><integer>300</integer>
-  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>${intervalSec}</integer>
+  <key>RunAtLoad</key><false/>
   <key>StandardOutPath</key><string>${TICK_LOG}</string>
   <key>StandardErrorPath</key><string>${TICK_LOG}</string>
 </dict>
 </plist>
 `;
   await fs.writeFile(plistPath, plist);
-  spawnSync('/bin/bash', ['-lc', `launchctl bootout gui/$UID ${JSON.stringify(plistPath)} 2>/dev/null; launchctl bootstrap gui/$UID ${JSON.stringify(plistPath)}`]);
   console.log(JSON.stringify({
     installed: true,
+    started: false,
     plist: plistPath,
     label: TICK_LABEL,
-    intervalSec: 300,
+    intervalSec,
+    intervalHuman: humanInterval(intervalSec),
     logPath: TICK_LOG,
+    next: 'run `bnbot inbox start` when you want it to begin polling',
   }, null, 2));
+}
+
+export async function inboxStartCommand(): Promise<void> {
+  const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${TICK_LABEL}.plist`);
+  if (!existsSync(plistPath)) {
+    console.error(`Plist not found at ${plistPath}. Run \`bnbot inbox install\` first.`);
+    process.exit(1);
+  }
+  // bootout if already loaded (idempotent), then bootstrap.
+  const r = spawnSync('/bin/bash', ['-lc',
+    `launchctl bootout gui/$UID ${JSON.stringify(plistPath)} 2>/dev/null; launchctl bootstrap gui/$UID ${JSON.stringify(plistPath)}`,
+  ]);
+  console.log(JSON.stringify({
+    started: r.status === 0,
+    label: TICK_LABEL,
+    note: 'next tick fires within `intervalSec` seconds',
+  }, null, 2));
+}
+
+export async function inboxStopCommand(): Promise<void> {
+  const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${TICK_LABEL}.plist`);
+  spawnSync('/bin/bash', ['-lc', `launchctl bootout gui/$UID ${JSON.stringify(plistPath)} 2>/dev/null`]);
+  console.log(JSON.stringify({ stopped: true, label: TICK_LABEL, note: 'plist file kept; run `bnbot inbox start` to resume' }, null, 2));
 }
 
 export async function inboxUninstallCommand(): Promise<void> {
@@ -223,17 +257,28 @@ export async function inboxUninstallCommand(): Promise<void> {
 }
 
 export async function inboxStatusCommand(): Promise<void> {
+  const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${TICK_LABEL}.plist`);
+  const installed = existsSync(plistPath);
+  // running = launchctl list shows it
+  const list = spawnSync('/bin/bash', ['-lc', `launchctl list | grep ${TICK_LABEL} || true`]);
+  const running = (list.stdout?.toString() || '').includes(TICK_LABEL);
   const lastRun = existsSync(LAST_RUN_PATH)
     ? JSON.parse(await fs.readFile(LAST_RUN_PATH, 'utf8'))
     : null;
   const seenCount = existsSync(SEEN_PATH)
     ? Object.keys(JSON.parse(await fs.readFile(SEEN_PATH, 'utf8'))).length
     : 0;
-  const tickInstalled = existsSync(join(homedir(), 'Library', 'LaunchAgents', `${TICK_LABEL}.plist`));
   console.log(JSON.stringify({
-    tickInstalled,
+    installed,
+    running,
     seenItems: seenCount,
     lastRun,
     logPath: TICK_LOG,
   }, null, 2));
+}
+
+function humanInterval(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.round(sec / 60)}min`;
+  return `${(sec / 3600).toFixed(1)}h`;
 }
