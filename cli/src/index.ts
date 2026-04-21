@@ -59,6 +59,12 @@ import {
   calendarUninstallCommand,
 } from './commands/calendar.js';
 import {
+  inboxTickCommand,
+  inboxInstallCommand,
+  inboxUninstallCommand,
+  inboxStatusCommand,
+} from './commands/inboxTick.js';
+import {
   draftAddCommand,
   draftListCommand,
   draftScheduleCommand,
@@ -208,6 +214,38 @@ function buildProgram(): Command {
     .command('uninstall')
     .description('Remove the calendar-tick launchd agent')
     .action(calendarUninstallCommand);
+
+  // ── Inbox tick (auto-poll X notifications every 5 min) ──
+  // Cheap path: scrape notifications, dedup against seen-state. If 0
+  // fresh actionable items (mention/reply/quote/new_post), exit. On
+  // hot path: spawn headless bnbot session running /inbox-triage --auto
+  // to evaluate + post via CDP. Captures the high-freshness reply
+  // window (rank 1-3 = 55% of parent exposure) that timeline-scrape
+  // misses.
+
+  const inbox = program
+    .command('inbox')
+    .description('Inbox tick — automated processing of X notifications');
+
+  inbox
+    .command('tick')
+    .description('Run one tick (called every 5 min by launchd; safe to call manually)')
+    .action(inboxTickCommand);
+
+  inbox
+    .command('install')
+    .description('Install com.bnbot.inbox-tick launchd agent (5-min cadence)')
+    .action(inboxInstallCommand);
+
+  inbox
+    .command('uninstall')
+    .description('Remove the inbox-tick launchd agent')
+    .action(inboxUninstallCommand);
+
+  inbox
+    .command('status')
+    .description('Show inbox-tick state: installed?, last run, seen count')
+    .action(inboxStatusCommand);
 
   // ── Draft commands ──────────────────────────────────────
 
