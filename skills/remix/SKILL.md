@@ -51,10 +51,13 @@ Before any scrape or write:
 ### 1. Scrape the source tweet
 
 ```bash
-bnbot x read "<tweet-url>" --full > /tmp/remix-source.json
+bnbot x scrape thread "<tweet-url>" > /tmp/remix-source.json
 ```
 
 Parse: `{ text, author, authorFollowers, postedAt, media, engagement }`.
+For a thread URL, the first entry is the target tweet; subsequent
+entries are the author's follow-ups and can be used for additional
+context when choosing an angle.
 
 **Read the WHOLE tweet text.** Don't truncate to preview length — a
 remix based on the first 200 chars of a long-form tweet will miss the
@@ -137,16 +140,37 @@ End with: `Pick [1|2|3], [edit N], [redraft], or [skip].`
 For **standalone** mode:
 
 ```bash
-bnbot x compose --engine debugger --text "<picked draft>"
+bnbot x post --engine debugger -- "<picked draft>"
 ```
 
-For **quote** mode:
+With attached media (images / video / gif):
 
 ```bash
-bnbot x quote --engine debugger "<source-url>" "<picked draft>"
+bnbot x post --engine debugger --media /tmp/remix-media.mp4 -- "<picked draft>"
 ```
 
-After success, echo the new tweet URL back.
+For **quote** mode (attributes the source tweet automatically):
+
+```bash
+bnbot x quote --engine debugger -- "<source-url>" "<picked draft>"
+```
+
+> **Commander gotcha**: `--media` is variadic (accepts multiple URLs),
+> so the text positional argument **must** be separated with `--`.
+> Without it, commander swallows the text into `--media`, and you get
+> `Error · Exit code 1` with no useful message. Always use `--` before
+> the text.
+
+If the source tweet has media you want to remix (image / video):
+
+1. Download from `media[0].url` (photo) or `media[0].variants[0]`
+   (video, highest bitrate MP4) into `/tmp/remix-media.<ext>`.
+2. Pass it with `--media /tmp/remix-media.<ext>`.
+3. Don't `--media` a URL pointing at `video.twimg.com` directly — the
+   CDP upload path needs a local file.
+
+After success, `bnbot x post` prints JSON `{success, tweetId, ...}`.
+Echo `https://x.com/<handle>/status/<tweetId>` back to the user.
 
 ### 6. Log
 
@@ -176,8 +200,8 @@ isn't re-remixed within 30 days:
 5. **Keep voice rules from persona.md** — one failure = re-draft that
    candidate, don't ship.
 6. **Max 5 remixes per 24h** — tweeting remixes looks spammy past that.
-7. **If `bnbot x read` returns no text** (deleted / protected), abort.
-   Don't draft from the URL alone.
+7. **If `bnbot x scrape thread` returns empty / no text** (deleted or
+   protected tweet), abort. Don't draft from the URL alone.
 
 ## Don't do
 
