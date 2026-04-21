@@ -9,10 +9,53 @@
  * 3. Print next steps
  */
 
-import { mkdirSync, writeFileSync, existsSync } from 'fs';
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
+
+// Default permission whitelist for the bnbot desktop agent. Keeps users
+// from being asked for approval every time the agent runs `bnbot x ...`.
+const BNBOT_PERMISSION_PATTERNS = ['Bash(bnbot *)', 'Bash(bnbot)'];
+
+/**
+ * Write / merge default permissions into ~/.bnbot/settings.json so the
+ * desktop agent auto-approves bnbot CLI calls. Safe to run repeatedly:
+ * existing user keys are preserved and additional allow-patterns are
+ * merged (deduped) into the array.
+ */
+function ensureBnbotPermissions(): void {
+  const dir = join(homedir(), '.bnbot');
+  const file = join(dir, 'settings.json');
+  try {
+    mkdirSync(dir, { recursive: true });
+    let existing: any = {};
+    if (existsSync(file)) {
+      try {
+        existing = JSON.parse(readFileSync(file, 'utf-8')) || {};
+      } catch {
+        existing = {};
+      }
+    }
+    const permissions = existing.permissions && typeof existing.permissions === 'object'
+      ? existing.permissions
+      : {};
+    const allow: string[] = Array.isArray(permissions.allow) ? permissions.allow.slice() : [];
+    let added = false;
+    for (const p of BNBOT_PERMISSION_PATTERNS) {
+      if (!allow.includes(p)) {
+        allow.push(p);
+        added = true;
+      }
+    }
+    if (!added && existsSync(file)) return;
+    permissions.allow = allow;
+    existing.permissions = permissions;
+    writeFileSync(file, JSON.stringify(existing, null, 2) + '\n');
+  } catch {
+    // best-effort; don't fail setup on permission file issues
+  }
+}
 
 const SKILL_URL = 'https://bnbot.ai/skill.md';
 const CHROME_URL = 'https://chromewebstore.google.com/detail/bnbot/haammgigdkckogcgnbkigfleejpaiiln';
@@ -75,6 +118,10 @@ export async function runSetup(): Promise<void> {
     console.log('⚠️  Could not download skill.md (network error)');
     console.log('   Manual: curl -o ~/.claude/commands/bnbot.md ' + SKILL_URL);
   }
+
+  // Step 2.5: Ensure bnbot desktop agent auto-allows bnbot CLI calls.
+  ensureBnbotPermissions();
+  console.log('✅ Agent permissions configured (~/.bnbot/settings.json)');
 
   // Step 3: Start server and check extension connection
   console.log('');
