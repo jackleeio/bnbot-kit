@@ -276,8 +276,23 @@ If the script fails or returns empty, fall back to `WebSearch`.
 ### Optional: X/Twitter (if bnbot is running)
 
 ```bash
+# Trend / topic discovery
 bnbot x scrape search "trending" -t top -l 10
 bnbot x scrape user-tweets <kol_handle> -l 5
+
+# What people you follow just posted (chronological — best signal for
+# what's actually happening in your circle right now):
+bnbot x scrape timeline --type=following -l 20
+
+# Algorithmic For-You (X's recommendation):
+bnbot x scrape timeline -l 20
+
+# Inbox: mentions, replies, likes, follows, RTs, new-post pings:
+bnbot x scrape notifications -l 40
+# Returns items with type ∈ { mention, reply, quote, like, retweet,
+# follow, new_post, other }. For engagement triage filter to mention/
+# reply/quote (need response). like/retweet/follow are FYI. new_post
+# is "someone you follow posted" — surface if relevant to user's beat.
 ```
 
 Only use if bnbot is available. Don't fail if it's not.
@@ -828,6 +843,20 @@ bnbot tweet post --draft "一句话推文" --media "<subtitled-video-path>"
 - 不要说"看了个视频说..."，直接输出观点
 - 如果视频太长（>10分钟），只关注最抓人的一个点
 
+## Related skills (sibling triggers)
+
+`/bnbot` is the **content generation** skill. Three sibling skills handle
+the rest of the agent loop — invoke them directly when the intent fits:
+
+| Trigger | Job |
+|---|---|
+| `/schedule` | Schedule one-shot or recurring posts via macOS launchd. System-level, fires even when bnbot REPL is closed. |
+| `/auto-reply` | Autonomous engagement loop — scrape `notifications` (mentions/replies/quotes) + optional `timeline --type=following`, Claude evaluates each, drafts reply in user voice, posts via CDP. Built-in safety rails (per-user cooldown, daily caps, must-approve drafts). |
+| `/inbox-triage` | Reactive notifications cleanup — read inbox, classify, batch-decide actions (reply / like / follow-back / skip), execute after user approval. |
+
+When the user's request is clearly one of these three, prefer the
+sibling — don't try to handle it inside `/bnbot`.
+
 ## Notes
 
 - Always crawl fresh — no stale data (unless using scheduled latest-crawl.json)
@@ -836,3 +865,4 @@ bnbot tweet post --draft "一句话推文" --media "<subtitled-video-path>"
 - Customize: `config/sources.json` for sources, `config/profiles/*.json` for account voice, `references/persona.md` for universal writing rules
 - Default to draft mode for safety — never auto-post without explicit user consent
 - When generating multiple tweets, suggest `bnbot draft add --auto` to batch-save and auto-schedule all of them
+- For publish-now (no draft / no schedule), use the CDP path directly (Step 8.5 has the cheat sheet)

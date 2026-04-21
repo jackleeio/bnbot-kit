@@ -35,23 +35,24 @@ Pairs well with `/schedule` for recurring triage (e.g. every morning at
 bnbot x scrape notifications --limit 50 > /tmp/inbox-raw.json
 ```
 
-If that CLI verb doesn't exist yet, fall back to the debugger inspect
-path we built — navigate the pooled tab to `https://x.com/notifications`
-and read the DOM. (TODO: add `scrape notifications` to bnbot-cli if
-missing — check with `bnbot x scrape --help`.)
+The CLI returns a JSON array of items, each pre-classified by the
+extension's GraphQL scraper into one of these `type` values.
 
 ### 2. Classify each notification
 
-Parse each notification into one of:
+Each item already has `type`, `fromUsers`, `targetTweet`, `text`, `ts`.
+Map type → action:
 
-| Type | Identifying signals | Suggested action |
+| `type` | Meaning | Default action |
 |---|---|---|
-| `mention` | "@you" in body, quoted reply | **reply** (Claude drafts) |
-| `reply_to_my_tweet` | someone replied under user's post | reply if substantive, else like |
-| `like` | "liked your post" | skip (no action) |
-| `retweet` | "reposted your post" | skip (or like-back if relationship) |
-| `follow` | "followed you" | follow back if mutual-niche, else skip |
-| `quote_tweet` | "quoted your post" | reply if substantive |
+| `mention` | someone @-mentioned user in a new post | **reply** (Claude drafts) |
+| `reply` | someone replied to user's post | reply if substantive, else like |
+| `quote` | someone quote-tweeted user's post | reply if substantive |
+| `like` | someone liked user's post | skip (FYI only) |
+| `retweet` | someone reposted user's post | skip (or like-back if relationship) |
+| `follow` | someone followed user | follow back if niche-aligned, else skip |
+| `new_post` | accounts user follows posted (single or aggregated) | skip in inbox-triage; surface in `/auto-reply --type=following` instead |
+| `other` | unclassified | skip |
 | `mention_in_reply_chain` | user was @'d in a thread | reply if relevant |
 
 Output a table first for user approval:

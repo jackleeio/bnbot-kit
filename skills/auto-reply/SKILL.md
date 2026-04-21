@@ -36,10 +36,21 @@ Save the session config to `~/.bnbot/state/auto-reply-session.json` so
 
 Outer loop (duration-bound):
 
-1. **Scrape** recent tweets from the source:
-   - `mentions`: `bnbot x scrape mentions --limit 20`
-   - `timeline`: `bnbot x scrape timeline --limit 20`
-   - `@user`: `bnbot x scrape user --handle <user> --limit 20`
+1. **Scrape** recent items from the source:
+   - `notifications` (best for reactive engagement): `bnbot x scrape notifications --limit 40`
+     Returns mixed types — filter to `type ∈ {mention, reply, quote}` for
+     reply candidates, optionally also `like` with `targetTweet` if you
+     want to like-back. Skip `follow`, `new_post`, `other`.
+   - `following` (best for proactive engagement on your circle): `bnbot x scrape timeline --type=following --limit 20`
+     Chronological feed of accounts you follow — what they JUST posted,
+     not algorithmic For-You. Best signal for "real things happening in
+     my circle right now". Use this to find tweets worth like / reply.
+   - `for-you`: `bnbot x scrape timeline --limit 20` (algorithmic)
+   - `@user`: `bnbot x scrape user-tweets <handle> --limit 20`
+
+   Combined strategy (recommended for full inbox + circle coverage):
+   first run `notifications` (must-handle items), then `following`
+   (opportunistic engagement), dedupe by tweet id.
 2. **Dedup** against `~/.bnbot/state/auto-reply-seen.json` (rolling 7-day
    set of tweet_ids we've already reviewed).
 3. For each fresh tweet (limit to top 3–5 per cycle):

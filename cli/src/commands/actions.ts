@@ -223,17 +223,24 @@ export async function unbookmarkCommand(url: string): Promise<void> {
 
 // ── Scrape ───────────────────────────────────────────────────
 
-export async function scrapeTimelineCommand(options: { limit?: string; scrollAttempts?: string }): Promise<void> {
+export async function scrapeTimelineCommand(options: { limit?: string; scrollAttempts?: string; type?: string }): Promise<void> {
   const limit = parseInt(options.limit || '20', 10);
   const scrollAttempts = parseInt(options.scrollAttempts || '5', 10);
-  console.error(`Scraping timeline (limit: ${limit})...`);
-  return runCliAction('scrape_timeline', { limit, scrollAttempts }, getPort());
+  const type = options.type === 'following' ? 'following' : 'for-you';
+  console.error(`Scraping timeline (type: ${type}, limit: ${limit})...`);
+  return runCliAction('scrape_timeline', { type, limit, scrollAttempts }, getPort());
 }
 
 export async function scrapeBookmarksCommand(options: { limit?: string }): Promise<void> {
   const limit = parseInt(options.limit || '20', 10);
   console.error(`Scraping bookmarks (limit: ${limit})...`);
   return runCliAction('scrape_bookmarks', { limit }, getPort());
+}
+
+export async function scrapeNotificationsCommand(options: { limit?: string }): Promise<void> {
+  const limit = parseInt(options.limit || '40', 10);
+  console.error(`Scraping notifications (limit: ${limit})...`);
+  return runCliAction('scrape_notifications', { limit }, getPort());
 }
 
 export async function scrapeSearchCommand(

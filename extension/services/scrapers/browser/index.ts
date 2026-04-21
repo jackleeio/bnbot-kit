@@ -57,4 +57,4 @@ export type { WeixinArticleResult } from './weixin';
 export { fetchYahooFinanceQuote } from './yahoo-finance';
 export type { YahooFinanceQuote } from './yahoo-finance';
 
-export { getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread } from './twitter';
+export { getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications } from './twitter';

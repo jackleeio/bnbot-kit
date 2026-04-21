@@ -35,6 +35,7 @@ import {
   unbookmarkCommand,
   scrapeTimelineCommand,
   scrapeBookmarksCommand,
+  scrapeNotificationsCommand,
   scrapeSearchCommand,
   scrapeUserTweetsCommand,
   scrapeUserProfileCommand,
@@ -317,6 +318,7 @@ function buildProgram(): Command {
     .description('Scrape home timeline')
     .option('-l, --limit <n>', 'Max tweets', '20')
     .option('--scrollAttempts <n>', 'Scroll attempts', '5')
+    .option('-t, --type <type>', 'Timeline type: for-you (algorithmic) or following (chronological from accounts you follow)', 'for-you')
     .action(scrapeTimelineCommand);
 
   xScrape
@@ -324,6 +326,12 @@ function buildProgram(): Command {
     .description('Scrape bookmarked tweets')
     .option('-l, --limit <n>', 'Max tweets', '20')
     .action(scrapeBookmarksCommand);
+
+  xScrape
+    .command('notifications')
+    .description('Scrape inbox notifications (mentions, replies, likes, RTs, follows)')
+    .option('-l, --limit <n>', 'Max notifications', '40')
+    .action(scrapeNotificationsCommand);
 
   xScrape
     .command('search <query>')

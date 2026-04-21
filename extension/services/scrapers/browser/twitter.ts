@@ -544,3 +544,161 @@ export async function getTwitterThread(tweetId: string, limit = 50): Promise<any
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return (data as any[]) || [];
 }
+
+/**
+ * Read the user's notifications inbox (mentions, replies, likes, RTs,
+ * follows, quotes). Uses the REST /notifications/all.json endpoint
+ * — the response has a `globalObjects` map that joins notifications
+ * to tweets/users in one shot, much simpler than GraphQL
+ * NotificationsTimeline for this use case.
+ *
+ * Returns a flat, normalized list ordered newest-first. Consumer
+ * (agent skill) decides what to do per item.
+ */
+export async function getTwitterNotifications(limit = 40): Promise<any[]> {
+  const tabId = await getTab('https://x.com/notifications');
+  await new Promise(r => setTimeout(r, 2500));
+  await checkLoginRedirect(tabId, 'Twitter');
+
+  const data = await executeInPage(tabId, async (bearer: string, lim: number) => {
+    try {
+      const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
+      if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
+
+      const params = new URLSearchParams({
+        include_profile_interstitial_type: '1',
+        include_blocking: '1',
+        include_blocked_by: '1',
+        include_followed_by: '1',
+        include_want_retweets: '1',
+        include_mute_edge: '1',
+        include_can_dm: '1',
+        include_can_media_tag: '1',
+        include_ext_is_blue_verified: '1',
+        skip_status: '1',
+        cards_platform: 'Web-12',
+        include_cards: '1',
+        include_ext_alt_text: 'true',
+        include_ext_limited_action_results: 'true',
+        include_quote_count: 'true',
+        include_reply_count: '1',
+        tweet_mode: 'extended',
+        include_ext_views: 'true',
+        include_entities: 'true',
+        include_user_entities: 'true',
+        include_ext_media_color: 'true',
+        include_ext_media_availability: 'true',
+        include_ext_sensitive_media_warning: 'true',
+        include_ext_trusted_friends_metadata: 'true',
+        send_error_codes: 'true',
+        simple_quoted_tweet: 'true',
+        count: String(Math.min(200, lim)),
+        requestContext: 'launch',
+        ext: 'mediaStats,highlightedLabel,hasNftAvatar,voiceInfo,birdwatchPivot,superFollowMetadata,unmentionInfo,editControl,article',
+      });
+
+      const res = await fetch(`/i/api/2/notifications/all.json?${params.toString()}`, {
+        credentials: 'include',
+        headers: {
+          'Authorization': 'Bearer ' + decodeURIComponent(bearer),
+          'X-Csrf-Token': ct0,
+          'X-Twitter-Auth-Type': 'OAuth2Session',
+          'X-Twitter-Active-User': 'yes',
+        },
+      });
+      if (!res.ok) return { error: `Twitter notifications HTTP ${res.status}` };
+      const d: any = await res.json();
+
+      const go = d?.globalObjects || {};
+      const tweets = go.tweets || {};
+      const users = go.users || {};
+      const notifMap = go.notifications || {};
+      const instructions = d?.timeline?.instructions || [];
+
+      const out: any[] = [];
+      for (const inst of instructions) {
+        const entries = (inst.addEntries?.entries) || (inst.entries) || [];
+        for (const entry of entries) {
+          const id: string = entry.entryId || '';
+          if (id.startsWith('cursor-')) continue;
+          const content: any = entry.content || {};
+
+          // Notification entry: like / retweet / follow aggregated actions.
+          if (id.startsWith('notification-')) {
+            const notifId = id.replace('notification-', '');
+            const n = notifMap[notifId] || {};
+            const msg = n.message?.text || '';
+            const iconId: string = n.icon?.id || '';
+            const sig = iconId + ' ' + msg;
+            let type: string = 'other';
+            // English signals from icon ids + zh message phrasings.
+            if (/heart|liked|点赞了/i.test(sig)) type = 'like';
+            else if (/retweet|reposted|repost|转推了|转发了/i.test(sig)) type = 'retweet';
+            else if (/person|follow|关注了你/i.test(sig)) type = 'follow';
+            else if (/reply|replied|回复了/i.test(sig)) type = 'reply';
+            // X also sends "new post from accounts you follow" notifications:
+            // - bell_solid icon + "新帖子通知" / "最新帖子" / "新推文" (zh)
+            // - "new post" / "Posted" (en)
+            else if (/bell|new.?post|posted|新帖子|最新帖子|新推文|发布了/i.test(sig)) type = 'new_post';
+            const fromUsers: string[] = (n.template?.aggregateUserActionsV1?.fromUsers || [])
+              .map((u: any) => u.user?.id || u.id).filter(Boolean)
+              .map((uid: string) => users[uid]?.screen_name).filter(Boolean);
+            const targetTweetIds: string[] = (n.template?.aggregateUserActionsV1?.targetObjects || [])
+              .map((t: any) => t.tweet?.id).filter(Boolean);
+            const tw = targetTweetIds[0] ? tweets[targetTweetIds[0]] : null;
+            // Single-author new-post notifications: X just shows the
+            // author's display name as the message text — no verb. If we
+            // didn't classify it above and there's a targetTweet, it's a
+            // new-post notification from someone the user follows.
+            if (type === 'other' && tw) type = 'new_post';
+            out.push({
+              type, id: notifId,
+              text: msg,
+              fromUsers,
+              targetTweet: tw ? {
+                id: String(tw.id_str || tw.id),
+                text: tw.full_text || tw.text || '',
+                url: fromUsers[0]
+                  ? `https://x.com/${fromUsers[0]}/status/${tw.id_str || tw.id}`
+                  : `https://x.com/i/status/${tw.id_str || tw.id}`,
+              } : null,
+              ts: n.timestampMs ? Number(n.timestampMs) : null,
+            });
+            continue;
+          }
+
+          // Tweet entry: mention / reply to user / quote of user.
+          if (id.startsWith('tweet-')) {
+            const tweetId = id.replace('tweet-', '');
+            const tw = tweets[tweetId];
+            if (!tw) continue;
+            const u = users[tw.user_id_str] || {};
+            const author = u.screen_name || 'unknown';
+            const text = tw.full_text || tw.text || '';
+            let type: string = 'mention';
+            if (tw.in_reply_to_status_id_str) type = 'reply';
+            else if (tw.is_quote_status) type = 'quote';
+            out.push({
+              type, id: tweetId,
+              text,
+              fromUsers: [author],
+              targetTweet: {
+                id: tweetId,
+                text,
+                url: `https://x.com/${author}/status/${tweetId}`,
+              },
+              inReplyTo: tw.in_reply_to_status_id_str || null,
+              likes: tw.favorite_count || 0,
+              retweets: tw.retweet_count || 0,
+              ts: tw.created_at ? new Date(tw.created_at).getTime() : null,
+            });
+          }
+        }
+      }
+      return out.slice(0, lim);
+    } catch (e: any) { return { error: e.message || 'Twitter notifications scraper failed' }; }
+  }, [BEARER, limit]);
+
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return (data as any[]) || [];
+}
