@@ -51,6 +51,14 @@ import {
   fetchXiaohongshuCommand,
 } from './commands/actions.js';
 import {
+  calendarAddCommand,
+  calendarListCommand,
+  calendarRemoveCommand,
+  calendarTickCommand,
+  calendarInstallCommand,
+  calendarUninstallCommand,
+} from './commands/calendar.js';
+import {
   draftAddCommand,
   draftListCommand,
   draftScheduleCommand,
@@ -154,6 +162,52 @@ function buildProgram(): Command {
     .command('status')
     .description('Check extension connection status')
     .action(statusCommand);
+
+  // ── Calendar commands ──────────────────────────────────
+  // Content calendar: one launchd tick reads ~/.bnbot/calendar/<date>.json
+  // every 5 min and fires entries whose time has arrived. See
+  // skills/schedule/SKILL.md for usage and the difference from ad-hoc plists.
+
+  const calendar = program
+    .command('calendar')
+    .description('Calendar-based scheduled posts (queue + tick)');
+
+  calendar
+    .command('add <action>')
+    .description('Append a scheduled entry to a day file. `action` is the full shell command to run at fire time (e.g. `bnbot x post --engine debugger "hi"`).')
+    .option('--at <HH:MM>', 'Local time of day to fire', '09:00')
+    .option('--date <YYYY-MM-DD>', 'Date to schedule on (default: today)')
+    .option('--kind <kind>', 'Entry kind: post|thread|reply|quote|like|retweet|command (auto-inferred from action)')
+    .option('--note <text>', 'Free-form note shown in listings')
+    .action(calendarAddCommand);
+
+  calendar
+    .command('list')
+    .description('List today\'s scheduled entries (or --all days)')
+    .option('-d, --date <YYYY-MM-DD>', 'Day to list')
+    .option('--all', 'Summary across all calendar files')
+    .action(calendarListCommand);
+
+  calendar
+    .command('remove <id>')
+    .description('Delete a scheduled entry by id')
+    .option('-d, --date <YYYY-MM-DD>', 'Day to search (default: scan all files)')
+    .action(calendarRemoveCommand);
+
+  calendar
+    .command('tick')
+    .description('Fire all pending entries whose time has arrived (invoked by launchd every 5 min)')
+    .action(calendarTickCommand);
+
+  calendar
+    .command('install')
+    .description('Install the com.bnbot.calendar-tick launchd agent (runs `calendar tick` every 5 min)')
+    .action(calendarInstallCommand);
+
+  calendar
+    .command('uninstall')
+    .description('Remove the calendar-tick launchd agent')
+    .action(calendarUninstallCommand);
 
   // ── Draft commands ──────────────────────────────────────
 

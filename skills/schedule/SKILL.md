@@ -25,7 +25,89 @@ true` needs the REPL running at fire time.
 This is the only approach that delivers the subscription promise of
 "scheduled posts fire while I sleep".
 
-## Paths
+## Two modes — pick based on intent
+
+| Intent shape | Mode | Storage |
+|---|---|---|
+| **Calendar** — bulk plans, daily brief queue, inspectable | `bnbot calendar add` + one long-lived tick agent | `~/.bnbot/calendar/<YYYY-MM-DD>.json` |
+| **Ad-hoc** — "5 分钟后发 X", one-shot fire-and-forget | per-task launchd plist | `~/Library/LaunchAgents/com.bnbot.schedule.<id>.plist` |
+
+**Default to calendar mode** unless the user wants a true one-shot.
+Calendar wins for:
+- Multi-day content planning (weekly brief → 20 entries across 7 days)
+- "排到明早 9 点发 X" (append to tomorrow's file, no new plist)
+- Batch operations (cancel/reschedule = edit JSON, not bootout N plists)
+- Desktop UI Calendar tab reads/writes the same JSON directly
+
+Calendar needs a one-time install: `bnbot calendar install` — registers
+`com.bnbot.calendar-tick` launchd agent that wakes every 300s, reads
+today + yesterday's JSON, fires pending entries whose local time has
+arrived (1h catch-up for laptop sleep).
+
+## Calendar mode — how to use
+
+### First-time setup (once per machine)
+
+```bash
+bnbot calendar install
+```
+
+Check it's loaded:
+
+```bash
+launchctl list | grep com.bnbot.calendar-tick
+```
+
+### Add an entry
+
+```bash
+bnbot calendar add \
+  'bnbot x post --engine debugger "morning"' \
+  --at 09:00 --date 2026-04-22 --note 'morning greeting'
+```
+
+Returns the entry's id. Omit `--date` to schedule for today.
+
+### Batch-add (weekly brief → N entries)
+
+```bash
+bnbot calendar add 'bnbot x post --engine debugger "..."' --at 09:00 --date 2026-04-22
+bnbot calendar add 'bnbot x post --engine debugger "..."' --at 13:30 --date 2026-04-22
+bnbot calendar add 'bnbot x thread --engine debugger "[...json...]"' --at 19:00 --date 2026-04-23
+```
+
+### Inspect
+
+```bash
+bnbot calendar list                    # today
+bnbot calendar list --date 2026-04-22
+bnbot calendar list --all              # summary of every day file
+```
+
+### Cancel / reschedule
+
+```bash
+bnbot calendar remove <id>             # finds across all days
+# reschedule = remove + add
+```
+
+### How it fires
+
+The tick agent wakes every 5 min and for each pending entry where
+`now ≥ scheduled_time` AND `now - scheduled_time ≤ 1h`:
+- mark `status: running`
+- exec the `action` shell command
+- on success: mark `status: done`, stash stdout into `lastResult`
+- on failure: increment `attempts`; retry next tick up to 3 times
+- if past the 1h catch-up window: mark `status: failed` with
+  "missed firing window"
+
+Log: `~/.bnbot/logs/calendar-tick.log` (append-only, stdout+stderr of
+the tick process).
+
+## Ad-hoc mode (single plist) — for one-shot "in N minutes"
+
+Paths:
 
 ```
 ~/Library/LaunchAgents/com.bnbot.schedule.<id>.plist   # job definition
@@ -35,7 +117,7 @@ This is the only approach that delivers the subscription promise of
 
 Always `mkdir -p ~/.bnbot/bin ~/.bnbot/logs` before writing.
 
-## Creating a one-shot schedule
+### Creating a one-shot schedule
 
 User says "明天早上 8 点发 'morning!'":
 
