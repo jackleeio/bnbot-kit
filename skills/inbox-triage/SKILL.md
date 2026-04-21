@@ -47,12 +47,19 @@ Map type → action:
 |---|---|---|
 | `mention` | someone @-mentioned user in a new post | **reply** (Claude drafts) |
 | `reply` | someone replied to user's post | reply if substantive, else like |
-| `quote` | someone quote-tweeted user's post | reply if substantive |
+| `quote` | someone quote-tweeted user's post | **like** (always — never reply, see below) |
 | `like` | someone liked user's post | skip (FYI only) |
 | `retweet` | someone reposted user's post | skip (or like-back if relationship) |
 | `follow` | someone followed user | follow back if niche-aligned, else skip |
 | `new_post` | accounts user follows posted (single or aggregated) | **score & evaluate** — see §"new_post engagement" below |
 | `other` | unclassified | skip |
+
+**Why `quote` defaults to like, not reply:** the quote-tweeter already
+added their own commentary on top of your post. Replying to a quote
+fragments the conversation across two threads (yours + theirs) and
+often comes off as defensive / appended. A like is the cleaner
+acknowledgment. Apply this even when EV would otherwise justify a
+reply — quote is a content type with its own etiquette.
 
 ### 2b. new_post engagement (in-line with `/auto-reply`)
 
