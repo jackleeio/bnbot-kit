@@ -5,9 +5,25 @@
  * Provides a centralized way to access tweet data without DOM scraping.
  */
 
-import { TimelineTweetData } from './HomeTimelineMonitor';
-
 declare const chrome: any;
+
+export interface TimelineTweetData {
+  tweetId: string;
+  username: string;
+  displayName: string;
+  profileImageUrl: string;
+  followers: number;
+  following: number;
+  bio: string;
+  tweetText: string;
+  replyCount: number;
+  retweetCount: number;
+  likeCount: number;
+  viewCount: number;
+  createdAt: string;
+  mediaType: 'video' | 'image' | 'none';
+  mediaUrls?: Array<{ type: 'photo' | 'video' | 'animated_gif'; url: string; thumbnail?: string }>;
+}
 
 export type ApiEndpointType = 'timeline' | 'notifications' | 'tweet_detail' | 'user_tweets';
 

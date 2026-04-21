@@ -22,9 +22,7 @@ export const en = {
     showMore: 'Show more',
     showLess: 'Show less',
     tweetHighlight: 'Money Vision',
-    exposurePrediction: 'Exposure Prediction',
     remoteControl: 'Remote Control',
-    highlightThreshold: 'Highlight ≥',
     subscriptionTiers: {
       free: 'Free',
       starter: 'Starter',

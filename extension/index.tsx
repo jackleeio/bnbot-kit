@@ -7,7 +7,6 @@ import { initAdBlocker } from './utils/adBlocker';
 import { MarkdownPasteProcessor } from './utils/MarkdownPasteProcessor';
 import { BoostChecker } from './utils/BoostChecker';
 import { xUserStore } from './stores/xUserStore';
-import { HomeTimelineMonitor } from './utils/HomeTimelineMonitor';
 import { HomeBoostChecker } from './utils/HomeBoostChecker';
 import { VideoDownloadManager } from './utils/VideoDownloadManager';
 // 初始化 commandService 消息监听器，确保 LOCAL_ACTION（OpenClaw MCP）在内容脚本加载时就能处理
@@ -745,44 +744,6 @@ const mount = () => {
   };
   window.addEventListener('popstate', handleUrlChangeForBoost);
   // Add to the history hacks as well if not already covered by existing intervals
-
-  // --- Home Timeline Monitor Integration ---
-  const timelineMonitor = new HomeTimelineMonitor();
-  let monitorWasEnabled = false; // Track if monitor was ever started
-
-  // Expose monitor instance globally for App.tsx to access
-  (window as any).__bnbotTimelineMonitor = timelineMonitor;
-
-  // Expose a way for App.tsx to set the enabled state
-  (window as any).__bnbotSetMonitorEnabled = (enabled: boolean) => {
-    monitorWasEnabled = enabled;
-  };
-
-  // Monitor is now controlled by the exposure prediction toggle in App.tsx
-  // Auto-restart when returning to home page if it was enabled
-  const checkTimelineMonitorState = () => {
-    const isHomePage = window.location.pathname === '/home';
-
-    if (!isHomePage && timelineMonitor.getIsRunning()) {
-      console.log('[BNBot] Left home page, stopping Timeline Monitor...');
-      monitorWasEnabled = true; // Remember it was enabled
-      timelineMonitor.stop();
-    } else if (isHomePage && !timelineMonitor.getIsRunning() && monitorWasEnabled) {
-      // Auto-restart when returning to /home (if monitor was previously enabled)
-      // Pass skipRefresh=true to avoid clicking Home button and scrolling to top
-      console.log('[BNBot] Returned to home page, restarting Timeline Monitor...');
-      timelineMonitor.start(true);
-    }
-  };
-
-  // Periodic check for URL changes
-  setInterval(checkTimelineMonitorState, 1000);
-
-  // Also listen for popstate events
-  window.addEventListener('popstate', () => {
-    setTimeout(checkTimelineMonitorState, 100);
-    setTimeout(checkTimelineMonitorState, 500);
-  });
 
   // --- Video Download Manager ---
   const videoDownloadManager = new VideoDownloadManager();

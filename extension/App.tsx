@@ -43,11 +43,6 @@ function AppContent() {
   const [chatResetKey, setChatResetKey] = useState(0);
   const [globalChatResetTrigger, setGlobalChatResetTrigger] = useState(0); // Add reset trigger for global Chat
   const [tweetHighlightEnabled, setTweetHighlightEnabled] = useState(true);
-  const [exposurePredictionEnabled, setExposurePredictionEnabled] = useState(true);
-  const [exposureThreshold, setExposureThreshold] = useState(() => {
-    const saved = localStorage.getItem('bnbot_exposure_threshold');
-    return saved ? parseInt(saved) : 1000;
-  });
   const [showCollapseButton, setShowCollapseButton] = useState(true);
   const [collapseButtonHovered, setCollapseButtonHovered] = useState(false);
   const [isArticleFocusMode, setIsArticleFocusMode] = useState(false);
@@ -575,31 +570,6 @@ function AppContent() {
     }
   };
 
-  // Handle exposure prediction toggle - triggers timeline monitor refresh
-  const handleToggleExposurePrediction = async () => {
-    const newState = !exposurePredictionEnabled;
-    setExposurePredictionEnabled(newState);
-
-    if (newState) {
-      // When enabling, trigger a cache refresh if we're on the home page
-      const isHomePage = window.location.pathname === '/home';
-      if (isHomePage) {
-        // Access the global timeline monitor instance
-        const monitor = (window as any).__bnbotTimelineMonitor;
-        if (monitor) {
-          console.log('[BNBot] Exposure prediction enabled, refreshing cache...');
-          // Start the monitor if not already running
-          // Pass skipRefresh=true to avoid scrolling to top
-          if (!monitor.getIsRunning()) {
-            monitor.start(true);
-          }
-          // Trigger cache refresh
-          await monitor.refreshCache();
-        }
-      }
-    }
-  };
-
   const handleLogin = (loggedInUser: User) => {
     // Clear all previous chat history for privacy/fresh start
     chatService.clearAllSessions();
@@ -1075,15 +1045,6 @@ function AppContent() {
             currentTweetId={currentTweetId}
             tweetHighlightEnabled={tweetHighlightEnabled}
             onToggleTweetHighlight={handleToggleTweetHighlight}
-            exposurePredictionEnabled={exposurePredictionEnabled}
-            onToggleExposurePrediction={handleToggleExposurePrediction}
-            exposureThreshold={exposureThreshold}
-            onExposureThresholdChange={(value) => {
-              setExposureThreshold(value);
-              localStorage.setItem('bnbot_exposure_threshold', value.toString());
-              // Dispatch event to notify HomeTimelineMonitor to refresh badges
-              window.dispatchEvent(new CustomEvent('bnbot:exposure-threshold-changed', { detail: value }));
-            }}
             userEmail={user?.email}
             userName={user?.name || user?.full_name}
           />

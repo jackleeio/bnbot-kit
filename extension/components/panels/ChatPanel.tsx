@@ -27,7 +27,7 @@ import { actionExecutor } from '../../services/actionExecutor';
 import { INTERRUPT_ACTIONS } from '../../types/action';
 import { xUserStore } from '../../stores/xUserStore';
 import { apiDataCache } from '../../utils/ApiDataCache';
-import { TimelineTweetData } from '../../utils/HomeTimelineMonitor';
+import type { TimelineTweetData } from '../../utils/ApiDataCache';
 
 declare const chrome: any;
 

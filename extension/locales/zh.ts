@@ -22,9 +22,7 @@ export const zh = {
     showMore: '显示更多',
     showLess: '收起',
     tweetHighlight: '奖励高亮',
-    exposurePrediction: '曝光预测',
     remoteControl: '远程控制',
-    highlightThreshold: '高亮 ≥',
     subscriptionTiers: {
       free: '免费版',
       starter: '入门版',

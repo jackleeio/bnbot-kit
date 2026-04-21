@@ -26,10 +26,6 @@ interface SidebarProps {
   currentTweetId?: string | null;
   tweetHighlightEnabled?: boolean;
   onToggleTweetHighlight?: () => void;
-  exposurePredictionEnabled?: boolean;
-  onToggleExposurePrediction?: () => void;
-  exposureThreshold?: number;
-  onExposureThresholdChange?: (value: number) => void;
   userEmail?: string;
   userName?: string;
 }
@@ -49,10 +45,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentTweetId,
   tweetHighlightEnabled = false,
   onToggleTweetHighlight,
-  exposurePredictionEnabled = false,
-  onToggleExposurePrediction,
-  exposureThreshold = 1000,
-  onExposureThresholdChange,
   userEmail,
   userName
 }) => {
@@ -349,40 +341,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 {/* Theme Toggle */}
                 <ThemeToggle displayMode="list" />
-
-                {/* Exposure Prediction Toggle */}
-                <button
-                  onClick={onToggleExposurePrediction}
-                  className="flex items-center justify-between p-2 rounded-lg hover:bg-[var(--hover-bg)] transition-colors w-full cursor-pointer group"
-                >
-                  <span className="text-[var(--text-primary)] text-[13px] font-medium pl-1">{t.common.exposurePrediction || 'Exposure Prediction'}</span>
-
-                  {/* Switch UI */}
-                  <div className={`w-9 h-5 rounded-full relative transition-colors duration-200 ease-in-out ${exposurePredictionEnabled ? 'bg-green-500' : 'bg-gray-200 dark:bg-gray-700'}`}>
-                    <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200 ease-in-out shadow-sm ${exposurePredictionEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                  </div>
-                </button>
-
-                {/* Exposure Threshold Input (only show when enabled) */}
-                {exposurePredictionEnabled && (
-                  <div className="flex items-center justify-between p-2 pl-3 rounded-lg hover:bg-[var(--hover-bg)] transition-colors w-full">
-                    <span className="text-[var(--text-secondary)] text-[12px]">{t.common.highlightThreshold || 'Highlight ≥'}</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      value={exposureThreshold}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === '' || /^\d+$/.test(val)) {
-                          onExposureThresholdChange?.(val === '' ? 0 : parseInt(val));
-                        }
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-20 px-2 py-1 text-[12px] text-right bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg outline-none focus:border-green-500 text-[var(--text-primary)]"
-                    />
-                  </div>
-                )}
 
                 <div className="flex items-center justify-between p-2 rounded-lg hover:bg-[var(--hover-bg)] transition-colors w-full cursor-pointer group">
                   <span className="text-[var(--text-primary)] text-[13px] font-medium pl-1">{t.common.language || 'Language'}</span>

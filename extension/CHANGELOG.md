@@ -3,6 +3,17 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.9.2] - 2026-04-21
+
+### Removed
+- **HomeTimelineMonitor 整个删**: 曝光预测 badge 注入 + 时间线 API 拦截监控类下线。预测算法已完整迁移到 `/auto-reply` skill 内联（v1.1 公式含 halflife / rank share / blue multiplier），扩展侧不再需要本地预测。
+- **曝光预测开关 + 阈值输入**: Sidebar settings 里的 toggle 和高亮阈值输入框下线，`App.tsx` 的 `exposurePredictionEnabled` / `exposureThreshold` state + handler 全清。
+- **`bnbot:exposure-threshold-changed` event**: 无消费者，删除事件派发。
+- **locales `exposurePrediction` / `highlightThreshold` keys**: 下线。
+
+### Changed
+- **`TimelineTweetData` interface 迁移**: 从 `utils/HomeTimelineMonitor.ts`（已删）搬到 `utils/ApiDataCache.ts`，仍被 ApiDataCache + ChatPanel 正常使用。
+
 ## [0.9.1] - 2026-04-21
 
 ### Removed
