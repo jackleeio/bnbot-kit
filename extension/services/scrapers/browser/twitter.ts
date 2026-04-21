@@ -72,7 +72,8 @@ export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-yo
         if (!tw?.rest_id || seen.has(tw.rest_id)) return null;
         seen.add(tw.rest_id);
         const u = tw.core?.user_results?.result;
-        const author = u?.legacy?.screen_name || u?.core?.screen_name || 'unknown';
+        const ul = u?.legacy || {};
+        const author = ul.screen_name || u?.core?.screen_name || 'unknown';
         const noteText = tw.note_tweet?.note_tweet_results?.result?.text;
         const media = extractMedia(l);
         return {
@@ -80,6 +81,12 @@ export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-yo
           likes: l.favorite_count || 0, retweets: l.retweet_count || 0,
           replies: l.reply_count || 0, views: tw.views?.count ? parseInt(tw.views.count) : 0,
           url: `https://x.com/${author}/status/${tw.rest_id}`,
+          // Extra fields for exposure-prediction scoring (used by /auto-reply
+          // agent to decide which tweets are worth engaging with).
+          createdAt: l.created_at || null,
+          authorFollowers: ul.followers_count || 0,
+          authorCreatedAt: ul.created_at || null,
+          isBlue: !!(u?.is_blue_verified || u?.legacy?.verified),
           ...(media.length ? { media } : {}),
         };
       }
@@ -162,12 +169,19 @@ export async function searchTwitter(query: string, filter: 'Top' | 'Latest' | 'P
         if (!tw?.rest_id || seen.has(tw.rest_id)) return null;
         seen.add(tw.rest_id);
         const u = tw.core?.user_results?.result;
-        const author = u?.legacy?.screen_name || u?.core?.screen_name || 'unknown';
+        const ul = u?.legacy || {};
+        const author = ul.screen_name || u?.core?.screen_name || 'unknown';
         const media = extractMedia(l);
         return {
           id: tw.rest_id, author, text: l.full_text || '',
           likes: l.favorite_count || 0, retweets: l.retweet_count || 0,
-          replies: l.reply_count || 0, url: `https://x.com/${author}/status/${tw.rest_id}`,
+          replies: l.reply_count || 0,
+          views: tw.views?.count ? parseInt(tw.views.count) : 0,
+          url: `https://x.com/${author}/status/${tw.rest_id}`,
+          createdAt: l.created_at || null,
+          authorFollowers: ul.followers_count || 0,
+          authorCreatedAt: ul.created_at || null,
+          isBlue: !!(u?.is_blue_verified || ul.verified),
           ...(media.length ? { media } : {}),
         };
       }
@@ -312,11 +326,18 @@ export async function getTwitterBookmarks(limit = 20): Promise<any[]> {
         if (!tw?.rest_id || seen.has(tw.rest_id)) return null;
         seen.add(tw.rest_id);
         const u = tw.core?.user_results?.result;
-        const author = u?.legacy?.screen_name || 'unknown';
+        const ul = u?.legacy || {};
+        const author = ul.screen_name || 'unknown';
         const media = extractMedia(l);
         return {
           id: tw.rest_id, author, text: l.full_text || '',
           likes: l.favorite_count || 0, retweets: l.retweet_count || 0,
+          replies: l.reply_count || 0,
+          views: tw.views?.count ? parseInt(tw.views.count) : 0,
+          createdAt: l.created_at || null,
+          authorFollowers: ul.followers_count || 0,
+          authorCreatedAt: ul.created_at || null,
+          isBlue: !!(u?.is_blue_verified || ul.verified),
           url: `https://x.com/${author}/status/${tw.rest_id}`,
           ...(media.length ? { media } : {}),
         };
@@ -516,9 +537,10 @@ export async function getTwitterThread(tweetId: string, limit = 50): Promise<any
               if (!tw?.rest_id || seen.has(tw.rest_id)) continue;
               seen.add(tw.rest_id);
               const u = tw.core?.user_results?.result;
-              const author = u?.legacy?.screen_name || 'unknown';
+              const ul = u?.legacy || {};
+              const author = ul.screen_name || 'unknown';
               const media = extractMedia(l);
-              tweets.push({ id: tw.rest_id, author, text: tw.note_tweet?.note_tweet_results?.result?.text || l.full_text || '', likes: l.favorite_count || 0, retweets: l.retweet_count || 0, in_reply_to: l.in_reply_to_status_id_str || null, url: `https://x.com/${author}/status/${tw.rest_id}`, ...(media.length ? { media } : {}) });
+              tweets.push({ id: tw.rest_id, author, text: tw.note_tweet?.note_tweet_results?.result?.text || l.full_text || '', likes: l.favorite_count || 0, retweets: l.retweet_count || 0, replies: l.reply_count || 0, views: tw.views?.count ? parseInt(tw.views.count) : 0, createdAt: l.created_at || null, authorFollowers: ul.followers_count || 0, authorCreatedAt: ul.created_at || null, isBlue: !!(u?.is_blue_verified || ul.verified), in_reply_to: l.in_reply_to_status_id_str || null, url: `https://x.com/${author}/status/${tw.rest_id}`, ...(media.length ? { media } : {}) });
             }
             for (const item of c?.items || []) {
               const nr = item.item?.itemContent?.tweet_results?.result;
@@ -527,9 +549,10 @@ export async function getTwitterThread(tweetId: string, limit = 50): Promise<any
                 if (!tw?.rest_id || seen.has(tw.rest_id)) continue;
                 seen.add(tw.rest_id);
                 const u = tw.core?.user_results?.result;
-                const author = u?.legacy?.screen_name || 'unknown';
+                const ul = u?.legacy || {};
+                const author = ul.screen_name || 'unknown';
                 const media = extractMedia(l);
-                tweets.push({ id: tw.rest_id, author, text: tw.note_tweet?.note_tweet_results?.result?.text || l.full_text || '', likes: l.favorite_count || 0, retweets: l.retweet_count || 0, in_reply_to: l.in_reply_to_status_id_str || null, url: `https://x.com/${author}/status/${tw.rest_id}`, ...(media.length ? { media } : {}) });
+                tweets.push({ id: tw.rest_id, author, text: tw.note_tweet?.note_tweet_results?.result?.text || l.full_text || '', likes: l.favorite_count || 0, retweets: l.retweet_count || 0, replies: l.reply_count || 0, views: tw.views?.count ? parseInt(tw.views.count) : 0, createdAt: l.created_at || null, authorFollowers: ul.followers_count || 0, authorCreatedAt: ul.created_at || null, isBlue: !!(u?.is_blue_verified || ul.verified), in_reply_to: l.in_reply_to_status_id_str || null, url: `https://x.com/${author}/status/${tw.rest_id}`, ...(media.length ? { media } : {}) });
               }
             }
           }

@@ -92,48 +92,163 @@ Outer loop (duration-bound):
 
 1. **Never reply to own tweets** — filter by authorHandle.
 2. **Never reply to same user twice within 6 hours** — check rate file.
-3. **Max 10 replies per 24h** — check log count before posting.
-4. **Skip tweets older than 4 hours** — feed moves fast; stale replies look bot-ish.
-5. **Skip tweets with < 5 likes** from accounts with < 500 followers — avoid
-   replying into dead conversations that make us look like a spam bot.
-6. **Always jitter the cadence** — `90 + RANDOM % 90` seconds minimum.
-7. **Stop immediately on repeated CDP errors** (3 in a row) — extension
-   may be dead. Surface a notification and bail.
+3. **Max 30 replies per 24h** — check log count before posting. Hard
+   ceiling based on what X tolerates for active organic-growth accounts
+   without triggering shadowban heuristics. Can lower per session for
+   new accounts (<500 followers: 10/day).
+4. **Max 5 replies per 30min session** — don't drain the daily cap in
+   one sitting.
+5. **Skip tweets older than 4 hours** — feed moves fast; stale replies
+   look bot-ish. Use `createdAt` field in scrape output.
+6. **Skip tweets with < 5 likes** from accounts with < 500 followers —
+   avoid replying into dead conversations that make us look like spam.
+   Use `authorFollowers` + `likes` fields.
+7. **Always jitter the cadence** — 90–180s between posts, random.
+8. **Stop on CDP errors ≥3 in a row** — extension may be dead.
+9. **MUST read the FULL targetTweet.text before drafting a reply.**
+   Never draft from a truncated preview (`text[:200]`, summary cards,
+   timeline list view). X long-form notes can be 4000 chars; the
+   author's real point is often in the second half. Print the full text
+   verbatim, summarize the 3 key points yourself, *then* draft. Past
+   incident: drafted a Celsius/AAVE comparison after only seeing first
+   200 chars, missed the author's own "10/10 vs this" framing and the
+   "bot 几秒抢光 25万 USDC" detail that was the real punchline.
+
+## Traffic / growth strategy layer (on top of safety)
+
+Auto-pilot mode is primarily for **traffic and lead-gen via reply
+exposure on viral tweets**. The scoring layer below decides which
+candidates are worth engaging.
+
+### Exposure score formula (Claude applies inline on scrape data)
+
+Each candidate has: `likes, retweets, replies, views, createdAt,
+authorFollowers, isBlue`. Compute a 0–100 score before drafting:
+
+```
+# 1. Tweet age (hours since posted)
+ageHours = (now - createdAt) / 3600
+
+# 2. Timing — fresher = more reach
+if ageHours < 1:     timingScore = 40    # golden window
+elif ageHours < 3:   timingScore = 25    # good
+elif ageHours < 12:  timingScore = 10    # late
+else:                timingScore = 0     # dead, skip
+
+# 3. Engagement velocity (L/hr + RT×10/hr + reply×5/hr)
+velocity = (likes + retweets*10 + replies*5) / max(ageHours, 0.25)
+velocityScore = min(30, log10(velocity + 1) * 15)
+
+# 4. Author reach
+if authorFollowers > 100_000: authorScore = 30    # mega — but Claude
+                                                   # should consider the
+                                                   # rank penalty (many
+                                                   # replies, yours buried)
+elif authorFollowers > 10_000: authorScore = 20
+elif authorFollowers > 1_000:  authorScore = 12
+elif authorFollowers > 200:    authorScore = 5
+else:                          authorScore = 0    # dead-end
+
+# 5. Blue penalty (non-blue reply = -50% reach)
+blueMultiplier = 1.0 if userIsBlue else 0.5
+
+# 6. Reply density penalty (if replies > 100, your reply drowns)
+if replies < 5:        rankBonus = 1.0
+elif replies < 20:     rankBonus = 0.8
+elif replies < 100:    rankBonus = 0.5
+else:                  rankBonus = 0.2
+
+totalScore = (timingScore + velocityScore + authorScore) * blueMultiplier * rankBonus
+```
+
+**Decision thresholds**:
+- score ≥ 50 → `reply` (substantive draft)
+- 30 ≤ score < 50 → `like` only (engagement breadcrumb)
+- score < 30 → `skip` (not worth the quota)
+
+### Niche lock (use profile.domains)
+
+Load `<skill-path>/config/profiles/<handle>.json`. If `profile.domains`
+is set, reject any tweet whose text doesn't contain at least one domain
+keyword. For personal accounts with empty domains, Claude infers niche
+from `profile.sampleTweets` style / topic.
+
+### Diversity
+
+- Same author ≤ 1 reply / 24h (harder than the 6h cooldown)
+- Same general topic (by keyword cluster) ≤ 2 replies / 24h — don't
+  look like an issue-campaigner
+
+### Like vs reply mix (anti-bot signature)
+
+For candidates that pass the score threshold, roll dice:
+- **60% `like` only** (cheap, supportive)
+- **40% `reply`** (substantive draft via the normal flow)
+
+A real person doesn't reply to everything they like. Pure reply-only
+history patterns shadowban faster.
 
 ## Running the loop
 
-### One-shot (run for N minutes now)
+Three modes:
+
+### A. Interactive (user reviews each draft)
 
 ```
-/auto-reply 跑 30 分钟
+/auto-reply 跑 5 分钟，源=following，最多 2 条回复
 ```
 
-Claude:
-1. Writes session config
-2. Enters the loop, looping until 30 min elapsed or 10 replies hit
-3. Reports final summary
+Claude scrapes, evaluates, drafts, then **asks user to approve each
+reply** before posting. Use for first-time testing and high-stakes
+accounts. Session window must stay open for the full duration.
 
-Note: the conversation window must stay open for the full 30 min.
-Use `/loop` with short intervals to free up the window between
-iterations — but that's noisier than just holding the session open.
-
-### Scheduled (run every day at 9–11am)
+### B. Auto-pilot (hands-off, no approval)
 
 ```
-/auto-reply 每天早上 9 点到 11 点自动回复
+/auto-reply --auto --source=following --duration=30m --max=3
 ```
 
-Use `/schedule` to create a launchd entry that fires at 9am and runs:
+Claude runs the full loop headless. For each candidate:
+
+1. scrape once at session start (50 tweets)
+2. filter by safety + niche
+3. score each via the formula above
+4. pick top scoring, read FULL text
+5. if score ≥ 50: draft → post reply (no approval)
+6. if 30 ≤ score < 50: post like only
+7. sleep 90–180s jitter
+8. repeat until duration or max hit
+
+Session auto-exits when done. State persists across sessions via
+`~/.bnbot/state/auto-reply-*.json`.
+
+**Auto mode skips user approval but applies ALL safety + strategy
+rules strictly.** If profile voice isn't loaded → abort immediately.
+
+### C. Scheduled auto-pilot (the flagship use case)
+
+Launch via `/schedule` — macOS launchd fires a headless bnbot session
+at each engagement window, running the `--auto` flow:
+
+```
+/schedule 每天 9:00 / 13:30 / 19:30 跑 auto-reply 30 分钟，源=following，最多 3 条
+```
+
+`/schedule` generates three launchd plists. Each fires at its time
+with prompt body:
 
 ```bash
-cd ~/Projects/bnbot && bun run src/entrypoints/cli.tsx -p \
-  "/auto-reply 跑 2 小时，源=mentions" \
+cd ~/Projects/bnbot && $BNBOT_ROOT/dist/cli.js -p \
+  "/auto-reply --auto --source=following --duration=30m --max=3" \
   --model=sonnet
 ```
 
-The `-p` invocation spawns a fresh bnbot session with the auto-reply
-prompt baked in. When the 2-hour run ends, that session exits cleanly.
-This is the pattern for "self-driving" engagement on a schedule.
+Three sessions × max 3 replies = **up to 9 replies per day**, well
+under the 30/day hard cap. Add sessions (noon / 22:00) to scale up to
+~20/day if the account tolerates it.
+
+Dedup (`seen.json`) and rate (`rate.json`) state persists across
+sessions — no risk of double-replying or hammering one user.
 
 ## Stopping / pausing
 
