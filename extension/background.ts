@@ -4,7 +4,9 @@
 import { isFirefox, isChrome } from './utils/browserCompat';
 import { WebSocketManager } from './utils/websocketManager';
 import { localRelayManager, LocalActionRequest } from './utils/localRelayManager';
-import { initTaskAlarmScheduler, syncSingleTaskAlarm, removeTaskAlarm, handleTaskExecutionResult, syncSingleDraftAlarm, removeDraftAlarm, handleDraftPublishResult } from './services/taskAlarmScheduler';
+// taskAlarmScheduler removed — scheduling moved to bnbot CLI's `bnbot calendar` + macOS launchd.
+// draftService.ts (extension) is next to go once the desktop calendar UI is verified
+// against ~/.bnbot/calendar/ JSON.
 import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok } from './services/scraperService';
 import { debuggerWriteHandlers } from './services/debugger';
 import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications } from './services/scrapers/browser';
@@ -38,16 +40,7 @@ if (isFirefox) {
           }
         });
       } else if (data.type === 'WS_MESSAGE') {
-        const innerMsg = data.message;
-        // Intercept task_sync: handle alarm sync in background, don't forward to content script
-        if (innerMsg && innerMsg.type === 'task_sync') {
-          if (innerMsg.action === 'deleted') {
-            removeTaskAlarm(innerMsg.task_id);
-          } else {
-            syncSingleTaskAlarm(innerMsg.task_id);
-          }
-          return;
-        }
+        // task_sync messages dropped — scheduling now lives in bnbot CLI calendar.
         sendToOneXTab(data);
       }
     },
@@ -134,46 +127,8 @@ localRelayManager.init({
       return;
     }
 
-    // Handle draft alarm actions directly in background
-    if (message.actionType === 'draft_alarm_sync') {
-      try {
-        await syncSingleDraftAlarm((message.actionPayload as { draftId: string }).draftId);
-        localRelayManager.sendActionResult({
-          type: 'action_result',
-          requestId: message.requestId,
-          success: true,
-          data: { message: 'Draft alarm synced' },
-        });
-      } catch (error) {
-        localRelayManager.sendActionResult({
-          type: 'action_result',
-          requestId: message.requestId,
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-      return;
-    }
-
-    if (message.actionType === 'draft_alarm_remove') {
-      try {
-        await removeDraftAlarm((message.actionPayload as { draftId: string }).draftId);
-        localRelayManager.sendActionResult({
-          type: 'action_result',
-          requestId: message.requestId,
-          success: true,
-          data: { message: 'Draft alarm removed' },
-        });
-      } catch (error) {
-        localRelayManager.sendActionResult({
-          type: 'action_result',
-          requestId: message.requestId,
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-      return;
-    }
+    // draft_alarm_sync / draft_alarm_remove handlers removed — bnbot CLI calendar
+    // owns scheduling now. draftService (extension) is the next removal.
 
     // Handle debugger-based write actions directly in background.
     // These open a background X tab, attach chrome.debugger, drive the
@@ -548,17 +503,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (isChrome && message.type === 'WS_MESSAGE') {
-    const innerMsg = message.message;
-    // Intercept task_sync: handle alarm sync in background, don't forward to content script
-    if (innerMsg && innerMsg.type === 'task_sync') {
-      if (innerMsg.action === 'deleted') {
-        removeTaskAlarm(innerMsg.task_id);
-      } else {
-        syncSingleTaskAlarm(innerMsg.task_id);
-      }
-      return false;
-    }
-    // Send to active X tab first, otherwise first X tab
+    // Send to active X tab first, otherwise first X tab.
+    // task_sync handling dropped — scheduling lives in bnbot CLI calendar.
     sendToOneXTab(message);
     return false;
   }
@@ -687,43 +633,11 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     return true;
   }
 
-  // Task execution result from content script
-  if (request.type === 'SCHEDULED_TASK_RESULT') {
-    handleTaskExecutionResult(request.taskId, request.executionId, request.success, request.data, request.error);
-    sendResponse({ ok: true });
-    return false;
-  }
+  // SCHEDULED_TASK_RESULT / TASK_ALARM_SYNC / TASK_ALARM_REMOVE / DRAFT_PUBLISH_RESULT
+  // handlers removed — bnbot CLI calendar owns scheduling now.
 
-  // UI created/modified a task — sync its alarm
-  if (request.type === 'TASK_ALARM_SYNC') {
-    syncSingleTaskAlarm(request.taskId).then(() => sendResponse({ ok: true }));
-    return true;
-  }
-
-  // UI paused/deleted a task — remove its alarm
-  if (request.type === 'TASK_ALARM_REMOVE') {
-    removeTaskAlarm(request.taskId).then(() => sendResponse({ ok: true }));
-    return true;
-  }
-
-  // Draft publish result from content script
-  if (request.type === 'DRAFT_PUBLISH_RESULT') {
-    handleDraftPublishResult(request.draftId, request.success, request.error);
-    sendResponse({ ok: true });
-    return false;
-  }
-
-  // UI scheduled a draft — sync its alarm
-  if (request.type === 'DRAFT_ALARM_SYNC') {
-    syncSingleDraftAlarm(request.draftId).then(() => sendResponse({ ok: true }));
-    return true;
-  }
-
-  // UI unscheduled a draft — remove its alarm
-  if (request.type === 'DRAFT_ALARM_REMOVE') {
-    removeDraftAlarm(request.draftId).then(() => sendResponse({ ok: true }));
-    return true;
-  }
+  // DRAFT_ALARM_SYNC / DRAFT_ALARM_REMOVE removed — draft scheduling moves
+  // out next; calendar lives in bnbot CLI now.
 
   // Check for extension updates
   if (request.type === 'CHECK_FOR_UPDATES') {
@@ -1133,9 +1047,6 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 console.log('BNBot background service worker loaded');
-
-// Initialize task alarm scheduler (chrome.alarms-based local scheduling)
-initTaskAlarmScheduler();
 
 // ============ Scraper Service (browser-based only, PUBLIC APIs go through CLI/backend) ============
 const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {

@@ -428,20 +428,11 @@ class CommandService {
           break;
         }
         case 'start_autopilot':
-          const { autoReplyService: ars } = await import('./autoReplyService');
-          await ars.start(payload);
-          result = '✅ Autopilot started';
-          break;
         case 'stop_autopilot':
-          const { autoReplyService: ars2 } = await import('./autoReplyService');
-          ars2.stop();
-          result = '✅ Autopilot stopped';
-          break;
         case 'get_status':
-          const { autoReplyService: ars3 } = await import('./autoReplyService');
-          const session = ars3.getSession();
-          result = `📊 Status: ${session?.status || 'idle'}`;
-          break;
+          // Auto-reply / autopilot moved to bnbot CLI's /auto-reply skill +
+          // /inbox-watch tick. Extension no longer hosts the autopilot loop.
+          throw new Error(`${action} no longer handled by extension; use bnbot REPL /auto-reply`);
         default:
           throw new Error(`Unknown: ${action}`);
       }
@@ -604,37 +595,13 @@ class CommandService {
     try {
       let resultData: any;
 
-      if (taskTypeLower === 'auto_reply') {
-        const { autoReplyTaskExecutor } = await import('../utils/AutoReplyTaskExecutor');
-        // Load user settings so evaluator/generator use correct config
-        const { autoReplyService } = await import('./autoReplyService');
-        await new Promise(resolve => setTimeout(resolve, 50)); // wait for storage load
-        const userSettings = autoReplyService.getSettings();
-        autoReplyTaskExecutor.syncAutoReplySettings(userSettings);
-        resultData = await autoReplyTaskExecutor.execute();
-
-      } else if (taskTypeLower === 'handle_notification') {
-        const { notificationTaskExecutor } = await import('../utils/NotificationTaskExecutor');
-        // Load saved settings from storage
-        const stored = await chrome.storage.local.get('notificationTaskSettings');
-        if (stored.notificationTaskSettings) {
-          notificationTaskExecutor.updateSettings(stored.notificationTaskSettings);
-        }
-        resultData = await notificationTaskExecutor.execute();
-
-      } else if (taskTypeLower === 'feed_report' || taskTypeLower === 'follow_digest') {
-        const { followDigestExecutor } = await import('../utils/FollowDigestExecutor');
-        // Load saved settings from storage
-        const stored = await chrome.storage.local.get('followDigestSettings');
-        const s = stored.followDigestSettings || {};
-        resultData = await followDigestExecutor.execute({
-          maxTweets: s.maxTweets || 100,
-          customPrompt: s.customPrompt || '',
-          interests: s.interests ? s.interests.split(',').map((i: string) => i.trim()).filter(Boolean) : [],
-          keywords: s.keywords ? s.keywords.split(',').map((k: string) => k.trim()).filter(Boolean) : [],
-          notificationType: notificationType || 'telegram_only',
-        });
-
+      if (taskTypeLower === 'auto_reply' ||
+          taskTypeLower === 'handle_notification' ||
+          taskTypeLower === 'feed_report' ||
+          taskTypeLower === 'follow_digest') {
+        // These task types moved out of extension. /auto-reply and
+        // /inbox-watch in bnbot CLI now own these flows.
+        throw new Error(`task type '${taskTypeLower}' no longer handled by extension — use bnbot CLI skills`);
       } else if (taskTypeLower === 'generate_tweet') {
         resultData = await this.executeGenerateTweetTask(taskId);
 
@@ -835,15 +802,13 @@ class CommandService {
       const taskTypeLower = (task_type || '').toLowerCase();
       console.log('[CommandService] taskTypeLower:', JSON.stringify(taskTypeLower), 'equals auto_reply:', taskTypeLower === 'auto_reply');
 
-      if (taskTypeLower === 'handle_notification') {
-        // HANDLE_NOTIFICATION: 使用 NotificationTaskExecutor（两阶段处理）
-        await this.executeNotificationTask(trigger_id, execution_id, task_name);
-      } else if (taskTypeLower === 'auto_reply') {
-        // AUTO_REPLY: 使用 AutoReplyTaskExecutor
-        await this.executeAutoReplyTaskV2(trigger_id, execution_id, task_name);
-      } else if (taskTypeLower === 'feed_report' || taskTypeLower === 'follow_digest') {
-        // FOLLOW_DIGEST: 使用 FollowDigestExecutor 刷推生成报告
-        await this.executeFollowDigestTask(trigger_id, execution_id, task_name);
+      if (taskTypeLower === 'handle_notification' ||
+          taskTypeLower === 'auto_reply' ||
+          taskTypeLower === 'feed_report' ||
+          taskTypeLower === 'follow_digest') {
+        // These task types moved to bnbot CLI skills (/auto-reply, /inbox-watch).
+        // Backend should stop dispatching them via WS to the extension.
+        throw new Error(`task type '${taskTypeLower}' no longer handled by extension`);
       } else {
         // 其他任务走 SSE/LangGraph 流程
         await this.executeSSETask(trigger_id, execution_id);
@@ -855,199 +820,10 @@ class CommandService {
     }
   }
 
-  /**
-   * 直接执行自动回复任务（不走 SSE）
-   *
-   * 调用 autoReplyService 执行自动回复
-   * - onlyProcessNotifications=true: 导航到通知 → 点击进入时间线 → 评估推文 → 生成回复 → 发布回复
-   * - onlyProcessNotifications=false: 滚动时间线 → 评估推文 → 生成回复 → 发布回复
-   */
-  private async executeAutoReplyTask(triggerId: string, executionId: string, taskName: string, onlyProcessNotifications: boolean): Promise<void> {
-    console.log('[CommandService] Executing auto-reply task with autoReplyService, onlyProcessNotifications:', onlyProcessNotifications);
-
-    try {
-      const { autoReplyService } = await import('./autoReplyService');
-      const { DEFAULT_AUTO_REPLY_SETTINGS } = await import('../types/autoReply');
-
-      // 根据任务类型设置 onlyProcessNotifications 模式
-      const settings = {
-        ...DEFAULT_AUTO_REPLY_SETTINGS,
-        onlyProcessNotifications,         // HANDLE_NOTIFICATION=true, AUTO_REPLY=false
-        requireConfirmation: false,       // 不需要确认，自动执行
-        dryRunMode: false,                // 实际发布
-      };
-
-      // 监听完成事件
-      let completed = false;
-      let error: string | undefined;
-      let repliesPosted = 0;
-
-      const handleEvent = (event: any) => {
-        console.log('[CommandService] AutoReply event:', event.type);
-
-        if (event.type === 'reply_posted') {
-          repliesPosted++;
-        }
-
-        if (event.type === 'stopped' || event.type === 'error') {
-          completed = true;
-          if (event.type === 'error') {
-            error = event.message || 'Unknown error';
-          }
-          autoReplyService.removeEventListener(handleEvent);
-        }
-      };
-
-      autoReplyService.addEventListener(handleEvent);
-
-      // 启动自动回复（只处理通知模式）
-      autoReplyService.start(settings);
-
-      // 等待一轮处理完成（最多处理3条通知后自动停止）
-      // 设置超时，避免无限等待
-      const timeout = 5 * 60 * 1000; // 5分钟超时
-      const startTime = Date.now();
-
-      while (!completed && (Date.now() - startTime) < timeout) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // 检查是否已处理足够的通知（或没有更多通知）
-        const session = autoReplyService.getSession();
-        if (session && session.repliesPosted >= 3) {
-          // 已发布3条回复，停止
-          autoReplyService.stop();
-          break;
-        }
-      }
-
-      // 确保停止
-      if (!completed) {
-        autoReplyService.stop();
-      }
-
-      autoReplyService.removeEventListener(handleEvent);
-
-      console.log('[CommandService] Notification task completed, replies posted:', repliesPosted);
-
-      // 向后端报告结果
-      await this.reportTaskResult(triggerId, executionId, !error, {
-        replies_posted: repliesPosted,
-      }, error);
-
-    } catch (err) {
-      console.error('[CommandService] Notification task failed:', err);
-      await this.reportTaskResult(triggerId, executionId, false, undefined, err instanceof Error ? err.message : 'Unknown error');
-    }
-  }
-
-  /**
-   * 执行 AUTO_REPLY 任务（滚动时间线自动回复）
-   *
-   * 滚动时间线，评估推文，生成回复，发布回复
-   */
-  private async executeAutoReplyTaskV2(triggerId: string, executionId: string, taskName: string): Promise<void> {
-    console.log('[CommandService] Executing auto-reply task with AutoReplyTaskExecutor...');
-
-    try {
-      const { autoReplyTaskExecutor } = await import('../utils/AutoReplyTaskExecutor');
-      // Sync user settings so evaluator/generator use correct config
-      const { autoReplyService } = await import('./autoReplyService');
-      const userSettings = autoReplyService.getSettings();
-      autoReplyTaskExecutor.syncAutoReplySettings(userSettings);
-
-      const result = await autoReplyTaskExecutor.execute();
-
-      console.log('[CommandService] Auto-reply task completed:', result);
-
-      // 向后端报告结果
-      await this.reportTaskResult(triggerId, executionId, result.errors.length === 0, {
-        tweets_scanned: result.tweetsScanned,
-        tweets_evaluated: result.tweetsEvaluated,
-        replies_posted: result.repliesPosted,
-        replies_skipped: result.repliesSkipped,
-        liked: result.liked,
-        duration_ms: result.duration,
-      }, result.errors.length > 0 ? result.errors.join('; ') : undefined);
-
-    } catch (err) {
-      console.error('[CommandService] Auto-reply task failed:', err);
-      await this.reportTaskResult(triggerId, executionId, false, undefined, err instanceof Error ? err.message : 'Unknown error');
-    }
-  }
-
-  /**
-   * 执行 HANDLE_NOTIFICATION 任务（两阶段处理）
-   *
-   * Phase 1: 处理新帖子通知 (最多20条，30分钟内)
-   * Phase 2: 处理回复通知 (最多50条，当天的)
-   */
-  private async executeNotificationTask(triggerId: string, executionId: string, taskName: string): Promise<void> {
-    console.log('[CommandService] Executing notification task with NotificationTaskExecutor...');
-
-    try {
-      const { notificationTaskExecutor } = await import('../utils/NotificationTaskExecutor');
-
-      // Load saved settings from storage (same as alarm path)
-      const stored = await chrome.storage.local.get('notificationTaskSettings');
-      if (stored.notificationTaskSettings) {
-        notificationTaskExecutor.updateSettings(stored.notificationTaskSettings);
-      }
-
-      const result = await notificationTaskExecutor.execute();
-
-      console.log('[CommandService] Notification task completed:', result);
-
-      // 向后端报告结果
-      await this.reportTaskResult(triggerId, executionId, result.errors.length === 0, {
-        phase1_processed: result.phase1.processed,
-        phase1_replied: result.phase1.replied,
-        phase1_liked: result.phase1.liked,
-        phase1_skipped: result.phase1.skipped,
-        phase2_processed: result.phase2.processed,
-        phase2_replied: result.phase2.replied,
-        phase2_liked: result.phase2.liked,
-        phase2_skipped: result.phase2.skipped,
-        duration_ms: result.duration,
-      }, result.errors.length > 0 ? result.errors.join('; ') : undefined);
-
-    } catch (err) {
-      console.error('[CommandService] Notification task failed:', err);
-      await this.reportTaskResult(triggerId, executionId, false, undefined, err instanceof Error ? err.message : 'Unknown error');
-    }
-  }
-
-  /**
-   * 执行 FOLLOW_DIGEST 任务（刷推生成报告）
-   *
-   * 流程：
-   * 1. 导航到 Following tab
-   * 2. 滚动收集推文（通过拦截 API）
-   * 3. 发送给后端生成报告
-   * 4. 后端 AI 生成报告并推送到 Telegram
-   */
-  private async executeFollowDigestTask(triggerId: string, executionId: string, taskName: string): Promise<void> {
-    console.log('[CommandService] Executing follow digest task with FollowDigestExecutor...');
-
-    try {
-      const { followDigestExecutor } = await import('../utils/FollowDigestExecutor');
-
-      const result = await followDigestExecutor.execute({
-        maxTweets: 100,
-      });
-
-      console.log('[CommandService] Follow digest task completed:', result);
-
-      // 向后端报告结果
-      await this.reportTaskResult(triggerId, executionId, result.success, {
-        tweets_collected: result.tweetsCollected,
-        duration_ms: result.duration,
-      }, result.error);
-
-    } catch (err) {
-      console.error('[CommandService] Follow digest task failed:', err);
-      await this.reportTaskResult(triggerId, executionId, false, undefined, err instanceof Error ? err.message : 'Unknown error');
-    }
-  }
+  // executeAutoReplyTask / executeAutoReplyTaskV2 / executeNotificationTask /
+  // executeFollowDigestTask all removed — those flows moved to bnbot CLI's
+  // /auto-reply + /inbox-watch skills. The handleScheduledTrigger router
+  // above now throws for those task types instead of dispatching them.
 
   /**
    * 通过 SSE 执行任务（LangGraph 流程）

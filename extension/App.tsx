@@ -8,7 +8,7 @@ import { CreditsPanel } from './components/panels/CreditsPanel';
 import { LoginPanel } from './components/panels/LoginPanel';
 import { TweetContextPanel } from './components/panels/TweetContextPanel';
 import { SchedulePanel } from './components/panels/SchedulePanel';
-import { AutoPilotPanel } from './components/panels/AutoPilotPanel';
+// AutoPilotPanel removed — autopilot lives in bnbot CLI /auto-reply + /inbox-watch skills.
 import { XBalancePanel } from './components/panels/XBalancePanel';
 import { XAnalyticsPanel } from './components/panels/XAnalyticsPanel';
 import { Tab } from './types';
@@ -877,10 +877,15 @@ function AppContent() {
       );
       case Tab.AUTO_REPLY:
         return (
-          <AutoPilotPanel
-            isLoggedIn={true}
-            onLoginClick={() => { }} // No-op as we handle it above
-          />
+          <div style={{ padding: 16, color: 'var(--text-secondary)', fontSize: 13 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Autopilot moved</div>
+            <div>
+              Autopilot now lives in the bnbot CLI / desktop app —
+              <code style={{ margin: '0 4px' }}>/auto-reply</code> /
+              <code style={{ margin: '0 4px' }}>/inbox-watch</code> skills.
+              Extension is browser executor only.
+            </div>
+          </div>
         );
       case Tab.X_BALANCE:
         return (

@@ -3,9 +3,30 @@
  * Scrolls through Twitter timeline and collects tweets for processing
  */
 
-import { ScrapedTweet } from '../types/autoReply';
 import { HumanBehaviorSimulator } from './HumanBehaviorSimulator';
 import { apiDataCache } from './ApiDataCache';
+
+// ScrapedTweet inlined here after types/autoReply.ts deletion
+// (auto-reply pipeline migrated to bnbot CLI). TimelineScroller is now
+// the only remaining consumer of this shape — kept local rather than
+// extracting to a new shared types file.
+export interface ScrapedTweet {
+  id: string;
+  authorHandle: string;
+  authorName: string;
+  authorAvatar: string;
+  authorBio?: string;
+  authorFollowers?: number;
+  isVerified?: boolean;
+  content: string;
+  timestamp: string;
+  metrics: { replies: number; retweets: number; likes: number; views: number };
+  media: { type: 'photo' | 'video'; url: string }[];
+  isRetweet: boolean;
+  isQuote: boolean;
+  quotedTweet?: ScrapedTweet;
+  articleElement?: HTMLElement;
+}
 
 export interface TimelineScrollerOptions {
   onTweetFound: (tweet: ScrapedTweet) => void;

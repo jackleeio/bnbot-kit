@@ -9,7 +9,6 @@ import { replyHandlers } from './replyActions';
 import { tweetHandlers } from './tweetActions';
 import { articleHandlers } from './articleActions';
 import { scrapeHandlers } from './scrapeActions';
-import { notificationHandlers } from './notificationActions';
 import { searchHandlers } from './searchActions';
 import { scrollHandlers } from './scrollActions';
 import { wechatHandlers } from './wechatActions';
@@ -26,7 +25,6 @@ export const allHandlers: Record<string, ActionHandler> = {
   ...tweetHandlers,
   ...articleHandlers,
   ...scrapeHandlers,
-  ...notificationHandlers,
   ...searchHandlers,
   ...scrollHandlers,
   ...wechatHandlers,
@@ -58,7 +56,6 @@ export {
   tweetHandlers,
   articleHandlers,
   scrapeHandlers,
-  notificationHandlers,
   searchHandlers,
   scrollHandlers,
   wechatHandlers,

@@ -8,7 +8,7 @@
  * 4. Predicting comment exposure using v1.1 algorithm
  */
 
-import { predictExposure, ExposurePrediction } from '../services/exposurePredictionService';
+// predictExposure import removed — badge feature retired with auto-reply migration
 
 declare const chrome: any;
 
