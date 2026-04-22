@@ -299,7 +299,10 @@ export async function analyticsCommand(): Promise<void> {
 
 export async function navigateUrlCommand(url: string): Promise<void> {
   console.error(`Navigating to: ${url}`);
-  return runCliAction('navigate_to_tweet', { tweetUrl: url }, getPort());
+  // Use the generic navigate_to_url action (matches any URL, not just
+  // /status/ tweet URLs). navigate_to_tweet was rejecting profile / home
+  // URLs with "无效的推文 URL".
+  return runCliAction('navigate_to_url', { url }, getPort());
 }
 
 export async function navigateSearchCommand(query: string): Promise<void> {

@@ -7,7 +7,7 @@ import { localRelayManager, LocalActionRequest } from './utils/localRelayManager
 // taskAlarmScheduler removed — scheduling moved to bnbot CLI's `bnbot calendar` + macOS launchd.
 // draftService.ts (extension) is next to go once the desktop calendar UI is verified
 // against ~/.bnbot/calendar/ JSON.
-import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok, ensureDebuggerAttached, debuggerSend } from './services/scraperService';
+import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok, ensureDebuggerAttached, debuggerSend, getPoolTabs } from './services/scraperService';
 import { debuggerWriteHandlers } from './services/debugger';
 
 /**
@@ -28,8 +28,30 @@ async function captureTabScreenshot(args: {
   url?: string;
   tabId?: number;
   fullPage?: boolean;
+  focused?: boolean;
 }): Promise<{ base64: string; tabId: number; url: string; title: string }> {
   let tabId = args.tabId;
+
+  // Default selection order (unless --focused forces user's focused tab):
+  //   1. explicit --tab-id
+  //   2. explicit --url match
+  //   3. bnbot's automation pool (the tab CDP is actually driving)
+  //   4. focused tab, with chrome://* fallback
+  if (!tabId && !args.url && !args.focused) {
+    // Prefer whatever tab bnbot is currently automating — that's what
+    // the user almost always wants when they say "screenshot right now".
+    // Ranking: busy > x.com > anything else. X is the primary platform;
+    // third-party-project tabs (spareapi.ai, tiktok.com, etc.) sit in
+    // the pool too but rarely what the user wants by default.
+    const pool = getPoolTabs();
+    if (pool.length > 0) {
+      const primaryHosts = ['x.com', 'twitter.com'];
+      const score = (p: { host: string; busy: boolean }): number =>
+        (p.busy ? 10 : 0) + (primaryHosts.includes(p.host) ? 5 : 0);
+      pool.sort((a, b) => score(b) - score(a));
+      tabId = pool[0].tabId;
+    }
+  }
 
   if (!tabId && args.url) {
     // Manual startsWith filter rather than chrome.tabs.query({url}) —

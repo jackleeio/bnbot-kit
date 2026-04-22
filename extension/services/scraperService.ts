@@ -31,6 +31,21 @@ const tabPool = new Map<string, PoolEntry>();
 // Grammarly, Honey injecting chrome-extension:// iframes into arbitrary sites).
 const attachedTabs = new Map<number, string>();
 
+/** List all currently pooled scraper tabs (one per hostname).
+ *  Used by `bnbot screenshot` so ad-hoc captures default to the tab
+ *  bnbot is actually automating — not whatever window the user is
+ *  clicking around in. */
+export function getPoolTabs(): Array<{ host: string; tabId: number; windowId: number; busy: boolean }> {
+  return Array.from(tabPool.entries()).map(([host, e]) => ({
+    host,
+    tabId: e.tabId,
+    windowId: e.windowId,
+    // A null idle timer means the tab is actively being used (not
+    // waiting to be closed), so prefer it when multiple pools exist.
+    busy: e.timer === null,
+  }));
+}
+
 /** Open a fresh scraper window for the given URL.
  *  Uses offscreen positioning instead of state:'minimized' because Chrome aggressively
  *  throttles minimized windows — TikTok and other heavy-JS pages may never reach
