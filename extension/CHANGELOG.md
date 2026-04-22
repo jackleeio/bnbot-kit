@@ -3,6 +3,20 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.10.0] - 2026-04-22
+
+### Removed
+- **整个日程 / Schedule UI 下线**: 排期统一迁到 `bnbot calendar` + macOS launchd（skill: `/schedule`），扩展不再承载日历界面。
+  - 删 `components/panels/SchedulePanel.tsx`（564 LOC）— 日历主面板
+  - 删 `components/modals/TweetCalendarModal.tsx`（1,678 LOC）— 已经是 orphan
+  - `commandService.ts` 删 `EXECUTE_SCHEDULED_TASK` / `PUBLISH_SCHEDULED_DRAFT` message handlers + `handleAlarmTriggeredTask` / `handleScheduledDraftPublish` 两个方法（chrome.alarms 死路径）
+  - `draftService.ts` 删 `scheduleDraft` / `unscheduleDraft` / `getCalendarDrafts` / `getPendingDrafts` / `notifyDraftAlarmSync` / `notifyDraftAlarmRemove` 六个 schedule 相关方法（保留 saveTweetDraft / deleteDraft 等核心方法）
+  - `RewrittenTimeline.tsx` 删 schedule picker modal、Calendar 按钮、`scheduledDate` / `showSchedulePicker` 等 state、`initialScheduledAt` / `draftId` props（后者已没人传）
+  - `App.tsx` 去 SchedulePanel import + `Tab.DRAFTS` case
+  - `Sidebar.tsx` 去 DRAFTS nav 项 + `CalendarDays` icon import
+  - `types.ts` 的 `Tab.DRAFTS` enum 也下线
+  - 砍量约 **3,200 LOC**，bundle minified 减 ~30KB
+
 ## [0.9.7] - 2026-04-22
 
 ### Fixed

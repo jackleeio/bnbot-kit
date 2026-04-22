@@ -76,13 +76,10 @@ class CommandService {
       } else if (message.type === 'LOCAL_ACTION') {
         // Handle action from local relay (OpenClaw MCP)
         this.handleLocalActionFromBackground(message);
-      } else if (message.type === 'EXECUTE_SCHEDULED_TASK') {
-        // Handle alarm-triggered task execution (queued)
-        this.enqueueExecution(() => this.handleAlarmTriggeredTask(message));
-      } else if (message.type === 'PUBLISH_SCHEDULED_DRAFT') {
-        // Handle alarm-triggered draft publish (queued)
-        this.enqueueExecution(() => this.handleScheduledDraftPublish(message));
       }
+      // EXECUTE_SCHEDULED_TASK / PUBLISH_SCHEDULED_DRAFT handlers removed —
+      // the chrome.alarms-driven schedulers that sent these messages are gone.
+      // Scheduling now lives in `bnbot calendar` + macOS launchd.
     });
 
     this.messageListenerAdded = true;
@@ -580,102 +577,11 @@ class CommandService {
     });
   }
 
-  /**
-   * Handle alarm-triggered task execution (from chrome.alarms via background.ts).
-   * Routes to the appropriate executor based on task type.
-   */
-  private async handleAlarmTriggeredTask(message: {
-    taskId: string; executionId: string; taskType: string; taskName: string; notificationType?: string;
-  }): Promise<void> {
-    const { taskId, executionId, taskType, taskName, notificationType } = message;
-    const taskTypeLower = (taskType || '').toLowerCase();
-
-    console.log(`[CommandService] handleAlarmTriggeredTask: ${taskName} (${taskTypeLower}), exec=${executionId}`);
-
-    try {
-      let resultData: any;
-
-      if (taskTypeLower === 'auto_reply' ||
-          taskTypeLower === 'handle_notification' ||
-          taskTypeLower === 'feed_report' ||
-          taskTypeLower === 'follow_digest') {
-        // These task types moved out of extension. /auto-reply and
-        // /inbox-watch in bnbot CLI now own these flows.
-        throw new Error(`task type '${taskTypeLower}' no longer handled by extension — use bnbot CLI skills`);
-      } else if (taskTypeLower === 'generate_tweet') {
-        resultData = await this.executeGenerateTweetTask(taskId);
-
-      } else {
-        // CUSTOM_TASK etc: use SSE/LangGraph flow initiated from browser
-        resultData = await this.executeSSETaskLocal(taskId, executionId);
-      }
-
-      chrome.runtime.sendMessage({
-        type: 'SCHEDULED_TASK_RESULT',
-        taskId,
-        executionId,
-        success: true,
-        data: resultData,
-      });
-    } catch (error) {
-      console.error(`[CommandService] handleAlarmTriggeredTask error:`, error);
-      chrome.runtime.sendMessage({
-        type: 'SCHEDULED_TASK_RESULT',
-        taskId,
-        executionId,
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  /**
-   * Handle alarm-triggered scheduled draft publish.
-   * Routes to tweetPoster based on draft type, reports result back to background.
-   */
-  private async handleScheduledDraftPublish(message: {
-    draftId: string; draftType: string; content: any;
-  }): Promise<void> {
-    const { draftId, draftType, content } = message;
-    console.log(`[CommandService] handleScheduledDraftPublish: ${draftId} (${draftType})`);
-
-    try {
-      const { tweetPoster } = await import('../utils/tweetPoster');
-      let postResult: { success: boolean; error?: string; tweetId?: string; verifiedBy?: string };
-
-      if (draftType === 'tweet') {
-        const draft = content?.data?.drafts?.[0];
-        if (!draft) throw new Error('No draft content found');
-        postResult = await tweetPoster.postTweetWithVerify(
-          draft.content,
-          draft.media ? [draft.media] : undefined
-        );
-      } else if (draftType === 'thread') {
-        const tweets = content?.data?.timeline?.map((t: any) => ({
-          text: t.text,
-          media: t.media,
-        })) || [];
-        if (tweets.length === 0) throw new Error('No thread content found');
-        postResult = await tweetPoster.postThreadWithVerify(tweets);
-      } else {
-        throw new Error(`Unsupported draft type: ${draftType}`);
-      }
-
-      chrome.runtime.sendMessage({
-        type: 'DRAFT_PUBLISH_RESULT',
-        draftId,
-        success: postResult.success,
-        error: postResult.success ? undefined : postResult.error,
-      });
-    } catch (error) {
-      chrome.runtime.sendMessage({
-        type: 'DRAFT_PUBLISH_RESULT',
-        draftId,
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+  // handleAlarmTriggeredTask + handleScheduledDraftPublish removed —
+  // see message-listener comment. Both were chrome.alarms drivers; we now
+  // delegate scheduling to `bnbot calendar` + macOS launchd, which shells
+  // out to plain `bnbot x post / reply` instead of routing through the
+  // extension.
 
   /**
    * Execute GENERATE_TWEET task:

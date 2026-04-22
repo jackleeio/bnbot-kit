@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { BadgeCheck, MessageCircle, Repeat, Heart, BarChart2, Send, Sparkles, RefreshCw, Undo, Trash2, X, Play, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { BadgeCheck, MessageCircle, Repeat, Heart, BarChart2, Send, Sparkles, RefreshCw, Undo, Trash2, X, Play } from 'lucide-react';
 import { ImageWithSkeleton } from './ChatPanel';
 import { AutoResizeTextarea } from '../AutoResizeTextarea';
 import { NotificationToast } from '../NotificationToast';
@@ -48,8 +48,6 @@ export interface RewrittenTimelineProps {
         avatar: string;
     } | null;
     onTimelineChange?: (newTimeline: RewrittenTweet[]) => void;
-    draftId?: string;
-    initialScheduledAt?: string | null;
 }
 
 
@@ -102,7 +100,7 @@ const TimelineVideo: React.FC<{
     );
 };
 
-export const RewrittenTimeline: React.FC<RewrittenTimelineProps> = ({ data, userInfo, onTimelineChange, draftId, initialScheduledAt }) => {
+export const RewrittenTimeline: React.FC<RewrittenTimelineProps> = ({ data, userInfo, onTimelineChange }) => {
     const [isPosting, setIsPosting] = useState(false);
     const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
 
@@ -111,64 +109,8 @@ export const RewrittenTimeline: React.FC<RewrittenTimelineProps> = ({ data, user
     const [isUploadingMedia, setIsUploadingMedia] = useState(false);
     const [draftOnly, setDraftOnly] = useState(true);
 
-    // Toast state
-    const [toastMsg, setToastMsg] = useState<string | null>(null);
-    const showToast = (msg: string) => {
-        setToastMsg(msg);
-        setTimeout(() => setToastMsg(null), 2500);
-    };
-
-    // Schedule state
-    const [showSchedulePicker, setShowSchedulePicker] = useState(false);
-    const [scheduledDate, setScheduledDate] = useState<Date | null>(initialScheduledAt ? new Date(initialScheduledAt) : null);
-    const [scheduleMonth, setScheduleMonth] = useState(new Date());
-    const [scheduleHour, setScheduleHour] = useState(() => new Date().getHours().toString().padStart(2, '0'));
-    const [scheduleMinute, setScheduleMinute] = useState(() => {
-        const m = Math.ceil(new Date().getMinutes() / 5) * 5;
-        return (m >= 60 ? 0 : m).toString().padStart(2, '0');
-    });
-
-    // Reset time to current when picker opens
-    useEffect(() => {
-        if (showSchedulePicker) {
-            if (scheduledDate && scheduledDate.getTime() > Date.now()) {
-                // Use existing scheduled time
-                setScheduleHour(scheduledDate.getHours().toString().padStart(2, '0'));
-                const m = Math.round(scheduledDate.getMinutes() / 5) * 5;
-                setScheduleMinute((m >= 60 ? 0 : m).toString().padStart(2, '0'));
-            } else {
-                // Use current time
-                const now = new Date();
-                setScheduleHour(now.getHours().toString().padStart(2, '0'));
-                const m = Math.ceil(now.getMinutes() / 5) * 5;
-                setScheduleMinute((m >= 60 ? 0 : m).toString().padStart(2, '0'));
-            }
-        }
-    }, [showSchedulePicker]);
-
-    // Lower sidebar z-index when schedule picker is open so modal covers it
-    useEffect(() => {
-        if (showSchedulePicker) {
-            const style = document.createElement('style');
-            style.id = 'schedule-modal-sidebar-fix';
-            style.textContent = `
-                [data-testid="bnbot-sidebar"] {
-                    z-index: 0 !important;
-                }
-                [data-testid="bnbot-sidebar"] * {
-                    z-index: 0 !important;
-                }
-            `;
-            const shadowContainer = document.getElementById('x-sidekick-container');
-            const target = shadowContainer?.shadowRoot || document.head;
-            target.appendChild(style);
-
-            return () => {
-                const existingStyle = (shadowContainer?.shadowRoot || document).getElementById('schedule-modal-sidebar-fix');
-                existingStyle?.remove();
-            };
-        }
-    }, [showSchedulePicker]);
+    // Schedule UI removed — `bnbot calendar` (skill: /schedule) owns
+    // scheduling end-to-end. Tweet drafts in chat are publish-now only.
 
     // Batch generation state
 
@@ -393,15 +335,6 @@ export const RewrittenTimeline: React.FC<RewrittenTimelineProps> = ({ data, user
 
     return (
         <div className="flex flex-col gap-0 w-full max-w-full relative">
-            {/* Toast */}
-            {toastMsg && (
-                <div style={{ position: 'fixed', top: '12px', right: '60px', zIndex: 99999, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}
-                    className="px-4 py-2.5 bg-white text-black text-sm font-medium rounded-full border border-gray-200"
-                >
-                    {toastMsg}
-                </div>
-            )}
-
             {/* Batch Mode Header controls */}
 
 
@@ -543,29 +476,6 @@ export const RewrittenTimeline: React.FC<RewrittenTimelineProps> = ({ data, user
 
                     {/* Right side buttons */}
                     <div className="flex items-center gap-2">
-                        {/* Scheduled time indicator - only show future schedules */}
-                        {scheduledDate && scheduledDate.getTime() > Date.now() ? (
-                            <button
-                                onClick={() => setShowSchedulePicker(true)}
-                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-900/20 text-[#1d9bf0] text-xs font-medium cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-                            >
-                                <Calendar size={13} />
-                                <span>
-                                    {scheduledDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                                    {' '}
-                                    {scheduledDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })}
-                                </span>
-                            </button>
-                        ) : (
-                            <button
-                                onClick={() => setShowSchedulePicker(true)}
-                                className="p-2 rounded-full transition-colors cursor-pointer text-[var(--text-secondary)] hover:bg-[var(--hover-bg)] hover:text-[var(--text-primary)]"
-                                title={t.schedule?.title || "设置定时发布"}
-                            >
-                                <Calendar size={18} />
-                            </button>
-                        )}
-
                         <button
                             onClick={handleAutoPost}
                             disabled={isPosting}
@@ -583,9 +493,7 @@ export const RewrittenTimeline: React.FC<RewrittenTimelineProps> = ({ data, user
                                 <span>
                                     {isPosting
                                         ? (t.article?.publishing || '发布中...')
-                                        : (scheduledDate && scheduledDate.getTime() > Date.now())
-                                            ? (t.schedule?.scheduledPublish || 'Schedule')
-                                            : (t.article?.publish || '发布')
+                                        : (t.article?.publish || '发布')
                                     }
                                 </span>
                             </span>
@@ -658,248 +566,6 @@ export const RewrittenTimeline: React.FC<RewrittenTimelineProps> = ({ data, user
 
             {/* Media Uploading Notification */}
             <NotificationToast message={t.chat.addingMedia} isVisible={isUploadingMedia} />
-
-            {/* Schedule Picker Modal */}
-            {showSchedulePicker && (
-                <div
-                    className="flex items-center justify-center p-4"
-                    style={{
-                        position: 'fixed',
-                        top: 0,
-                        right: 0,
-                        width: '486px',
-                        height: '100vh',
-                        zIndex: 9999,
-                        pointerEvents: 'auto',
-                        backgroundColor: 'rgba(128, 128, 128, 0.25)',
-                    }}
-                    onClick={(e) => {
-                        if (e.target === e.currentTarget) {
-                            setShowSchedulePicker(false);
-                        }
-                    }}
-                >
-                    <div
-                        style={{
-                            backgroundColor: 'var(--bg-primary)',
-                            borderRadius: '16px',
-                            width: '320px',
-                            maxHeight: '80vh',
-                            overflow: 'hidden',
-                            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {/* Header */}
-                        <div style={{
-                            padding: '16px',
-                            borderBottom: '1px solid var(--border-color, #eee)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between'
-                        }}>
-                            <span style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                {t.schedule?.title || '定时发布'}
-                            </span>
-                            <button
-                                onClick={() => setShowSchedulePicker(false)}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    padding: '8px',
-                                    cursor: 'pointer',
-                                    borderRadius: '50%',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
-                                }}
-                            >
-                                <X size={20} className="text-[var(--text-primary)]" />
-                            </button>
-                        </div>
-
-                        {/* Calendar */}
-                        <div style={{ padding: '16px' }}>
-                            {/* Month Navigation */}
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                                <button
-                                    onClick={() => setScheduleMonth(new Date(scheduleMonth.getFullYear(), scheduleMonth.getMonth() - 1, 1))}
-                                    style={{ background: 'none', border: 'none', padding: '8px', cursor: 'pointer', borderRadius: '50%' }}
-                                >
-                                    <ChevronLeft size={20} className="text-[var(--text-primary)]" />
-                                </button>
-                                <span style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                                    {language === 'en'
-                                        ? `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][scheduleMonth.getMonth()]} ${scheduleMonth.getFullYear()}`
-                                        : `${scheduleMonth.getFullYear()}年 ${scheduleMonth.getMonth() + 1}月`
-                                    }
-                                </span>
-                                <button
-                                    onClick={() => setScheduleMonth(new Date(scheduleMonth.getFullYear(), scheduleMonth.getMonth() + 1, 1))}
-                                    style={{ background: 'none', border: 'none', padding: '8px', cursor: 'pointer', borderRadius: '50%' }}
-                                >
-                                    <ChevronRight size={20} className="text-[var(--text-primary)]" />
-                                </button>
-                            </div>
-
-                            {/* Week Days */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '8px' }}>
-                                {(language === 'en' ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] : ['日', '一', '二', '三', '四', '五', '六']).map((d, i) => (
-                                    <div key={d} style={{ textAlign: 'center', fontSize: '12px', color: i === 0 || i === 6 ? '#f4212e' : 'var(--text-secondary)', padding: '4px' }}>
-                                        {d}
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Calendar Days */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
-                                {(() => {
-                                    const year = scheduleMonth.getFullYear();
-                                    const month = scheduleMonth.getMonth();
-                                    const firstDay = new Date(year, month, 1).getDay();
-                                    const daysInMonth = new Date(year, month + 1, 0).getDate();
-                                    const today = new Date();
-                                    const days: (number | null)[] = [];
-
-                                    for (let i = 0; i < firstDay; i++) days.push(null);
-                                    for (let d = 1; d <= daysInMonth; d++) days.push(d);
-
-                                    return days.map((day, idx) => {
-                                        const isToday = day && day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
-                                        const isSelected = scheduledDate && day === scheduledDate.getDate() && month === scheduledDate.getMonth() && year === scheduledDate.getFullYear();
-                                        const isPast = day && new Date(year, month, day) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-                                        return (
-                                            <div
-                                                key={idx}
-                                                onClick={() => {
-                                                    if (day && !isPast) {
-                                                        setScheduledDate(new Date(year, month, day));
-                                                    }
-                                                }}
-                                                style={{
-                                                    aspectRatio: '1',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    fontSize: '14px',
-                                                    borderRadius: '50%',
-                                                    cursor: day && !isPast ? 'pointer' : 'default',
-                                                    backgroundColor: isSelected ? 'rgb(15, 20, 25)' : isToday ? 'rgba(15, 20, 25, 0.1)' : 'transparent',
-                                                    color: isSelected ? '#fff' : isPast ? 'var(--text-secondary)' : 'var(--text-primary)',
-                                                    opacity: isPast ? 0.5 : 1,
-                                                    fontWeight: isToday || isSelected ? 700 : 400
-                                                }}
-                                            >
-                                                {day}
-                                            </div>
-                                        );
-                                    });
-                                })()}
-                            </div>
-
-                            {/* Time Selection */}
-                            <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{t.schedule?.time || 'Time'}</span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 12px', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-                                    <select
-                                        value={scheduleHour}
-                                        onChange={(e) => setScheduleHour(e.target.value)}
-                                        style={{ fontSize: '16px', fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', outline: 'none' }}
-                                    >
-                                        {Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')).map(h => (
-                                            <option key={h} value={h}>{h}</option>
-                                        ))}
-                                    </select>
-                                    <span style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>:</span>
-                                    <select
-                                        value={scheduleMinute}
-                                        onChange={(e) => setScheduleMinute(e.target.value)}
-                                        style={{ fontSize: '16px', fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', outline: 'none' }}
-                                    >
-                                        {Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0')).map(m => (
-                                            <option key={m} value={m}>{m}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
-                                    {Intl.DateTimeFormat().resolvedOptions().timeZone}
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Footer Buttons */}
-                        <div style={{ padding: '16px', borderTop: '1px solid var(--border-color, #eee)', display: 'flex', gap: '12px' }}>
-                            <button
-                                onClick={() => {
-                                    setScheduledDate(null);
-                                    setShowSchedulePicker(false);
-                                    // Unschedule from backend
-                                    if (draftId) {
-                                        import('../../services/draftService').then(({ draftService }) => {
-                                            draftService.unscheduleDraft(draftId).then(() => {
-                                                chrome.runtime.sendMessage({ type: 'DRAFT_ALARM_REMOVE', draftId });
-                                            }).catch(err => console.error('[RewrittenTimeline] Failed to unschedule:', err));
-                                        });
-                                    }
-                                }}
-                                style={{
-                                    flex: 1,
-                                    padding: '10px',
-                                    fontSize: '14px',
-                                    fontWeight: 600,
-                                    border: '1px solid var(--border-color)',
-                                    borderRadius: '9999px',
-                                    background: 'transparent',
-                                    color: 'var(--text-primary)',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                {t.schedule?.clear || '清除'}
-                            </button>
-                            <button
-                                onClick={() => {
-                                    // Default to today if no date selected
-                                    const baseDate = scheduledDate || new Date();
-                                    const newDate = new Date(baseDate);
-                                    newDate.setHours(parseInt(scheduleHour), parseInt(scheduleMinute), 0, 0);
-
-                                    // Block past times
-                                    if (newDate.getTime() <= Date.now()) {
-                                        showToast(language === 'zh' ? '请选择未来的时间' : 'Please select a future time');
-                                        return;
-                                    }
-
-                                    setScheduledDate(newDate);
-                                    setShowSchedulePicker(false);
-                                    // Save to backend and create alarm
-                                    if (draftId) {
-                                        import('../../services/draftService').then(({ draftService }) => {
-                                            draftService.scheduleDraft(draftId, newDate.toISOString()).then(() => {
-                                                chrome.runtime.sendMessage({ type: 'DRAFT_ALARM_SYNC', draftId });
-                                                console.log('[RewrittenTimeline] Draft scheduled:', draftId, newDate.toISOString());
-                                            }).catch(err => console.error('[RewrittenTimeline] Failed to schedule:', err));
-                                        });
-                                    }
-                                }}
-                                style={{
-                                    flex: 1,
-                                    padding: '10px',
-                                    fontSize: '14px',
-                                    fontWeight: 700,
-                                    border: 'none',
-                                    borderRadius: '9999px',
-                                    backgroundColor: 'rgb(15, 20, 25)',
-                                    color: '#fff',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                {t.schedule?.confirm || '确认'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
 
         </div >
     );

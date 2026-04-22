@@ -162,41 +162,9 @@ class DraftService {
     return response.json();
   }
 
-  /**
-   * Schedule a draft for publishing
-   */
-  async scheduleDraft(draftId: string, scheduledAt: string): Promise<TweetDraft> {
-    const response = await authService.fetchWithAuth(`${API_BASE_URL}/api/v1/drafts/${draftId}/schedule`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ scheduled_at: scheduledAt })
-    });
-
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data?.detail || 'Failed to schedule draft');
-    }
-
-    return response.json();
-  }
-
-  /**
-   * Cancel a scheduled draft
-   */
-  async unscheduleDraft(draftId: string): Promise<TweetDraft> {
-    const response = await authService.fetchWithAuth(`${API_BASE_URL}/api/v1/drafts/${draftId}/schedule`, {
-      method: 'DELETE',
-    });
-
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data?.detail || 'Failed to unschedule draft');
-    }
-
-    return response.json();
-  }
+  // scheduleDraft / unscheduleDraft removed — scheduling lives in
+  // `bnbot calendar` (CLI) + macOS launchd. Backend `/drafts/:id/schedule`
+  // endpoint is no longer touched from the extension.
 
   /**
    * Get all tweet drafts
@@ -316,22 +284,8 @@ class DraftService {
     }
   }
 
-  /**
-   * Get pending drafts (for browser extension polling)
-   */
-  async getPendingDrafts(): Promise<TweetDraft[]> {
-    const response = await authService.fetchWithAuth(`${API_BASE_URL}/api/v1/drafts/pending`, {
-      method: 'GET',
-    });
-
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data?.detail || 'Failed to get pending drafts');
-    }
-
-    const data = await response.json();
-    return data?.data || data || [];
-  }
+  // getPendingDrafts removed — was the chrome.alarms-driven scheduler's
+  // poll path. Calendar / launchd path doesn't use it.
 
   /**
    * Mark draft as published
@@ -371,48 +325,11 @@ class DraftService {
     return response.json();
   }
 
-  /**
-   * Get calendar view drafts
-   */
-  async getCalendarDrafts(startDate: Date, endDate: Date): Promise<TweetDraft[]> {
-    const params = new URLSearchParams({
-      start_date: startDate.toISOString(),
-      end_date: endDate.toISOString(),
-    });
-
-    const response = await authService.fetchWithAuth(
-      `${API_BASE_URL}/api/v1/drafts/calendar?${params}`,
-      {
-        method: 'GET',
-      }
-    );
-
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data?.detail || 'Failed to get calendar drafts');
-    }
-
-    const data = await response.json();
-    return data?.data || data || [];
-  }
-
-  /**
-   * Notify background to sync a draft's alarm (after scheduling).
-   */
-  async notifyDraftAlarmSync(draftId: string): Promise<void> {
-    return new Promise(resolve => {
-      chrome.runtime.sendMessage({ type: 'DRAFT_ALARM_SYNC', draftId }, () => resolve());
-    });
-  }
-
-  /**
-   * Notify background to remove a draft's alarm (after unscheduling).
-   */
-  async notifyDraftAlarmRemove(draftId: string): Promise<void> {
-    return new Promise(resolve => {
-      chrome.runtime.sendMessage({ type: 'DRAFT_ALARM_REMOVE', draftId }, () => resolve());
-    });
-  }
+  // getCalendarDrafts / notifyDraftAlarmSync / notifyDraftAlarmRemove
+  // removed — calendar UI lived in extension, now lives in `bnbot
+  // calendar` (skill: /schedule). Backend's /drafts/calendar is unused
+  // from the extension; the desktop app reads ~/.bnbot/calendar/*.json
+  // directly.
 }
 
 export const draftService = new DraftService();

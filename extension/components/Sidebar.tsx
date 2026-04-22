@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Zap, TrendingUp, UserCircle, Sparkles, LogOut, Languages, AtSign, Crown, ScanEye, CalendarDays, MessageSquare, Settings, Wallet, Send, Check, X, ExternalLink, BarChart3, RefreshCw } from 'lucide-react';
+import { Zap, TrendingUp, UserCircle, Sparkles, LogOut, Languages, AtSign, Crown, ScanEye, MessageSquare, Settings, Wallet, Send, Check, X, ExternalLink, BarChart3, RefreshCw } from 'lucide-react';
 import { commandService } from '../services/commandService';
 import { telegramService, TelegramStatus } from '../services/telegramService';
 import { SteeringWheel } from './icons/SteeringWheel';
@@ -68,7 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: Tab.ANALYSIS, icon: TrendingUp, label: t.sidebar.analysis },
     // Auto Reply tab removed — see /auto-reply, /inbox-watch skills.
     { id: Tab.BOOST, icon: Zap, label: t.sidebar.boost },
-    { id: Tab.DRAFTS, icon: CalendarDays, label: t.sidebar.drafts },
+    // Drafts/Schedule tab removed — scheduling moved to `bnbot calendar` + launchd.
     { id: Tab.X_ANALYTICS, icon: BarChart3, label: t.common.xAnalytics },
     { id: Tab.X_BALANCE, icon: Wallet, label: t.common.xBalance },
   ];

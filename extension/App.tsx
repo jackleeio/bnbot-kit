@@ -6,7 +6,8 @@ import { BoostPanel } from './components/panels/BoostPanel';
 import { AnalysisPanel } from './components/panels/AnalysisPanel';
 import { CreditsPanel } from './components/panels/CreditsPanel';
 import { LoginPanel } from './components/panels/LoginPanel';
-import { SchedulePanel } from './components/panels/SchedulePanel';
+// SchedulePanel removed — scheduling lives in `bnbot calendar` + macOS launchd
+// (skill: /schedule). Extension no longer hosts the calendar UI.
 // AutoPilotPanel removed — autopilot lives in bnbot CLI /auto-reply + /inbox-watch skills.
 import { XBalancePanel } from './components/panels/XBalancePanel';
 import { XAnalyticsPanel } from './components/panels/XAnalyticsPanel';
@@ -823,8 +824,6 @@ function AppContent() {
     switch (activeTab) {
       case Tab.CHAT: return null;
       case Tab.BOOST: return null; // BoostPanel is now persistent
-      case Tab.DRAFTS:
-        return <SchedulePanel />;
       case Tab.CREDITS: return (
         <CreditsPanel
           userEmail={user?.email}
