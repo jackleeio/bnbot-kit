@@ -12,3 +12,4 @@ CLAUDE.md
 web/.open-next/
 web/.vercel/
 web/.wrangler/
+web/tsconfig.tsbuildinfo

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BNBot",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "description": "Your AI growth agent for X. Made for humans & OpenClaw 🦞.",
   "icons": {
     "16": "assets/images/icon-16.png",
@@ -10,7 +10,6 @@
   },
   "permissions": [
     "storage",
-    "identity",
     "offscreen",
     "tabs",
     "alarms",

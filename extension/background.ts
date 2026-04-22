@@ -175,8 +175,8 @@ async function navigateTabViaCdp(args: {
 }
 import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications } from './services/scrapers/browser';
 
-const GOOGLE_CLIENT_ID = '968791771361-on89kib06tl0kucdoo0s7jiop3tftp16.apps.googleusercontent.com';
-const OAUTH_REDIRECT_URI = chrome.identity.getRedirectURL();
+// GOOGLE_CLIENT_ID / OAUTH_REDIRECT_URI removed — see handleGoogleLogin
+// removal note. chrome.identity.getRedirectURL() also no longer needed.
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8000';
 const WS_BASE_URL = process.env.WS_BASE_URL || '';
 
@@ -775,12 +775,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Listen for messages from content script
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-  if (request.type === 'GOOGLE_LOGIN') {
-    handleGoogleLogin()
-      .then(sendResponse)
-      .catch((error) => sendResponse({ error: error.message }));
-    return true;
-  }
+  // GOOGLE_LOGIN handler removed — login flow lives in CLI (`bnbot login`),
+  // tokens arrive via the `inject_auth_tokens` WS action.
 
   if (request.type === 'LOGOUT') {
     // Disconnect WebSocket on logout
@@ -895,68 +891,15 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   }
 });
 
-async function handleGoogleLogin(): Promise<{ id_token: string }> {
-  // Build Google OAuth URL
-  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
-  authUrl.searchParams.set('redirect_uri', OAUTH_REDIRECT_URI);
-  authUrl.searchParams.set('response_type', 'id_token');
-  authUrl.searchParams.set('scope', 'openid email profile');
-  authUrl.searchParams.set('nonce', Math.random().toString(36).substring(2));
-  // Force Google to show login screen, clearing any cached session
-  authUrl.searchParams.set('prompt', 'login');
-
-  return new Promise((resolve, reject) => {
-    chrome.identity.launchWebAuthFlow(
-      {
-        url: authUrl.toString(),
-        interactive: true,
-      },
-      (redirectUrl) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-
-        if (!redirectUrl) {
-          reject(new Error('No redirect URL received'));
-          return;
-        }
-
-        // Extract id_token from URL fragment
-        const url = new URL(redirectUrl);
-        const hash = url.hash.substring(1);
-        const params = new URLSearchParams(hash);
-        const idToken = params.get('id_token');
-
-        if (!idToken) {
-          reject(new Error('No id_token in response'));
-          return;
-        }
-
-        resolve({ id_token: idToken });
-      }
-    );
-  });
-}
+// handleGoogleLogin removed — login flow lives in CLI (`bnbot login`).
+// CLI authenticates against bnbot.ai (clawmoney key or email OTP) and
+// pushes resulting tokens via inject_auth_tokens action.
 
 async function handleLogout() {
   await chrome.storage.local.remove(['bnbot_user']);
-
-  // Clear Google identity cache so user gets prompted to choose email on next login
-  // (clearAllCachedAuthTokens may not be available on all browsers)
-  if (chrome.identity?.clearAllCachedAuthTokens) {
-    await new Promise<void>((resolve) => {
-      chrome.identity.clearAllCachedAuthTokens(() => {
-        if (chrome.runtime.lastError) {
-          console.warn('[BNBot] Failed to clear Google identity cache:', chrome.runtime.lastError.message);
-        } else {
-          console.log('[BNBot] Google identity cache cleared');
-        }
-        resolve();
-      });
-    });
-  }
+  // chrome.identity.clearAllCachedAuthTokens removed — extension no longer
+  // touches Google identity (CLI owns login). `identity` permission can be
+  // dropped from manifest now.
 }
 
 // Handle API requests from content script

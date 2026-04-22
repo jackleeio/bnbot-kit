@@ -3,6 +3,21 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.11.0] - 2026-04-22
+
+### Removed
+- **登录 UI 全部下线，登录归 CLI 拥有**: extension 不再做 OAuth flow，token 由 CLI 通过 `inject_auth_tokens` WS action 推送进来（这条 bridge 一直存在，没用上）。架构对齐"extension = 浏览器执行层 / CLI = 智力 + auth 入口"。
+  - 删 `components/panels/LoginPanel.tsx`（415 LOC）— Google + 邮箱 OTP 登录页
+  - 删 `components/modals/LoginModal.tsx`（473 LOC）— 弹窗版登录
+  - 删 `oauth-callback.ts`（30 LOC）— OAuth redirect 处理（已 unused）
+  - `services/authService.ts` 删 `googleLogin / sendVerificationCode / verifyCode / processLoginResponse / LoginResponse interface` + `clearAllCachedAuthTokens` 调用
+  - `background.ts` 删 `handleGoogleLogin` 函数 + `GOOGLE_LOGIN` 消息 handler + `GOOGLE_CLIENT_ID` / `OAUTH_REDIRECT_URI` 常量 + `clearAllCachedAuthTokens` 调用
+  - `App.tsx` 去 LoginPanel/LoginModal imports + `showLoginModal` / `showLoginPanel` state，合并成单一 `showLoginHint`，未登录时显示"在终端运行 `bnbot login`"占位
+  - `manifest.json` + `manifest.firefox.json` 去掉 `identity` permission（OAuth 没了不用申请）
+  - `.env.production` 去掉 `GOOGLE_CLIENT_ID` 环境变量
+- **保留**: BoostPanel / CreditsPanel / XAnalyticsPanel / XBalancePanel 全部完整保留，只是 token 来源从 OAuth 换成 CLI bridge。`authService.fetchWithAuth` / `refreshAccessToken` / `getAccessToken` / `saveTokens` 等所有 token 消费链路不动。
+- 砍 ~1,050 LOC + 1 个权限
+
 ## [0.10.1] - 2026-04-22
 
 ### Removed

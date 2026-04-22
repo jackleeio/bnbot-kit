@@ -65,12 +65,9 @@ export interface User {
   token_type?: string;
 }
 
-export interface LoginResponse {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-  user?: User;
-}
+// LoginResponse interface removed with the OAuth methods that consumed it.
+// CLI's bnbot login owns the response shape now; extension only sees the
+// final tokens via inject_auth_tokens.
 
 class AuthService {
   /**
@@ -99,141 +96,17 @@ class AuthService {
     }
   }
 
-  /**
-   * Helper to process login response and save user
-   */
-  private async processLoginResponse(data: LoginResponse, emailFallback: string): Promise<User> {
-    console.log('[AuthService] Processing login response');
+  // processLoginResponse removed with its only callers (googleLogin,
+  // verifyCode). CLI's inject_auth_tokens handler in background.ts now
+  // writes tokens + user directly to chrome.storage.
 
-    // Save tokens from response body to chrome.storage
-    if (data.access_token && data.refresh_token) {
-      await this.saveTokens(data.access_token, data.refresh_token);
-    } else {
-      console.warn('[AuthService] No tokens in login response');
-    }
-
-    // Create user object
-    const user: User = {
-      ...data.user,
-      email: data.user?.email || emailFallback,
-      name: data.user?.full_name || data.user?.name || '',
-      full_name: data.user?.full_name,
-    };
-
-    console.log('[AuthService] Saving user information:', {
-      email: user.email
-    });
-
-    await this.saveUser(user);
-    return user;
-  }
-
-  /**
-   * Google OAuth login via background script
-   */
-  async googleLogin(inviteCode?: string): Promise<User> {
-    if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
-      throw new Error('请在 Chrome 扩展环境中使用');
-    }
-
-    // Check if extension context is still valid
-    if (!isExtensionContextValid()) {
-      throw new Error('扩展已更新，请刷新页面后重试');
-    }
-
-    // Get id_token from background script
-    const oauthResult = await new Promise<{ id_token?: string; error?: string }>((resolve, reject) => {
-      chrome.runtime.sendMessage({ type: 'GOOGLE_LOGIN' }, (response) => {
-        // Check for extension context invalidation
-        if (chrome.runtime.lastError) {
-          const errorMsg = chrome.runtime.lastError.message || '';
-          if (errorMsg.includes('Extension context invalidated')) {
-            reject(new Error('扩展已更新，请刷新页面后重试'));
-          } else {
-            reject(new Error(errorMsg || '无法连接到扩展'));
-          }
-          return;
-        }
-        resolve(response || {});
-      });
-    });
-
-    if (oauthResult.error) {
-      throw new Error(oauthResult.error);
-    }
-
-    if (!oauthResult.id_token) {
-      throw new Error('获取 Google 授权失败');
-    }
-
-    // Send id_token to backend via background script (to avoid CORS)
-    const result = await this.sendViaBackground(`${API_BASE_URL}/api/v1/google-oauth`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        id_token: oauthResult.id_token,
-        invite_code: inviteCode || undefined,
-      }),
-    });
-
-    if (result.status < 200 || result.status >= 300) {
-      const errorData = result.data as { detail?: string } | null;
-      console.error('[AuthService] Google login failed:', { status: result.status, data: result.data, error: result.error });
-      throw new Error(errorData?.detail || `Login failed (HTTP ${result.status})`);
-    }
-
-    const data = result.data as LoginResponse;
-    return this.processLoginResponse(data, data.user?.email || '');
-  }
-
-  /**
-   * Send verification code to email
-   * POST /api/v1/send-verification-code
-   */
-  async sendVerificationCode(email: string): Promise<boolean> {
-    try {
-      const result = await this.sendViaBackground(`${API_BASE_URL}/api/v1/send-verification-code`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email }),
-      });
-
-      return result.status >= 200 && result.status < 300;
-    } catch (error) {
-      console.error('Error sending verification code:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Verify email code and login
-   * POST /api/v1/email-login
-   */
-  async verifyCode(email: string, code: string, inviteCode?: string): Promise<User> {
-    const result = await this.sendViaBackground(`${API_BASE_URL}/api/v1/email-login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email,
-        code,
-        invite_code: inviteCode || undefined,
-      }),
-    });
-
-    if (result.status < 200 || result.status >= 300) {
-      const errorData = result.data as { detail?: string } | null;
-      throw new Error(errorData?.detail || 'Verification failed');
-    }
-
-    const data = result.data as LoginResponse;
-    return this.processLoginResponse(data, email);
-  }
+  // googleLogin / sendVerificationCode / verifyCode removed —
+  // login flow lives in CLI (`bnbot login`). CLI authenticates and
+  // pushes tokens via the `inject_auth_tokens` WebSocket action
+  // (background.ts handler), which writes them to chrome.storage and
+  // broadcasts AUTH_INJECTED to App.tsx. The extension is now a pure
+  // token consumer — fetchWithAuth / refreshAccessToken still work
+  // unchanged because they read from chrome.storage either way.
 
   /**
    * Save user to chrome storage (only uses chrome.storage.local to avoid conflicts with web pages)
@@ -802,25 +675,8 @@ class AuthService {
     // Tokens are stored in httpOnly cookies by backend
     // They will be cleared automatically when user logs out from the backend
     // or when their session expires
-
-    // Clear Google identity cache so user gets prompted to choose email on next login
-    // (clearAllCachedAuthTokens may not be available on all browsers, e.g. Firefox)
-    if (typeof chrome !== 'undefined' && chrome.identity?.clearAllCachedAuthTokens && isExtensionContextValid()) {
-      try {
-        await new Promise<void>((resolve) => {
-          chrome.identity.clearAllCachedAuthTokens(() => {
-            if (chrome.runtime.lastError) {
-              console.warn('[AuthService] Failed to clear Google identity cache:', chrome.runtime.lastError.message);
-            } else {
-              console.log('[AuthService] Google identity cache cleared');
-            }
-            resolve();
-          });
-        });
-      } catch (error) {
-        console.warn('[AuthService] Error clearing Google identity cache:', error);
-      }
-    }
+    // chrome.identity.clearAllCachedAuthTokens removed — extension no
+    // longer initiates Google OAuth (CLI owns login).
   }
 }
 

@@ -5,7 +5,8 @@ import { ChatPanel } from './components/panels/ChatPanel';
 import { BoostPanel } from './components/panels/BoostPanel';
 import { AnalysisPanel } from './components/panels/AnalysisPanel';
 import { CreditsPanel } from './components/panels/CreditsPanel';
-import { LoginPanel } from './components/panels/LoginPanel';
+// LoginPanel / LoginModal removed — login flow owned by CLI (`bnbot login`).
+// Extension consumes tokens pushed via inject_auth_tokens (background.ts).
 // SchedulePanel removed — scheduling lives in `bnbot calendar` + macOS launchd
 // (skill: /schedule). Extension no longer hosts the calendar UI.
 // AutoPilotPanel removed — autopilot lives in bnbot CLI /auto-reply + /inbox-watch skills.
@@ -18,7 +19,6 @@ import { chatService } from './services/chatService';
 import { commandService } from './services/commandService';
 import { TweetObserver } from './utils/TweetObserver';
 import { NativeBoostModal } from './components/modals/NativeBoostModal';
-import { LoginModal } from './components/modals/LoginModal';
 
 import { ThemeProvider, useTheme } from './components/ThemeContext';
 import { LanguageProvider, useLanguage } from './components/LanguageContext';
@@ -35,8 +35,9 @@ function AppContent() {
   const [tabInitialized, setTabInitialized] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [user, setUser] = useState<User | null>(null);
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [showLoginPanel, setShowLoginPanel] = useState(false);
+  // Show "run bnbot login" hint instead of an in-extension login UI when
+  // a backend-dependent action is requested without auth.
+  const [showLoginHint, setShowLoginHint] = useState(false);
   const [currentTweetId, setCurrentTweetId] = useState<string | null>(null);
   const [pendingAgentMessage, setPendingAgentMessage] = useState<string | null>(null);
   const [previousTab, setPreviousTab] = useState<Tab | null>(null);
@@ -579,8 +580,8 @@ function AppContent() {
     // Clear all previous chat history for privacy/fresh start
     chatService.clearAllSessions();
     setUser(loggedInUser);
-    setShowLoginModal(false);
-    setShowLoginPanel(false);
+    setShowLoginHint(false);
+    setShowLoginHint(false);
     // Reset chat to clear any error messages from expired session
     setChatResetKey(prev => prev + 1);
     setGlobalChatResetTrigger(prev => prev + 1);
@@ -599,7 +600,7 @@ function AppContent() {
     chatService.clearAllSessions();
     await authService.logout();
     setUser(null);
-    setShowLoginPanel(true);
+    setShowLoginHint(true);
     setChatResetKey(prev => prev + 1);
     setGlobalChatResetTrigger(prev => prev + 1);
   };
@@ -610,7 +611,7 @@ function AppContent() {
       setActiveTab(Tab.CREDITS);
     } else {
       // If not logged in, show login panel
-      setShowLoginPanel(true);
+      setShowLoginHint(true);
     }
   };
 
@@ -796,7 +797,7 @@ function AppContent() {
     const prompt = `Please help me write a tweet about: ${taskText}. Use English.`;
     setPendingAgentMessage(prompt);
     if (!user) {
-      setShowLoginModal(true);
+      setShowLoginHint(true);
     } else {
       setActiveTab(Tab.CHAT);
     }
@@ -811,13 +812,25 @@ function AppContent() {
 
   // Render non-persistent panels (conditional rendering)
   const renderActivePanel = () => {
-    // Show login panel if requested from Sidebar
-    if (showLoginPanel && !user) {
+    // Login flow lives in CLI now. When backend-dependent UI requests
+    // auth (e.g. user clicks Boost without being logged in), show a
+    // hint instead of an in-extension login form.
+    if (showLoginHint && !user) {
       return (
-        <LoginPanel
-          onClose={() => setShowLoginPanel(false)}
-          onLogin={handleLogin}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '32px', textAlign: 'center', gap: '16px' }}>
+          <div style={{ fontSize: '17px', fontWeight: 600, color: 'var(--text-primary)' }}>
+            登录从命令行管理
+          </div>
+          <div style={{ fontSize: '14px', color: 'var(--text-secondary)', maxWidth: '320px', lineHeight: 1.6 }}>
+            在终端运行 <code style={{ background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'ui-monospace, monospace' }}>bnbot login</code> 完成登录，token 会自动同步到扩展。
+          </div>
+          <button
+            onClick={() => setShowLoginHint(false)}
+            style={{ marginTop: '12px', padding: '8px 16px', borderRadius: '9999px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '13px' }}
+          >
+            知道了
+          </button>
+        </div>
       );
     }
 
@@ -924,7 +937,7 @@ function AppContent() {
                 style={{
                   position: 'absolute',
                   inset: 0,
-                  display: activeTab === Tab.ANALYSIS && !showLoginPanel ? 'flex' : 'none',
+                  display: activeTab === Tab.ANALYSIS && !showLoginHint ? 'flex' : 'none',
                   flexDirection: 'column',
                 }}
               >
@@ -935,14 +948,14 @@ function AppContent() {
                 style={{
                   position: 'absolute',
                   inset: 0,
-                  display: activeTab === Tab.BOOST && !showLoginPanel ? 'flex' : 'none',
+                  display: activeTab === Tab.BOOST && !showLoginHint ? 'flex' : 'none',
                   flexDirection: 'column',
                 }}
               >
                 <BoostPanel
                   initialTweetId={boostPanelTweetId || undefined}
                   onGenerate={handleBoostGenerate}
-                  onLogin={() => setShowLoginModal(true)}
+                  onLogin={() => setShowLoginHint(true)}
                   onSwitchToContext={handleSwitchToContext}
                 />
               </div>
@@ -954,13 +967,13 @@ function AppContent() {
                   // Show ChatPanel if it's the active tab, or if we are falling back to default (Tab.CHAT is usually default but let's be explicit about the explicit Tab.CHAT check)
                   // Also handle the case where activeTab might be undefined or unknown (default case in switch previously)
                   // But usually activeTab is initialized to Tab.CHAT.
-                  display: (activeTab === Tab.CHAT || !Object.values(Tab).includes(activeTab)) && !showLoginPanel ? 'flex' : 'none',
+                  display: (activeTab === Tab.CHAT || !Object.values(Tab).includes(activeTab)) && !showLoginHint ? 'flex' : 'none',
                   flexDirection: 'column',
                 }}
               >
                 <ChatPanel
                   resetTrigger={globalChatResetTrigger}
-                  onLoginClick={() => setShowLoginModal(true)}
+                  onLoginClick={() => setShowLoginHint(true)}
                   onCreditsClick={() => setActiveTab(Tab.CREDITS)}
                   onTabChange={(tab) => setActiveTab(tab as Tab)}
                   initialMessage={pendingAgentMessage}
@@ -975,18 +988,14 @@ function AppContent() {
                 style={{
                   position: 'absolute',
                   inset: 0,
-                  display: (showLoginPanel && !user) || (activeTab !== Tab.ANALYSIS && activeTab !== Tab.CHAT && activeTab !== Tab.BOOST) ? 'flex' : 'none',
+                  display: (showLoginHint && !user) || (activeTab !== Tab.ANALYSIS && activeTab !== Tab.CHAT && activeTab !== Tab.BOOST) ? 'flex' : 'none',
                   flexDirection: 'column',
                   zIndex: 20,
                 }}
               >
                 {renderActivePanel()}
               </div>
-              <LoginModal
-                isOpen={showLoginModal && !user}
-                onClose={() => setShowLoginModal(false)}
-                onLogin={handleLogin}
-              />
+              {/* LoginModal removed — login flow lives in CLI (`bnbot login`). */}
               {showBoostModal && (
                 <NativeBoostModal
                   tweetText={boostModalTweetText}
@@ -1001,8 +1010,8 @@ function AppContent() {
           <Sidebar
             activeTab={activeTab}
             onTabChange={(tab) => {
-              setShowLoginModal(false);
-              setShowLoginPanel(false);
+              setShowLoginHint(false);
+              setShowLoginHint(false);
               setActiveTab(tab);
             }}
             onCollapse={() => setIsCollapsed(true)}
@@ -1010,7 +1019,7 @@ function AppContent() {
             onSignOut={handleLogout}
             onRefreshCredits={handleRefreshCredits}
             isLoggedIn={!!user}
-            showingLogin={showLoginPanel}
+            showingLogin={showLoginHint}
             userCredits={user?.credits || 0}
             xBalance={user?.x_balance || 0}
             subscriptionTier={user?.subscription_tier}
