@@ -25,6 +25,29 @@ interface PoolEntry {
 }
 const tabPool = new Map<string, PoolEntry>();
 
+// Windows we've created for scraping purposes. Tracked independently of
+// `tabPool` because pool entries get evicted on idle but the WINDOW may
+// still be alive (e.g. another helper tab is in it). Reusing these
+// windows prevents "open multiple x.com windows after each test run"
+// symptoms. We prune dead window IDs lazily on access.
+const scraperWindowIds = new Set<number>();
+
+/** Remove closed windows from the tracking set. Call before decisions that
+ *  depend on whether a scraper window is available. */
+async function pruneDeadScraperWindows(): Promise<void> {
+  for (const winId of Array.from(scraperWindowIds)) {
+    try {
+      await chrome.windows.get(winId);
+    } catch {
+      scraperWindowIds.delete(winId);
+    }
+  }
+}
+
+chrome.windows.onRemoved.addListener((windowId) => {
+  scraperWindowIds.delete(windowId);
+});
+
 // Track which tabs have the debugger attached (maps tabId -> the CDP targetId we attached to).
 // We attach by targetId, not tabId, because chrome.debugger.attach({tabId}) rejects
 // the whole tab if ANY frame/target belongs to another extension (e.g. password managers,
@@ -46,6 +69,37 @@ export function getPoolTabs(): Array<{ host: string; tabId: number; windowId: nu
   }));
 }
 
+/**
+ * Open a new tab inside a bnbot-owned scraper window (NOT the user's
+ * main window). If a scraper window already exists (any pool entry's
+ * windowId), reuse it — just add a tab there. Only when no scraper
+ * window exists do we create a fresh unfocused one.
+ *
+ * Used by `bnbot screenshot --url` and `bnbot x navigate url` so
+ * ad-hoc page opens don't pollute the user's foreground browsing.
+ *
+ * Note: the new tab is NOT added to the scraper pool (tabPool), because
+ * the pool is keyed by hostname and reserved for the primary
+ * automation tab per platform. These are ephemeral helper tabs.
+ */
+export async function openTabInScraperWindow(url: string): Promise<number> {
+  await pruneDeadScraperWindows();
+  if (scraperWindowIds.size > 0) {
+    const winId = scraperWindowIds.values().next().value!;
+    const created = await chrome.tabs.create({ windowId: winId, url, active: false });
+    if (created.id == null) throw new Error('Failed to create tab in scraper window');
+    return created.id;
+  }
+  // No scraper window yet — spin one up unfocused. Matches the flow
+  // used elsewhere in this file (openScraperWindow) so we don't
+  // flash in the user's face.
+  const win = await chrome.windows.create({ url, type: 'normal', focused: false });
+  const tabId = win.tabs?.[0]?.id;
+  if (tabId == null || win.id == null) throw new Error('Failed to create scraper window');
+  scraperWindowIds.add(win.id);
+  return tabId;
+}
+
 /** Open a fresh scraper window for the given URL.
  *  Uses offscreen positioning instead of state:'minimized' because Chrome aggressively
  *  throttles minimized windows — TikTok and other heavy-JS pages may never reach
@@ -53,6 +107,17 @@ export function getPoolTabs(): Array<{ host: string; tabId: number; windowId: nu
  *  An offscreen window avoids throttling while staying invisible to the user.
  */
 async function openScraperWindow(url: string): Promise<{ tabId: number; windowId: number }> {
+  // Reuse an existing scraper window if we have one alive — adds a new
+  // tab there instead of piling up windows. The pool still keys by host
+  // (so one tab per platform), but all tabs can share one window.
+  await pruneDeadScraperWindows();
+  if (scraperWindowIds.size > 0) {
+    const windowId = scraperWindowIds.values().next().value!;
+    const created = await chrome.tabs.create({ windowId, url, active: false });
+    if (created.id == null) throw new Error('Failed to create tab in scraper window');
+    return { tabId: created.id, windowId };
+  }
+
   // Create unfocused (NOT minimized) so Chrome doesn't throttle the page load.
   // Minimized tabs get aggressively throttled — heavy pages like TikTok may never
   // reach status:'complete', causing debugger.attach to fail on a half-loaded page.
@@ -66,6 +131,7 @@ async function openScraperWindow(url: string): Promise<{ tabId: number; windowId
   if (tabId == null || windowId == null) {
     throw new Error('Failed to create scraper window');
   }
+  scraperWindowIds.add(windowId);
   return { tabId, windowId };
 }
 

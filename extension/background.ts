@@ -7,7 +7,7 @@ import { localRelayManager, LocalActionRequest } from './utils/localRelayManager
 // taskAlarmScheduler removed — scheduling moved to bnbot CLI's `bnbot calendar` + macOS launchd.
 // draftService.ts (extension) is next to go once the desktop calendar UI is verified
 // against ~/.bnbot/calendar/ JSON.
-import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok, ensureDebuggerAttached, debuggerSend, getPoolTabs } from './services/scraperService';
+import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok, ensureDebuggerAttached, debuggerSend, getPoolTabs, openTabInScraperWindow, getTab } from './services/scraperService';
 import { debuggerWriteHandlers } from './services/debugger';
 
 /**
@@ -24,6 +24,28 @@ import { debuggerWriteHandlers } from './services/debugger';
  * Returns the tab's actual URL alongside the base64 PNG so the caller
  * can verify WHICH tab got captured (useful for CLI debugging).
  */
+function waitForTabComplete(tabId: number, timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (): void => {
+      if (settled) return;
+      settled = true;
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      clearTimeout(timer);
+      resolve();
+    };
+    const onUpdated = (id: number, info: chrome.tabs.TabChangeInfo): void => {
+      if (id === tabId && info.status === 'complete') done();
+    };
+    const timer = setTimeout(done, timeoutMs);
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    // Tab may already be complete — check once up front.
+    chrome.tabs.get(tabId).then((t) => {
+      if (t.status === 'complete') done();
+    }).catch(() => done());
+  });
+}
+
 async function captureTabScreenshot(args: {
   url?: string;
   tabId?: number;
@@ -54,21 +76,28 @@ async function captureTabScreenshot(args: {
   }
 
   if (!tabId && args.url) {
-    // Manual startsWith filter rather than chrome.tabs.query({url}) —
-    // the latter's Match Pattern syntax is strict ("https://x.com*" is
-    // rejected as invalid because there's no path segment). Fetching
-    // everything + filtering avoids that entire category of edge case.
+    // Only match a tab that already sits on the exact URL (or a close
+    // prefix) AND lives in a scraper window — never reuse a tab in the
+    // user's main browser window (that would hijack their view).
+    const scraperWindowIds = new Set(getPoolTabs().map((p) => p.windowId));
     const allTabs = await chrome.tabs.query({});
-    const match = allTabs.find((t) => t.id != null && t.url && t.url.startsWith(args.url!));
+    const match = allTabs.find(
+      (t) =>
+        t.id != null &&
+        t.url?.startsWith(args.url!) &&
+        scraperWindowIds.has(t.windowId),
+    );
     if (match?.id != null) {
       tabId = match.id;
     } else {
-      const created = await chrome.tabs.create({ url: args.url, active: false });
-      tabId = created.id!;
-      // Give the page a moment to render before we capture. 2.5s works
-      // for most light pages; heavier pages will still render later
-      // frames, but by then the PNG is snapshotted.
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+      // Create a fresh tab inside the scraper window (or spin up a
+      // scraper window if none exists). User's main window stays
+      // untouched.
+      tabId = await openTabInScraperWindow(args.url);
+      await waitForTabComplete(tabId, 15_000);
+      // SPA sites (x.com) stream content after status=complete; give the
+      // view some time to actually paint before we snap the picture.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
     }
   } else if (!tabId) {
     // Focused tab preferred. But chrome.debugger can't attach to
@@ -102,6 +131,47 @@ async function captureTabScreenshot(args: {
   const { data } = await debuggerSend<{ data: string }>(targetId, 'Page.captureScreenshot', params);
   const tab = await chrome.tabs.get(tabId);
   return { base64: data, tabId, url: tab.url || '', title: tab.title || '' };
+}
+
+/**
+ * Navigate a scraper tab to a URL via CDP (Page.navigate).
+ *
+ * Why CDP instead of content-script pushState:
+ *   - pushState runs in whatever X tab the action system routes to — could
+ *     easily be the user's main-browser X tab, hijacking their view.
+ *   - CDP lets us pick an explicit tab (pool x.com tab by default) and
+ *     navigate it deterministically. Works for cross-origin URLs too.
+ *
+ * Selection order:
+ *   1. explicit tabId
+ *   2. any scraper-pool tab on the same host → reuse
+ *   3. no match → open a new tab in the scraper window
+ */
+async function navigateTabViaCdp(args: {
+  url: string;
+  tabId?: number;
+}): Promise<{ tabId: number; url: string; title: string }> {
+  if (!args.url) throw new Error('navigate_to_url: missing url');
+  const fullUrl = args.url.startsWith('http') ? args.url : `https://x.com${args.url.startsWith('/') ? '' : '/'}${args.url}`;
+
+  // Default to the pool's tab for this host (creates+minimizes one if
+  // missing, reuses+refreshes it if it's already open). This way multiple
+  // navigate calls in a row land on the same tab instead of piling up.
+  const tabId = args.tabId ?? await getTab(fullUrl);
+
+  const currentTab = await chrome.tabs.get(tabId);
+  if (currentTab.url === fullUrl) {
+    return { tabId, url: currentTab.url || fullUrl, title: currentTab.title || '' };
+  }
+
+  const targetId = await ensureDebuggerAttached(tabId, ['Page']);
+  await debuggerSend(targetId, 'Page.navigate', { url: fullUrl });
+  await waitForTabComplete(tabId, 15_000);
+  // SPA render delay — status=complete fires before X's React tree
+  // actually paints the new route.
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  const tab = await chrome.tabs.get(tabId);
+  return { tabId, url: tab.url || fullUrl, title: tab.title || '' };
 }
 import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications } from './services/scrapers/browser';
 
@@ -1217,6 +1287,7 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   scrape_thread: (m) => getTwitterThread(m.tweetUrl || m.tweetId, m.limit),
   scrape_notifications: (m) => getTwitterNotifications(m.limit || 40),
   screenshot: (m) => captureTabScreenshot({ url: m.url, tabId: m.tabId, fullPage: m.fullPage }),
+  navigate_to_url: (m) => navigateTabViaCdp({ url: m.url, tabId: m.tabId }),
 };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

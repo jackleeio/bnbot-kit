@@ -3,6 +3,16 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.9.6] - 2026-04-22
+
+### Added
+- **`bnbot x navigate url` 改走 CDP**: 新增 `navigateTabViaCdp` handler（background.ts），用 `Page.navigate` 在 scraper pool 的 x.com tab 上换页，而不是之前走 content-script `window.history.pushState`。老路径依赖 action 系统路由，可能跳到用户主浏览器的 X tab 污染视图；CDP 路径确定性路由到 bnbot pool tab，还支持跨源。
+- **`waitForTabComplete` helper**: 监听 `chrome.tabs.onUpdated` 等 `status=complete` + render delay，替代之前 screenshot `--url` 的固定 2.5s 等待（x.com SPA splash 页没等够会截到 X logo）。
+
+### Changed
+- **Scraper 窗口统一复用**: 新增 `scraperWindowIds` set 独立追踪 bnbot 开的窗口，`openScraperWindow`（getTab 内用）和 `openTabInScraperWindow`（screenshot / navigate --url 用）都先 prune + 复用活着的窗口，不再每次测试叠一个新窗口。`chrome.windows.onRemoved` 自动清理死窗口 ID。
+- **Screenshot `--url` 只复用 scraper 窗口里的 tab**: 之前 startsWith 匹配全局任意 tab，可能撞到用户主浏览器的 X tab。现在要求匹配 tab 在 scraperWindowIds 里，否则开新 tab。
+
 ## [0.9.5] - 2026-04-21
 
 ### Fixed
