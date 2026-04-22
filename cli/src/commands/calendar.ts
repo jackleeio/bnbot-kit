@@ -292,9 +292,21 @@ function inferKind(action: string): EntryKind {
   return 'command';
 }
 
+// launchd starts processes with a minimal PATH (typically just
+// /usr/bin:/bin:/usr/sbin:/sbin) — no /opt/homebrew/bin or /usr/local/bin.
+// Without injecting these, every `bnbot ...` action under the tick agent
+// fails with "command not found". Use a union with whatever PATH we
+// already have so manual `bnbot calendar tick` from a terminal also works.
+function actionEnv(): NodeJS.ProcessEnv {
+  const extra = ['/opt/homebrew/bin', '/usr/local/bin', `${homedir()}/.bnbot/bin`];
+  const existing = (process.env.PATH || '').split(':').filter(Boolean);
+  const merged = [...new Set([...extra, ...existing])].join(':');
+  return { ...process.env, PATH: merged };
+}
+
 function runShell(cmd: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, { shell: true, env: process.env });
+    const child = spawn(cmd, { shell: true, env: actionEnv() });
     let stdout = '';
     let stderr = '';
     child.stdout?.on('data', c => { stdout += c.toString(); });
@@ -309,7 +321,7 @@ function runShell(cmd: string): Promise<string> {
 
 function runShellCaptureAll(cmd: string): Promise<void> {
   return new Promise(resolve => {
-    const child = spawn(cmd, { shell: true, env: process.env });
+    const child = spawn(cmd, { shell: true, env: actionEnv() });
     child.on('exit', () => resolve());
     child.on('error', () => resolve());
   });
