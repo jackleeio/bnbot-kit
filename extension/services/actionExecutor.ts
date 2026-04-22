@@ -18,7 +18,6 @@ const AI_INDICATOR_OVERLAY_ID = 'bnbot-ai-overlay';
 
 // 不需要显示蓝色遮挡层的 action 列表（这些 action 不操作 Twitter DOM）
 const NO_INDICATOR_ACTIONS = [
-  'fetch_tiktok_video',
   'fetch_wechat_article',
   'fetch_xiaohongshu_note',
   'scrape_bookmarks',

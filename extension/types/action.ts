@@ -169,7 +169,6 @@ export const INTERRUPT_ACTIONS = [
   'search_and_analyze',
   'timeline_analysis',
   'fetch_wechat_article',
-  'fetch_tiktok_video',
   'fetch_xiaohongshu_note',
 ] as const;
 

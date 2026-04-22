@@ -3,6 +3,21 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.10.1] - 2026-04-22
+
+### Removed
+- **TikTok 视频搬运残留全删**: 旧"搬运"流程（下载 TikTok 视频 → base64 → 后端再发 X）已被 `/remix` skill 替代，扩展里残留的 ~600 LOC 死路径下线：
+  - 删 `utils/VideoDownloadManager.ts`（往 X 分享菜单注入"下载视频"按钮，无消费者）
+  - 删 `services/tiktokService.ts` + `services/actions/tiktokActions.ts`（fetch_tiktok_video 路径）
+  - 删 `background.ts` 里的 `fetchTiktokVideo` / `fetchTiktokVideoV2` 两个函数 + `TIKTOK_FETCH` / `TIKTOK_FETCH_V2` 消息 handler + `TikTokVideoData` interface（~300 LOC）
+  - 删 `actionRegistry.ts` 的 `FETCH_TIKTOK_VIDEO` 定义和注册
+  - 删 `actionExecutor.ts` 的 `NO_INDICATOR_ACTIONS` 列表中的 `'fetch_tiktok_video'`
+  - 删 `types/action.ts` 的 INTERRUPT_ACTIONS 里的 `'fetch_tiktok_video'`
+  - 删 `services/actions/index.ts` 的 tiktokHandlers 引用
+  - 删 `index.tsx` 里的 VideoDownloadManager 实例化和 tiktokService side-effect import
+- **保留**: `videoCacheService.ts`（其它地方可能用）、`searchTikTok` / `fetchTikTokExplore` / `getTikTokProfile` / `likeTikTok`（CLI `bnbot tiktok search` / `explore` 仍依赖）
+- 砍 ~600 LOC，bundle minified 再减 10KB（2,121 → 2,111）
+
 ## [0.10.0] - 2026-04-22
 
 ### Removed

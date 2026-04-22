@@ -59,7 +59,6 @@ const TOOL_MAP: Record<string, string> = {
   'return-to-timeline': 'return_to_timeline',
   // Content
   'fetch-wechat-article': 'fetch_wechat_article',
-  'fetch-tiktok-video': 'fetch_tiktok_video',
   'fetch-xiaohongshu-note': 'fetch_xiaohongshu_note',
   // Article
   'open-article-editor': 'open_article_editor',

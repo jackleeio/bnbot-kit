@@ -12,7 +12,8 @@ import { scrapeHandlers } from './scrapeActions';
 import { searchHandlers } from './searchActions';
 import { scrollHandlers } from './scrollActions';
 import { wechatHandlers } from './wechatActions';
-import { tiktokHandlers } from './tiktokActions';
+// tiktokHandlers removed — fetch_tiktok_video orphan deleted with the
+// abandoned republish flow.
 import { xiaohongshuHandlers } from './xiaohongshuActions';
 import { engagementHandlers } from './engagementActions';
 
@@ -28,7 +29,6 @@ export const allHandlers: Record<string, ActionHandler> = {
   ...searchHandlers,
   ...scrollHandlers,
   ...wechatHandlers,
-  ...tiktokHandlers,
   ...xiaohongshuHandlers,
   ...engagementHandlers,
 };
@@ -59,7 +59,6 @@ export {
   searchHandlers,
   scrollHandlers,
   wechatHandlers,
-  tiktokHandlers,
   xiaohongshuHandlers,
   engagementHandlers,
 };

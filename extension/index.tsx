@@ -9,14 +9,16 @@ import { BoostChecker } from './utils/BoostChecker';
 import { xUserStore } from './stores/xUserStore';
 import { HomeBoostChecker } from './utils/HomeBoostChecker';
 import { BnbotFabInjector } from './utils/BnbotFabInjector';
-import { VideoDownloadManager } from './utils/VideoDownloadManager';
+// VideoDownloadManager removed — old "download tweet video" share-menu
+// injection was part of the abandoned cross-post / republish flow.
 // 初始化 commandService 消息监听器，确保 LOCAL_ACTION（OpenClaw MCP）在内容脚本加载时就能处理
 import { commandService } from './services/commandService';
 commandService.init();
 // 导入微信抓取服务（会自动暴露到 window 对象）
 import './services/wechatScraperService';
-// 导入 TikTok 服务（会自动暴露到 window 对象）
-import './services/tiktokService';
+// tiktokService removed — TIKTOK_FETCH / fetch_tiktok_video was the
+// republish path. CLI's `bnbot tiktok search` still works (uses scraper
+// pool in scraperService.ts, not this file).
 // 导入小红书抓取服务（会自动暴露到 window 对象）
 import './services/xiaohongshuScraperService';
 
@@ -750,9 +752,7 @@ const mount = () => {
   window.addEventListener('popstate', handleUrlChangeForBoost);
   // Add to the history hacks as well if not already covered by existing intervals
 
-  // --- Video Download Manager ---
-  const videoDownloadManager = new VideoDownloadManager();
-  videoDownloadManager.start();
+  // VideoDownloadManager removed — see import-site comment.
 
   // --- Home Boost Checker Integration (Money Vision) ---
   const homeBoostChecker = new HomeBoostChecker();

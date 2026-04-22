@@ -52,7 +52,6 @@ import {
   navigateNotificationsCommand,
   statusCommand,
   fetchWeixinArticleCommand,
-  fetchTiktokCommand,
   fetchXiaohongshuCommand,
 } from './commands/actions.js';
 import { screenshotCommand } from './commands/screenshot.js';
@@ -729,7 +728,8 @@ function buildProgram(): Command {
   const tiktok = program.command('tiktok').description('TikTok');
   tiktok.command('search <query>').description('Search TikTok videos').option('-l, --limit <n>', 'Max results', '10').action(tiktokSearchCommand);
   tiktok.command('explore').description('Trending TikTok videos').option('-l, --limit <n>', 'Max results', '20').action(tiktokExploreCommand);
-  tiktok.command('fetch <url>').description('Fetch TikTok video info').action(fetchTiktokCommand);
+  // tiktok.command('fetch') removed — `fetch_tiktok_video` orphan was the
+  // republish flow; extension no longer hosts the handler.
 
   const youtube = program.command('youtube').description('YouTube');
   youtube.command('search <query>').description('Search YouTube videos')

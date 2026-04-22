@@ -347,17 +347,9 @@ export const FETCH_WECHAT_ARTICLE: ActionDefinition = {
   timeout: 30000
 };
 
-export const FETCH_TIKTOK_VIDEO: ActionDefinition = {
-  id: 'fetch_tiktok_video',
-  name: 'Fetch TikTok Video',
-  nameKey: 'actions.fetchTiktokVideo',
-  category: 'scrape',
-  trigger: 'backend',
-  parameters: [
-    { name: 'url', type: 'string', required: true, description: 'TikTok 视频链接' }
-  ],
-  timeout: 30000
-};
+// FETCH_TIKTOK_VIDEO removed — backend interrupt flow for the abandoned
+// republish path. CLI's `bnbot tiktok search` (read-only) still works
+// via scraperService.
 
 export const FETCH_XIAOHONGSHU_NOTE: ActionDefinition = {
   id: 'fetch_xiaohongshu_note',
@@ -829,7 +821,6 @@ class ActionRegistry {
       SCRAPE_USER_PROFILE,
       SCRAPE_USER_TWEETS,
       FETCH_WECHAT_ARTICLE,
-      FETCH_TIKTOK_VIDEO,
       FETCH_XIAOHONGSHU_NOTE,
       ACCOUNT_ANALYTICS,
       // 通知类
