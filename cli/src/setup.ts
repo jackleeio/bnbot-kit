@@ -134,6 +134,17 @@ export async function runSetup(): Promise<void> {
   ensureBnbotPermissions();
   console.log('✅ Agent permissions configured (~/.bnbot/settings.json)');
 
+  // Step 2.6: Check yt-dlp (used by `bnbot download` + /republish skill).
+  // Not fatal if missing — user can install on demand. Just a hint.
+  try {
+    execSync('yt-dlp --version', { stdio: 'ignore' });
+    console.log('✅ yt-dlp detected (used by `bnbot download`)');
+  } catch {
+    console.log('ℹ️  yt-dlp not found. Needed for `bnbot download` + /republish skill.');
+    console.log('    macOS:  brew install yt-dlp');
+    console.log('    Linux:  pipx install yt-dlp');
+  }
+
   // Step 3: Start server and check extension connection
   console.log('');
   console.log('🚀 Starting server...');

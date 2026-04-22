@@ -54,6 +54,7 @@ import {
   fetchWeixinArticleCommand,
 } from './commands/actions.js';
 import { screenshotCommand } from './commands/screenshot.js';
+import { downloadCommand } from './commands/download.js';
 import {
   calendarAddCommand,
   calendarListCommand,
@@ -184,6 +185,15 @@ function buildProgram(): Command {
     .option('-o, --output <path>', 'Output PNG path (default /tmp/bnbot-screenshot-<ts>.png; use `-` for base64 on stdout)')
     .option('--full-page', 'Capture beyond the viewport (full scrollable height)')
     .action(screenshotCommand);
+
+  // ── Download (yt-dlp thin wrapper, any platform yt-dlp supports) ────
+  program
+    .command('download <url>')
+    .description('Download a video (or note) from TikTok / YouTube / XHS / IG / Bili / 抖音 / 微博 etc. via yt-dlp')
+    .option('-o, --output <path>', 'Output file path or directory (default ~/.bnbot/downloads/<id>.<ext>)')
+    .option('--format <kind>', 'video | audio (default video, best mp4; audio extracts m4a)')
+    .option('--info', 'Print metadata JSON only, do not download')
+    .action(downloadCommand);
 
   // ── Calendar commands ──────────────────────────────────
   // Content calendar: one launchd tick reads ~/.bnbot/calendar/<date>.json

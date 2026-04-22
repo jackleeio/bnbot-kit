@@ -1,6 +1,6 @@
 {
   "name": "@bnbot/cli",
-  "version": "0.3.25",
+  "version": "0.3.26",
   "description": "AI-powered personal branding toolkit for X. Discover trends, create content, automate growth.",
   "main": "dist/index.js",
   "bin": {
