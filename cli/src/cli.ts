@@ -190,7 +190,7 @@ export async function runCliTool(toolName: string, argv: string[]): Promise<void
 /**
  * Auto-start bnbot serve if not running.
  */
-async function ensureServer(port: number): Promise<void> {
+export async function ensureServer(port: number): Promise<void> {
   const alive = await new Promise<boolean>((resolve) => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}`);
     const t = setTimeout(() => { ws.close(); resolve(false); }, 1000);

@@ -7,8 +7,80 @@ import { localRelayManager, LocalActionRequest } from './utils/localRelayManager
 // taskAlarmScheduler removed — scheduling moved to bnbot CLI's `bnbot calendar` + macOS launchd.
 // draftService.ts (extension) is next to go once the desktop calendar UI is verified
 // against ~/.bnbot/calendar/ JSON.
-import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok } from './services/scraperService';
+import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok, ensureDebuggerAttached, debuggerSend } from './services/scraperService';
 import { debuggerWriteHandlers } from './services/debugger';
+
+/**
+ * Capture a PNG screenshot of an arbitrary Chrome tab via CDP.
+ *
+ * Selection order (first non-null wins):
+ *   - explicit `tabId`
+ *   - tab matching the given URL (prefix match)
+ *   - the currently focused tab in the last-focused window
+ *
+ * `fullPage=true` emits `captureBeyondViewport` so tall pages aren't
+ * cropped to the viewport.
+ *
+ * Returns the tab's actual URL alongside the base64 PNG so the caller
+ * can verify WHICH tab got captured (useful for CLI debugging).
+ */
+async function captureTabScreenshot(args: {
+  url?: string;
+  tabId?: number;
+  fullPage?: boolean;
+}): Promise<{ base64: string; tabId: number; url: string; title: string }> {
+  let tabId = args.tabId;
+
+  if (!tabId && args.url) {
+    // Manual startsWith filter rather than chrome.tabs.query({url}) —
+    // the latter's Match Pattern syntax is strict ("https://x.com*" is
+    // rejected as invalid because there's no path segment). Fetching
+    // everything + filtering avoids that entire category of edge case.
+    const allTabs = await chrome.tabs.query({});
+    const match = allTabs.find((t) => t.id != null && t.url && t.url.startsWith(args.url!));
+    if (match?.id != null) {
+      tabId = match.id;
+    } else {
+      const created = await chrome.tabs.create({ url: args.url, active: false });
+      tabId = created.id!;
+      // Give the page a moment to render before we capture. 2.5s works
+      // for most light pages; heavier pages will still render later
+      // frames, but by then the PNG is snapshotted.
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+    }
+  } else if (!tabId) {
+    // Focused tab preferred. But chrome.debugger can't attach to
+    // chrome://* or devtools:// pages — if the focused tab is one of
+    // those (e.g. user just hit Cmd-R on chrome://extensions to
+    // reload us), fall back to the most-recently-accessed normal tab.
+    const canAttach = (t: chrome.tabs.Tab): boolean =>
+      !!t.url && !t.url.startsWith('chrome://') && !t.url.startsWith('chrome-extension://') && !t.url.startsWith('devtools://') && !t.url.startsWith('edge://');
+
+    const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (activeTab?.id != null && canAttach(activeTab)) {
+      tabId = activeTab.id;
+    } else {
+      const allTabs = await chrome.tabs.query({});
+      const candidates = allTabs.filter((t) => t.id != null && canAttach(t));
+      if (candidates.length === 0) {
+        throw new Error('No capturable tab found (focused tab is chrome://* and no other normal tabs open). Pass --url or --tab-id.');
+      }
+      // Prefer the most recently accessed one. `lastAccessed` is a
+      // Chrome 121+ property; on older versions fall back to the
+      // first match (tabs.query returns in tab-index order).
+      candidates.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+      tabId = candidates[0].id!;
+    }
+  }
+
+  const targetId = await ensureDebuggerAttached(tabId, ['Page']);
+  const params: Record<string, unknown> = { format: 'png' };
+  if (args.fullPage) params.captureBeyondViewport = true;
+
+  const { data } = await debuggerSend<{ data: string }>(targetId, 'Page.captureScreenshot', params);
+  const tab = await chrome.tabs.get(tabId);
+  return { base64: data, tabId, url: tab.url || '', title: tab.title || '' };
+}
 import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications } from './services/scrapers/browser';
 
 const GOOGLE_CLIENT_ID = '968791771361-on89kib06tl0kucdoo0s7jiop3tftp16.apps.googleusercontent.com';
@@ -1122,6 +1194,7 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   scrape_user_profile: (m) => getTwitterProfile(m.username),
   scrape_thread: (m) => getTwitterThread(m.tweetUrl || m.tweetId, m.limit),
   scrape_notifications: (m) => getTwitterNotifications(m.limit || 40),
+  screenshot: (m) => captureTabScreenshot({ url: m.url, tabId: m.tabId, fullPage: m.fullPage }),
 };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

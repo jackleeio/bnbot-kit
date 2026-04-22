@@ -50,6 +50,7 @@ import {
   fetchTiktokCommand,
   fetchXiaohongshuCommand,
 } from './commands/actions.js';
+import { screenshotCommand } from './commands/screenshot.js';
 import {
   calendarAddCommand,
   calendarListCommand,
@@ -170,6 +171,16 @@ function buildProgram(): Command {
     .command('status')
     .description('Check extension connection status')
     .action(statusCommand);
+
+  // ── Screenshot (any tab, any URL) ──────────────────────
+  program
+    .command('screenshot')
+    .description('Capture a PNG of a Chrome tab via CDP (focused tab by default)')
+    .option('--url <url>', 'Capture a tab matching this URL (opens one if not open)')
+    .option('--tab-id <id>', 'Capture the tab with this exact chrome tab id')
+    .option('-o, --output <path>', 'Output PNG path (default /tmp/bnbot-screenshot-<ts>.png; use `-` for base64 on stdout)')
+    .option('--full-page', 'Capture beyond the viewport (full scrollable height)')
+    .action(screenshotCommand);
 
   // ── Calendar commands ──────────────────────────────────
   // Content calendar: one launchd tick reads ~/.bnbot/calendar/<date>.json
