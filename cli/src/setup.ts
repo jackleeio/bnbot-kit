@@ -23,6 +23,7 @@ const BNBOT_PERMISSION_PATTERNS = [
   'Skill(quote)',
   'Skill(reply)',
   'Skill(remix)',
+  'Skill(republish)',
   'Skill(auto-reply)',
   'Skill(inbox-triage)',
   'Skill(inbox-watch)',
