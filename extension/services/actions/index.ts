@@ -14,7 +14,9 @@ import { scrollHandlers } from './scrollActions';
 import { wechatHandlers } from './wechatActions';
 // tiktokHandlers removed — fetch_tiktok_video orphan deleted with the
 // abandoned republish flow.
-import { xiaohongshuHandlers } from './xiaohongshuActions';
+// xiaohongshuHandlers removed — fetch_xiaohongshu_note orphan deleted
+// with the abandoned republish flow. New publish-to-XHS feature will
+// use a different action shape.
 import { engagementHandlers } from './engagementActions';
 
 /**
@@ -29,7 +31,6 @@ export const allHandlers: Record<string, ActionHandler> = {
   ...searchHandlers,
   ...scrollHandlers,
   ...wechatHandlers,
-  ...xiaohongshuHandlers,
   ...engagementHandlers,
 };
 
@@ -59,6 +60,5 @@ export {
   searchHandlers,
   scrollHandlers,
   wechatHandlers,
-  xiaohongshuHandlers,
   engagementHandlers,
 };

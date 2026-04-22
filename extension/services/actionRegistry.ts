@@ -351,17 +351,9 @@ export const FETCH_WECHAT_ARTICLE: ActionDefinition = {
 // republish path. CLI's `bnbot tiktok search` (read-only) still works
 // via scraperService.
 
-export const FETCH_XIAOHONGSHU_NOTE: ActionDefinition = {
-  id: 'fetch_xiaohongshu_note',
-  name: 'Fetch Xiaohongshu Note',
-  nameKey: 'actions.fetchXiaohongshuNote',
-  category: 'scrape',
-  trigger: 'backend',
-  parameters: [
-    { name: 'url', type: 'string', required: true, description: '小红书笔记链接' }
-  ],
-  timeout: 30000
-};
+// FETCH_XIAOHONGSHU_NOTE removed — backend interrupt flow for the
+// abandoned XHS republish path. The new XHS publish feature (task #66)
+// will use a different action shape.
 
 export const SCRAPE_THREAD: ActionDefinition = {
   id: 'scrape_thread',
@@ -821,7 +813,6 @@ class ActionRegistry {
       SCRAPE_USER_PROFILE,
       SCRAPE_USER_TWEETS,
       FETCH_WECHAT_ARTICLE,
-      FETCH_XIAOHONGSHU_NOTE,
       ACCOUNT_ANALYTICS,
       // 通知类
       PROCESS_NOTIFICATIONS,

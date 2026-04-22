@@ -52,7 +52,6 @@ import {
   navigateNotificationsCommand,
   statusCommand,
   fetchWeixinArticleCommand,
-  fetchXiaohongshuCommand,
 } from './commands/actions.js';
 import { screenshotCommand } from './commands/screenshot.js';
 import {
@@ -770,7 +769,8 @@ function buildProgram(): Command {
 
   const xiaohongshu = program.command('xiaohongshu').description('Xiaohongshu');
   xiaohongshu.command('search <query>').description('Search Xiaohongshu notes').option('-l, --limit <n>', 'Max results', '10').action(xiaohongshuSearchCommand);
-  xiaohongshu.command('fetch <url>').description('Fetch Xiaohongshu note').action(fetchXiaohongshuCommand);
+  // xiaohongshu.command('fetch') removed — fetch_xiaohongshu_note orphan
+  // was the abandoned republish flow; extension no longer hosts the handler.
 
   const weibo = program.command('weibo').description('Weibo');
   weibo.command('search <query>').description('Search Weibo posts').option('-l, --limit <n>', 'Max results', '10').action(weiboSearchCommand);

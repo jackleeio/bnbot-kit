@@ -3,6 +3,26 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.12.0] - 2026-04-22
+
+### Removed
+- **小红书搬运残留 + Telegram 集成 + CreditsPanel + 配套 UI 残留全删**，对齐"extension 只做浏览器执行层"的边界。
+  - **XHS 搬运孤儿** (~700 LOC)：删 `services/xiaohongshuScraperService.ts`、`services/actions/xiaohongshuActions.ts`、`public/xiaohongshu-inject.js`、`assets/xiaohongshu-logo.png`、`background.ts` 里的 `scrapeXiaohongshuNote` (~310 LOC) + `XIAOHONGSHU_SCRAPE` 消息 handler、`actionRegistry.ts` 的 `FETCH_XIAOHONGSHU_NOTE` 定义/注册、`actionExecutor.ts` + `types/action.ts` 里的 `fetch_xiaohongshu_note` 列表项、CLI 的 `bnbot xiaohongshu fetch` 命令 + `fetch-xiaohongshu-note` TOOL_MAP entry + `fetchXiaohongshuCommand`、manifest 的 `xiaohongshu-inject.js` web_accessible_resources。老路径对接后端 interrupt-republish 流程，后端从来没接。task #66 的新"小红书发布"功能会重建。
+  - **TikTok 残留清理**：删 `public/tiktok-inject.js` + 两边 manifest 的 `tiktok-inject.js` web_accessible_resources（v0.10.1 没删干净的遗留）。
+  - **Telegram 集成整块** (~330 LOC)：删 `services/telegramService.ts`；Sidebar 里清 `telegramStatus / telegramEnabled / isBindingTelegram` state、3 个相关 useEffect、`handleTelegramBind / handleTelegramUnbind` 两个 handler、"Telegram UI hidden" 占位注释；`commandService.ts` 的 `CommandMessage` 去掉 `telegramChatId / telegramMsgId` 字段 + `sendActionResult / sendActionResultViaAPI / handleAction` 方法签名收窄；对应的 API payload 去掉 `telegram_chat_id / telegram_msg_id`。
+  - **CreditsPanel 删除**：订阅 / 积分 UI 归 CLI / 桌面 app 管；App.tsx 清掉 `handleProfileClick / handleRefreshCredits / Tab.CREDITS` case；`onCreditsClick` callback 指向 login hint。
+  - **底部导航条重构**：Sidebar 从右侧竖排 → 底部横排（52px 高、横向 flex），tooltip 从向左弹改成向上弹，settings / profile menu popover 从 `right:36px, bottom:0` 改为 `bottom:36px, right:0`。
+  - **Profile 头像按钮 + 下拉菜单整块拿掉**（~200 LOC）：无"个人菜单 / 退出登录 / 计划 / 积分"按钮；Sidebar props 从 15 个收窄到 6 个（只留 `activeTab / onTabChange / onCollapse / currentTweetId / tweetHighlightEnabled / onToggleTweetHighlight`）。
+  - **Popup 外框 + X 布局**：弹出时不再 `setTwitterSidebarHidden/setTwitterSidebarCollapsed/setFocusModeDialogOffset` 操作 X 的布局；popup 背景直接用 `var(--bg-primary)` 实色（之前尝试半透明毛玻璃，换回实色更易读）。
+  - **XAnalyticsPanel 瘦身**：删 AI 分析按钮、User Info Card（头像 + 姓名 + @handle + 蓝标，X 自己已经显示在页面顶部）、"X 数据分析"大标题；把年度 Impressions 内联到底部小一行；时间段 pills 移到顶部。分享 modal 的 `max-h` 从 85vh 提到 96vh 避免"发推 / 保存"按钮被裁。
+  - **AnalysisPanel 瘦身**：删"AI 今日摘要 / 今日速览 / Daily Briefing"按钮 + 对应的底部滑出面板（~88 LOC）。
+  - **Startup stale-data guard**：App.tsx 启动时若 `userData.bnbot` 还在但 access + refresh token 都没了（或 refresh 失败），自动 `authService.logout()` 清 stale 状态，避免显示前一账号的头像 / 邮箱。
+  - **Settings 按钮 tooltip 去掉**（齿轮 icon 自明，"设置"hover 提示是噪音）。
+  - manifest + `.env.production` 的 GOOGLE_CLIENT_ID 之前已删；identity permission 之前已删。
+
+### Added
+- **Transparent / glass popup 尝试**（已回退）: 尝试用 `backdrop-filter: blur(24px) saturate(180%)` + 半透明 bg + CSS 变量 scope 重定义让 X 内容透出 popup —— 最终用户确定要实色背景，留在代码注释里作为未来 option。
+
 ## [0.11.0] - 2026-04-22
 
 ### Removed

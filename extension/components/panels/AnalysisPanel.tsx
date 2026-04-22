@@ -539,15 +539,8 @@ IMPORTANT: You MUST respond entirely in ${isZh ? 'Chinese (简体中文)' : 'Eng
       <div className="px-4 py-3 flex justify-between items-center">
         <div />
         <div className="flex items-center gap-2">
-          {/* AI Summary Button */}
-          <button
-            onClick={handleAISummary}
-            disabled={isSummarizing || isLoading}
-            className="p-1.5 rounded-lg bg-black text-white hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
-            title={isZh ? '今日摘要' : 'Daily Briefing'}
-          >
-            <Newspaper size={14} />
-          </button>
+          {/* AI Summary / Daily Briefing button removed — daily report
+              feature lives in CLI / desktop app now. */}
 
           <div className="flex p-1 bg-[var(--bg-secondary)] rounded-full border border-[var(--border-color)]">
           <button
@@ -852,95 +845,6 @@ IMPORTANT: You MUST respond entirely in ${isZh ? 'Chinese (简体中文)' : 'Eng
         )}
       </div>
 
-      {/* AI Summary Panel - Bottom slide-in */}
-      {showSummaryPanel && (
-        <div
-          className="absolute bottom-0 left-0 right-0 bg-[var(--bg-primary)] rounded-t-2xl border-t border-[var(--border-color)] z-50"
-          style={{
-            height: '93%',
-            animation: 'summarySlideUp 0.3s ease-out',
-            boxShadow: '0 -8px 30px rgba(0, 0, 0, 0.15)'
-          }}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 py-3.5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
-                <Newspaper size={14} className="text-white" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-[var(--text-primary)] leading-tight">
-                  {activeSubTab === 'market'
-                    ? (isZh ? 'Crypto 今日速览' : 'Crypto Daily Briefing')
-                    : (isZh ? 'AI 今日速览' : 'AI Daily Briefing')}
-                </h3>
-                {isSummarizing && (
-                  <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">{isZh ? '正在生成...' : 'Generating...'}</p>
-                )}
-              </div>
-            </div>
-            <button
-              onClick={() => setShowSummaryPanel(false)}
-              className="p-1.5 rounded-lg hover:bg-[var(--hover-bg)] transition-colors"
-            >
-              <X size={16} className="text-[var(--text-secondary)]" />
-            </button>
-          </div>
-
-          <div className="mx-5 border-b border-[var(--border-color)]" />
-
-          {/* Content */}
-          <div className="px-5 py-4 overflow-y-auto" style={{ height: 'calc(100% - 60px)', scrollbarWidth: 'none' }}>
-            {isSummarizing && !summaryContent ? (
-              <div className="space-y-6 animate-pulse">
-                <div className="rounded-xl bg-[var(--hover-bg)]/50 p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-[var(--hover-bg)] rounded" />
-                    <div className="h-4 bg-[var(--hover-bg)] rounded-md w-1/3" />
-                  </div>
-                  <div className="space-y-2 pl-1">
-                    <div className="h-3 bg-[var(--hover-bg)] rounded w-full" />
-                    <div className="h-3 bg-[var(--hover-bg)] rounded w-11/12" />
-                    <div className="h-3 bg-[var(--hover-bg)] rounded w-4/5" />
-                  </div>
-                </div>
-                <div className="rounded-xl bg-[var(--hover-bg)]/50 p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-[var(--hover-bg)] rounded" />
-                    <div className="h-4 bg-[var(--hover-bg)] rounded-md w-2/5" />
-                  </div>
-                  <div className="space-y-2 pl-1">
-                    <div className="h-3 bg-[var(--hover-bg)] rounded w-10/12" />
-                    <div className="h-3 bg-[var(--hover-bg)] rounded w-9/12" />
-                    <div className="h-3 bg-[var(--hover-bg)] rounded w-full" />
-                  </div>
-                </div>
-                <div className="rounded-xl bg-[var(--hover-bg)]/50 p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-[var(--hover-bg)] rounded" />
-                    <div className="h-4 bg-[var(--hover-bg)] rounded-md w-1/4" />
-                  </div>
-                  <div className="space-y-2 pl-1">
-                    <div className="h-3 bg-[var(--hover-bg)] rounded w-full" />
-                    <div className="h-3 bg-[var(--hover-bg)] rounded w-3/4" />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="prose prose-sm max-w-none
-                prose-headings:text-[var(--text-primary)] prose-headings:font-semibold prose-headings:tracking-tight
-                prose-h2:text-[13px] prose-h2:mt-5 prose-h2:mb-2 prose-h2:pb-1.5 prose-h2:border-b prose-h2:border-[var(--border-color)] first:prose-h2:mt-0
-                prose-p:text-[var(--text-secondary)] prose-p:text-[13px] prose-p:leading-[1.7] prose-p:my-1.5
-                prose-li:text-[var(--text-secondary)] prose-li:text-[13px] prose-li:leading-[1.7] prose-li:my-0.5 prose-li:pl-0
-                prose-strong:text-[var(--text-primary)] prose-strong:font-semibold
-                prose-ul:my-1.5 prose-ul:pl-1 prose-ul:list-disc
-                prose-ol:my-1.5 prose-ol:pl-1">
-                <ReactMarkdown>{summaryContent}</ReactMarkdown>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       <style>{`
         @keyframes summarySlideUp {

@@ -1,63 +1,43 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Zap, TrendingUp, UserCircle, Sparkles, LogOut, Languages, AtSign, Crown, ScanEye, MessageSquare, Settings, Wallet, Send, Check, X, ExternalLink, BarChart3, RefreshCw } from 'lucide-react';
 import { commandService } from '../services/commandService';
-import { telegramService, TelegramStatus } from '../services/telegramService';
+// telegramService removed — Telegram integration retired (was hidden UI).
 import { SteeringWheel } from './icons/SteeringWheel';
 import TextSwitch from './TextSwitch';
 import { ThemeToggle } from './ThemeToggle';
 import { Tab } from '../types';
 import { useLanguage } from './LanguageContext';
-import type { SubscriptionTier } from '../services/authService';
-
 declare const chrome: any;
 
 interface SidebarProps {
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
   onCollapse: () => void;
-  onProfileClick: () => void;
-  onSignOut: () => void;
-  onRefreshCredits?: () => Promise<void>;
-  isLoggedIn: boolean;
-  showingLogin: boolean;
-  userCredits?: number;
-  xBalance?: number;
-  subscriptionTier?: SubscriptionTier;
   currentTweetId?: string | null;
   tweetHighlightEnabled?: boolean;
   onToggleTweetHighlight?: () => void;
-  userEmail?: string;
-  userName?: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onTabChange,
   onCollapse,
-  onProfileClick,
-  onSignOut,
-  onRefreshCredits,
-  isLoggedIn,
-  showingLogin,
-  userCredits = 0,
-  xBalance = 0,
-  subscriptionTier = 'free',
   currentTweetId,
   tweetHighlightEnabled = false,
   onToggleTweetHighlight,
-  userEmail,
-  userName
 }) => {
-  const [showMenu, setShowMenu] = useState(false);
+  // Profile dropdown removed with the OAuth UI — no in-extension account
+  // surface (no avatar, no email, no plan / credits, no in-UI logout).
+  // Account state lives in CLI: `bnbot login` / `bnbot logout`.
+  // `showingLogin` is also a leftover marker that older nav code reads to
+  // dim the active-tab indicator while the login hint is showing — not
+  // applicable here (no nav-driven login flow), keep `false`.
+  const showingLogin = false;
   const [showSettings, setShowSettings] = useState(false);
-  const [isLoadingCredits, setIsLoadingCredits] = useState(false);
-  const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
-  const [telegramEnabled, setTelegramEnabled] = useState(false);
-  const [isBindingTelegram, setIsBindingTelegram] = useState(false);
+  // Telegram state removed — integration retired.
   const [openclawConnected, setOpenclawConnected] = useState(false);
   const [openclawPort, setOpenclawPort] = useState(18900);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const { language, toggleLanguage, t, setLanguage } = useLanguage();
   const currentVersion = chrome.runtime?.getManifest?.()?.version || '0.0.0';
 
@@ -72,9 +52,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: Tab.X_ANALYTICS, icon: BarChart3, label: t.common.xAnalytics },
     { id: Tab.X_BALANCE, icon: Wallet, label: t.common.xBalance },
   ];
-
-  // Check if profile button should show active state
-  const isProfileActive = (isLoggedIn && activeTab === Tab.CREDITS) || showingLogin;
 
   // Check for extension updates on mount and when settings panel opens
   useEffect(() => {
@@ -121,166 +98,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return () => clearInterval(interval);
   }, [showSettings]);
 
-  // Load Telegram status on mount (for auto-connect WebSocket)
-  useEffect(() => {
-    console.log('[Sidebar] Mount effect, isLoggedIn:', isLoggedIn);
-    if (isLoggedIn) {
-      // Load saved toggle state
-      chrome.storage.local.get(['telegramEnabled']).then((result: { telegramEnabled?: boolean }) => {
-        console.log('[Sidebar] telegramEnabled from storage:', result.telegramEnabled);
-        if (result.telegramEnabled !== undefined) {
-          setTelegramEnabled(result.telegramEnabled);
-        }
-      });
+  // Telegram bind/unbind/status effects + handlers removed — integration retired.
 
-      telegramService.getStatus().then(status => {
-        console.log('[Sidebar] telegramStatus from API:', status);
-        if (status) {
-          setTelegramStatus(status);
-          // Only auto-enable on first bind (when no saved preference)
-          if (status.linked) {
-            chrome.storage.local.get(['telegramEnabled']).then((result: { telegramEnabled?: boolean }) => {
-              if (result.telegramEnabled === undefined) {
-                // First time binding, auto-enable
-                setTelegramEnabled(true);
-                chrome.storage.local.set({ telegramEnabled: true });
-              }
-            });
-          }
-        }
-      });
-    }
-  }, [isLoggedIn]);
-
-  // Load Telegram status when settings panel opens (refresh)
-  useEffect(() => {
-    if (showSettings && isLoggedIn) {
-      telegramService.getStatus().then(status => {
-        if (status) {
-          setTelegramStatus(status);
-          // Only set enabled to true if already linked, don't turn off if user manually enabled
-          if (status.linked) {
-            setTelegramEnabled(true);
-          }
-        }
-      });
-    }
-  }, [showSettings, isLoggedIn]);
-
-  // Auto-connect WebSocket when Telegram is linked and enabled
-  const wsConnectedRef = useRef(false);
-  useEffect(() => {
-    const shouldConnect = telegramStatus?.linked && telegramEnabled && isLoggedIn;
-
-    if (shouldConnect && !wsConnectedRef.current) {
-      // Connect WebSocket automatically
-      console.log('[Sidebar] Connecting WebSocket...');
-      wsConnectedRef.current = true;
-      commandService.init({
-        onConnected: () => console.log('[Sidebar] WebSocket connected for Telegram'),
-        onDisconnected: () => {
-          console.log('[Sidebar] WebSocket disconnected');
-          wsConnectedRef.current = false;
-        },
-      });
-      commandService.connect().then(result => {
-        console.log('[Sidebar] WebSocket connect result:', result);
-        if (!result) {
-          wsConnectedRef.current = false;
-        }
-      });
-    } else if (!shouldConnect && wsConnectedRef.current) {
-      // Disconnect when disabled or unlinked
-      wsConnectedRef.current = false;
-      commandService.disconnect();
-    }
-
-    return () => {
-      if (wsConnectedRef.current) {
-        wsConnectedRef.current = false;
-        commandService.disconnect();
-      }
-    };
-  }, [telegramStatus?.linked, telegramEnabled, isLoggedIn]);
-
-  // Handle Telegram binding
-  const handleTelegramBind = async () => {
-    setIsBindingTelegram(true);
-    try {
-      const linkData = await telegramService.getBindingLink();
-      if (linkData) {
-        telegramService.openBindingLink(linkData.deep_link);
-        // Poll for status update
-        const pollInterval = setInterval(async () => {
-          const status = await telegramService.getStatus();
-          if (status?.linked) {
-            setTelegramStatus(status);
-            setTelegramEnabled(true);
-            setIsBindingTelegram(false);
-            clearInterval(pollInterval);
-          }
-        }, 2000);
-        // Stop polling after 60 seconds
-        setTimeout(() => {
-          clearInterval(pollInterval);
-          setIsBindingTelegram(false);
-        }, 60000);
-      }
-    } catch (error) {
-      console.error('[Sidebar] Telegram bind error:', error);
-      setIsBindingTelegram(false);
-    }
-  };
-
-  // Handle Telegram unbind
-  const handleTelegramUnbind = async () => {
-    const success = await telegramService.unlink();
-    if (success) {
-      setTelegramStatus(null);
-      setTelegramEnabled(false);
-    }
-  };
-
-  // Close menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setShowMenu(false);
-      }
-    };
-
-    if (showMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showMenu]);
-
-  const handleProfileButtonClick = () => {
-    // Only handle click when not logged in (to show login)
-    if (!isLoggedIn) {
-      onProfileClick();
-    }
-    // When logged in, hover menu handles interactions
-  };
-
-  const handleCreditsClick = () => {
-    setShowMenu(false);
-    onTabChange(Tab.CREDITS);
-  };
-
-  const handleSignOutClick = () => {
-    setShowMenu(false);
-    onSignOut();
-  };
+  // Profile menu / click-outside handlers removed with the profile button.
 
   return (
-    <div data-testid="bnbot-sidebar" style={{ width: '48px', display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: 'transparent', borderLeft: '1px solid var(--border-color)', flexShrink: 0, zIndex: 20, padding: '12px 0', height: '100%' }}>
+    <div data-testid="bnbot-sidebar" style={{ width: '100%', height: '52px', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'transparent', borderTop: '1px solid var(--border-color)', flexShrink: 0, zIndex: 20, padding: '0 16px' }}>
 
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center', width: '100%' }}>
+      <div style={{ display: 'flex', flexDirection: 'row', gap: '8px', alignItems: 'center' }}>
         {navItems.map((item) => (
           <button
             key={item.id}
@@ -292,7 +118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             {item.label && (
               <span
-                className="absolute right-full mr-2 px-3 py-1.5 bg-[var(--bg-primary)] text-[var(--text-primary)] text-xs font-medium rounded-lg border border-[var(--border-color)] opacity-0 group-hover:opacity-100 transition-all duration-150 whitespace-nowrap pointer-events-none z-50 group-hover:translate-x-0 translate-x-1"
+                className="absolute bottom-full mb-2 px-3 py-1.5 bg-[var(--bg-primary)] text-[var(--text-primary)] text-xs font-medium rounded-lg border border-[var(--border-color)] opacity-0 group-hover:opacity-100 transition-all duration-150 whitespace-nowrap pointer-events-none z-50 group-hover:translate-y-0 translate-y-1"
                 style={{ boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.03)' }}
               >
                 {item.label}
@@ -308,7 +134,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
 
 
-      <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
+      <div style={{ display: 'flex', flexDirection: 'row', gap: '8px', alignItems: 'center' }}>
         {/* Settings Button with Popover */}
         <div
           style={{ position: 'relative' }}
@@ -319,10 +145,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div
               style={{
                 position: 'absolute',
-                bottom: '0',
-                right: '36px',
+                bottom: '36px',
+                right: '0',
                 zIndex: 100,
-                paddingRight: '12px',
+                paddingBottom: '12px',
                 width: 'max-content'
               }}
             >
@@ -357,8 +183,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {/* Custom Arrow or let browser handle it? Browser is easiest for now, but appearance-none removes it. */}
                   {/* Let's use a simple styled select with standard appearance for reliability, or minimal. */}
                 </div>
-
-                {/* Telegram UI hidden — TODO: remove Telegram integration entirely (see TODO-remove-telegram.md) */}
 
                 {/* Local Bridge Status */}
                 <div className="flex items-center justify-between p-2 rounded-lg hover:bg-[var(--hover-bg)] transition-colors w-full">
@@ -425,222 +249,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             className={`group w-9 h-9 flex items-center justify-center rounded-xl transition-colors cursor-pointer relative bg-transparent text-[var(--text-secondary)] hover:bg-[var(--hover-bg)] ${showSettings ? 'bg-[var(--hover-bg)] text-[var(--text-primary)]' : ''}`}
           >
-            <span
-              className="absolute right-full mr-2 px-3 py-1.5 bg-[var(--bg-primary)] text-[var(--text-primary)] text-xs font-medium rounded-lg border border-[var(--border-color)] opacity-0 group-hover:opacity-100 transition-all duration-150 whitespace-nowrap pointer-events-none z-50 group-hover:translate-x-0 translate-x-1"
-              style={{ boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.03)' }}
-            >
-              {t.common.settings || 'Settings'}
-            </span>
+            {/* Tooltip removed — gear icon is self-evident, hover label
+                "设置" was visual noise. */}
             <Settings size={16} strokeWidth={showSettings ? 2.5 : 2} />
             {updateAvailable && (
               <div className="absolute top-0.5 right-0.5 w-2 h-2 bg-green-500 rounded-full" />
             )}
           </button>
         </div>
-
-      {/* User Profile Button with Menu — sits right below settings in the
-          same flex group so its 16px gap matches every other nav item. */}
-      <div
-        ref={menuRef}
-        style={{ position: 'relative' }}
-        onMouseEnter={async () => {
-          if (isLoggedIn) {
-            setShowMenu(true);
-            if (onRefreshCredits) {
-              setIsLoadingCredits(true);
-              await onRefreshCredits();
-              setIsLoadingCredits(false);
-            }
-          }
-        }}
-        onMouseLeave={() => setShowMenu(false)}
-      >
-        {/* Profile Menu */}
-        {showMenu && isLoggedIn && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '0',
-              right: '36px',
-              zIndex: 100,
-              // Transparent padding area to bridge gap with button
-              paddingRight: '12px',
-            }}
-          >
-            <div
-              style={{
-                backgroundColor: 'var(--bg-primary)',
-                borderRadius: '16px',
-                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
-                padding: '8px',
-                minWidth: '180px',
-                border: '1px solid var(--border-color)',
-              }}
-            >
-              {/* User Info Section */}
-              {(userName || userEmail) && (
-                <div
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderBottom: '1px solid var(--border-color)',
-                    marginBottom: '8px',
-                  }}
-                >
-                  {userName && (
-                    <div style={{
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      color: 'var(--text-primary)',
-                      marginBottom: '2px',
-                    }}>
-                      {userName}
-                    </div>
-                  )}
-                  {userEmail && (
-                    <div style={{
-                      fontSize: '12px',
-                      color: 'var(--text-secondary)',
-                    }}>
-                      {userEmail}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Subscription Tier Item */}
-              <div
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '12px',
-                  borderRadius: '12px',
-                  backgroundColor: 'transparent',
-                }}
-              >
-                <Crown size={18} style={{ color: subscriptionTier === 'pro' ? '#f59e0b' : 'var(--text-secondary)' }} />
-                <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>{t.common.subscription}</span>
-                <span style={{
-                  marginLeft: 'auto',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: isLoadingCredits ? 'transparent' : subscriptionTier === 'pro' ? '#f59e0b' : subscriptionTier === 'basic' ? '#8b5cf6' : subscriptionTier === 'starter' ? '#3b82f6' : 'var(--text-secondary)',
-                  backgroundColor: isLoadingCredits ? 'var(--border-color)' : subscriptionTier === 'pro' ? '#fef3c7' : subscriptionTier === 'basic' ? '#ede9fe' : subscriptionTier === 'starter' ? '#dbeafe' : 'var(--bg-secondary)',
-                  padding: '2px 8px',
-                  borderRadius: '9999px',
-                  textTransform: 'capitalize',
-                  minWidth: '56px',
-                  width: 'fit-content',
-                  textAlign: 'center',
-                  display: 'inline-block',
-                }}
-                  className={isLoadingCredits ? 'animate-pulse' : ''}
-                >
-                  {isLoadingCredits ? '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0' : t.common.subscriptionTiers[subscriptionTier]}
-                </span>
-              </div>
-
-              {/* Credits Item */}
-              <button
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  console.log('[BNBot] Credits clicked');
-                  handleCreditsClick();
-                }}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '12px',
-                  borderRadius: '12px',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s',
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                <Sparkles size={18} style={{ color: 'var(--text-secondary)' }} />
-                <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>{t.common.credits}</span>
-                <span style={{
-                  marginLeft: 'auto',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  color: isLoadingCredits ? 'transparent' : 'var(--text-primary)',
-                  backgroundColor: isLoadingCredits ? 'var(--border-color)' : 'var(--bg-secondary)',
-                  padding: '2px 8px',
-                  borderRadius: '9999px',
-                  minWidth: '56px',
-                  width: '56px',
-                  textAlign: 'center',
-                  display: 'inline-block',
-                }}
-                  className={isLoadingCredits ? 'animate-pulse' : ''}
-                >
-                  {isLoadingCredits ? '\u00A0' : Math.floor(userCredits).toLocaleString()}
-                </span>
-              </button>
-
-              {/* Sign Out Item */}
-              <button
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  console.log('[BNBot] Sign out clicked');
-                  handleSignOutClick();
-                }}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '12px',
-                  borderRadius: '12px',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s',
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                <LogOut size={18} style={{ color: 'var(--text-secondary)' }} />
-                <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>{t.common.signOut}</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Profile Button */}
-        <button
-          onClick={handleProfileButtonClick}
-          className={`group relative w-9 h-9 flex items-center justify-center rounded-xl transition-colors cursor-pointer ${isProfileActive || showMenu
-            ? 'bg-[var(--hover-bg)] text-[var(--text-primary)]'
-            : 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--hover-bg)]'
-            }`}
-        >
-          <span
-            className="absolute right-full mr-2 px-3 py-1.5 bg-[var(--bg-primary)] text-[var(--text-primary)] text-xs font-medium rounded-lg border border-[var(--border-color)] opacity-0 group-hover:opacity-100 transition-all duration-150 whitespace-nowrap pointer-events-none z-50 group-hover:translate-x-0 translate-x-1"
-            style={{ boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.03)' }}
-          >
-            {isLoggedIn ? t.common.profileMenu : t.common.signIn}
-          </span>
-          {isLoggedIn ? (
-            <img
-              src={`https://api.dicebear.com/7.x/thumbs/svg?seed=${userEmail || 'user'}`}
-              alt="avatar"
-              className="w-7 h-7 rounded-full object-cover"
-            />
-          ) : (
-            <UserCircle size={18} strokeWidth={isProfileActive || showMenu ? 2.5 : 2} />
-          )}
-        </button>
-      </div>
       </div>
 
     </div>

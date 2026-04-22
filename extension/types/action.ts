@@ -169,7 +169,6 @@ export const INTERRUPT_ACTIONS = [
   'search_and_analyze',
   'timeline_analysis',
   'fetch_wechat_article',
-  'fetch_xiaohongshu_note',
 ] as const;
 
 export type InterruptAction = typeof INTERRUPT_ACTIONS[number];

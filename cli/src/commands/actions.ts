@@ -383,10 +383,6 @@ export async function fetchWeixinArticleCommand(url: string): Promise<void> {
   return runCliAction('fetch_wechat_article', { url }, getPort());
 }
 
-// fetchTiktokCommand removed — fetch_tiktok_video orphan was the
-// republish flow, no extension handler left.
-
-export async function fetchXiaohongshuCommand(url: string): Promise<void> {
-  console.error(`Fetching Xiaohongshu: ${url}`);
-  return runCliAction('fetch_xiaohongshu_note', { url }, getPort());
-}
+// fetchTiktokCommand / fetchXiaohongshuCommand removed —
+// fetch_tiktok_video / fetch_xiaohongshu_note were both republish-flow
+// orphans; extension no longer hosts the handlers.

@@ -19,8 +19,9 @@ import './services/wechatScraperService';
 // tiktokService removed — TIKTOK_FETCH / fetch_tiktok_video was the
 // republish path. CLI's `bnbot tiktok search` still works (uses scraper
 // pool in scraperService.ts, not this file).
-// 导入小红书抓取服务（会自动暴露到 window 对象）
-import './services/xiaohongshuScraperService';
+// xiaohongshuScraperService removed — same reason: XIAOHONGSHU_SCRAPE +
+// fetch_xiaohongshu_note were the abandoned republish flow. New publish-
+// to-XHS feature (task #66) will rebuild from scratch.
 
 declare const chrome: any;
 

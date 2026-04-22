@@ -4,7 +4,8 @@ import { Sidebar } from './components/Sidebar';
 import { ChatPanel } from './components/panels/ChatPanel';
 import { BoostPanel } from './components/panels/BoostPanel';
 import { AnalysisPanel } from './components/panels/AnalysisPanel';
-import { CreditsPanel } from './components/panels/CreditsPanel';
+// CreditsPanel removed — subscription / credits managed via CLI / desktop app
+// (extension is a thin browser executor, no account UI).
 // LoginPanel / LoginModal removed — login flow owned by CLI (`bnbot login`).
 // Extension consumes tokens pushed via inject_auth_tokens (background.ts).
 // SchedulePanel removed — scheduling lives in `bnbot calendar` + macOS launchd
@@ -13,7 +14,8 @@ import { CreditsPanel } from './components/panels/CreditsPanel';
 import { XBalancePanel } from './components/panels/XBalancePanel';
 import { XAnalyticsPanel } from './components/panels/XAnalyticsPanel';
 import { Tab } from './types';
-import { setTwitterSidebarHidden, setFocusModeDialogOffset, setTwitterSidebarCollapsed } from './utils/twitterUtils';
+// twitterUtils sidebar mutators removed — popup is a floating card now,
+// no need to mutate X's right column / left nav layout.
 import { authService, User } from './services/authService';
 import { chatService } from './services/chatService';
 import { commandService } from './services/commandService';
@@ -429,33 +431,28 @@ function AppContent() {
     };
   }, []);
 
-  // Hide/show Twitter sidebar based on panel state
+  // Pop-out is a 420×640 floating card now (not the old full-height panel),
+  // so we no longer need to hide X's right column or collapse its left nav.
+  // Keep the article-editor / focus-mode page detection — other handlers
+  // still consume `isArticleFocusMode` / `isArticleEditorMode`.
   useEffect(() => {
-    setTwitterSidebarHidden(!isCollapsed);
+    // setTwitterSidebarHidden / setTwitterSidebarCollapsed /
+    // setFocusModeDialogOffset intentionally NOT called — leave X's
+    // layout alone so its right rail / left nav stay visible behind the
+    // popup glass.
 
-    // Update sidebar states based on panel visibility and page type
     const updateSidebarStates = () => {
       const pathname = window.location.pathname;
       const isArticleEditor = pathname.startsWith('/compose/articles');
-      const isImaginePage = pathname.startsWith('/i/imagine');
-      const isAnalyticsPage = pathname.startsWith('/i/account_analytics');
-      const isGrokPage = pathname.startsWith('/i/grok');
       const isChatPage = pathname.startsWith('/i/chat') || pathname.startsWith('/messages');
-      const isFullWidthPage = isArticleEditor || isImaginePage || isAnalyticsPage || isGrokPage; // Pages that need full width
       const isFocusMode = isArticleEditor && pathname.includes('/focus');
       setIsArticleFocusMode(isFocusMode);
-      // Only set isArticleEditorMode for actual article editor (hides toggle button and shows BNBot button in header)
       setIsArticleEditorMode(isArticleEditor);
 
       // Auto-collapse BNBot panel on chat/messages page
       if (isChatPage && !isCollapsed) {
         setIsCollapsed(true);
       }
-
-      // On full-width pages (article editor, imagine, analytics, grok): collapse left nav only when panel is expanded
-      // On other pages: never collapse left nav
-      setTwitterSidebarCollapsed(isFullWidthPage && !isCollapsed);
-      setFocusModeDialogOffset(isFullWidthPage && !isCollapsed);
     };
 
     updateSidebarStates();
@@ -623,31 +620,8 @@ function AppContent() {
     setGlobalChatResetTrigger(prev => prev + 1);
   };
 
-  const handleProfileClick = () => {
-    if (user) {
-      // If logged in, show credits panel
-      setActiveTab(Tab.CREDITS);
-    } else {
-      // If not logged in, show login panel
-      setShowLoginHint(true);
-    }
-  };
-
-  const handleRefreshCredits = async () => {
-    if (user) {
-      const [credits, subscriptionData] = await Promise.all([
-        authService.fetchCredits(),
-        authService.fetchSubscription()
-      ]);
-      setUser(prev => prev ? {
-        ...prev,
-        credits,
-        subscription_tier: subscriptionData.has_subscription && subscriptionData.subscription
-          ? subscriptionData.subscription.plan_name
-          : 'free'
-      } : null);
-    }
-  };
+  // handleProfileClick / handleRefreshCredits removed — profile button +
+  // credits panel are gone. CLI owns account state.
 
   // Detect Tweet URL with multiple strategies for faster response
   useEffect(() => {
@@ -855,17 +829,8 @@ function AppContent() {
     switch (activeTab) {
       case Tab.CHAT: return null;
       case Tab.BOOST: return null; // BoostPanel is now persistent
-      case Tab.CREDITS: return (
-        <CreditsPanel
-          userEmail={user?.email}
-          userName={user?.name || user?.full_name}
-          userCredits={user?.credits}
-          subscriptionTier={user?.subscription_tier}
-          onCreditsUpdated={(credits, subscriptionTier) => {
-            setUser(prev => prev ? { ...prev, credits, subscription_tier: subscriptionTier } : null);
-          }}
-        />
-      );
+      // Tab.CREDITS case removed — CreditsPanel deleted with the
+      // login/account UI cleanup.
       case Tab.AUTO_REPLY:
         return (
           <div style={{ padding: 16, color: 'var(--text-secondary)', fontSize: 13 }}>
@@ -917,6 +882,9 @@ function AppContent() {
         transition: 'opacity 0.15s ease, transform 0.15s ease',
         opacity: isCollapsed ? 0 : 1,
         transform: isCollapsed ? 'translateY(8px)' : 'translateY(0)',
+        // Solid theme bg — no blur, no transparency. Popup is an opaque
+        // floating card; X content stays untouched behind it (no DOM
+        // mutation now that twitterUtils sidebar mutators are gone).
         backgroundColor: 'var(--bg-primary)',
       }}
     >
@@ -926,14 +894,16 @@ function AppContent() {
           FAB is the only trigger now. */}
       <div style={{ position: 'relative', display: 'flex', width: '100%', height: '100%' }}>
 
-        {/* Main App Container */}
+        {/* Main App Container — column so the nav bar (Sidebar) sits at the
+            bottom of the popup. Was row (right-side vertical sidebar) until v0.11.x. */}
         <div
           style={{
             width: '100%',
             height: '100%',
-            backgroundColor: 'var(--bg-primary)',
+            backgroundColor: 'transparent',
             overflow: 'visible',
             display: 'flex',
+            flexDirection: 'column',
             position: 'relative',
             zIndex: 40,
           }}
@@ -992,7 +962,7 @@ function AppContent() {
                 <ChatPanel
                   resetTrigger={globalChatResetTrigger}
                   onLoginClick={() => setShowLoginHint(true)}
-                  onCreditsClick={() => setActiveTab(Tab.CREDITS)}
+                  onCreditsClick={() => setShowLoginHint(true)}
                   onTabChange={(tab) => setActiveTab(tab as Tab)}
                   initialMessage={pendingAgentMessage}
                   onMessageSent={() => setPendingAgentMessage(null)}
@@ -1029,23 +999,12 @@ function AppContent() {
             activeTab={activeTab}
             onTabChange={(tab) => {
               setShowLoginHint(false);
-              setShowLoginHint(false);
               setActiveTab(tab);
             }}
             onCollapse={() => setIsCollapsed(true)}
-            onProfileClick={handleProfileClick}
-            onSignOut={handleLogout}
-            onRefreshCredits={handleRefreshCredits}
-            isLoggedIn={!!user}
-            showingLogin={showLoginHint}
-            userCredits={user?.credits || 0}
-            xBalance={user?.x_balance || 0}
-            subscriptionTier={user?.subscription_tier}
             currentTweetId={currentTweetId}
             tweetHighlightEnabled={tweetHighlightEnabled}
             onToggleTweetHighlight={handleToggleTweetHighlight}
-            userEmail={user?.email}
-            userName={user?.name || user?.full_name}
           />
         </div>
       </div>

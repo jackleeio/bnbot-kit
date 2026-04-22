@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BNBot - Your AI Growth Agent for X",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Supercharge your X and reach your first 5M impressions and earn $100K.",
   "icons": {
     "16": "assets/images/icon-16.png",
@@ -47,8 +47,6 @@
       "resources": [
         "assets/*",
         "wechat-scraper-inject.js",
-        "tiktok-inject.js",
-        "xiaohongshu-inject.js",
         "timeline-interceptor.js",
         "tweet-interceptor.js"
       ],

@@ -17,8 +17,7 @@ export interface CommandMessage {
   actionType?: string;
   actionPayload?: any;
   threadId?: string;
-  telegramChatId?: string;
-  telegramMsgId?: number;
+  // telegramChatId / telegramMsgId removed — Telegram integration retired.
   // Scheduled trigger fields
   trigger_id?: string;
   task_id?: string;
@@ -264,15 +263,15 @@ class CommandService {
 
   sendActionResult(
     requestId: string, threadId: string, actionType: string, success: boolean,
-    result?: unknown, error?: string, telegramChatId?: string, telegramMsgId?: number
+    result?: unknown, error?: string
   ): void {
     // Use API instead of WebSocket for reliability
-    this.sendActionResultViaAPI(threadId, actionType, success, result, error, telegramChatId, telegramMsgId);
+    this.sendActionResultViaAPI(threadId, actionType, success, result, error);
   }
 
   private async sendActionResultViaAPI(
     threadId: string, actionType: string, success: boolean,
-    result?: unknown, error?: string, telegramChatId?: string, telegramMsgId?: number
+    result?: unknown, error?: string
   ): Promise<void> {
     try {
       console.log('[CommandService] Sending action result via API:', actionType, 'success:', success);
@@ -285,9 +284,7 @@ class CommandService {
             thread_id: threadId,
             success,
             data: result,
-            error,
-            telegram_chat_id: telegramChatId,
-            telegram_msg_id: telegramMsgId
+            error
           })
         }
       );
@@ -467,7 +464,7 @@ class CommandService {
   }
 
   private async handleAction(message: CommandMessage): Promise<void> {
-    const { requestId, actionType, actionPayload, threadId, telegramChatId, telegramMsgId } = message;
+    const { requestId, actionType, actionPayload, threadId } = message;
     if (!actionType || !threadId) {
       console.warn('[CommandService] handleAction: missing actionType or threadId');
       return;
@@ -500,15 +497,13 @@ class CommandService {
         actionType,
         result.success,
         result.data,
-        result.error,
-        telegramChatId,
-        telegramMsgId
+        result.error
       );
 
       console.log('[CommandService] Action result sent to backend');
     } catch (error) {
       console.error('[CommandService] handleAction error:', error);
-      this.sendActionResult(requestId || '', threadId, actionType, false, undefined, error instanceof Error ? error.message : 'Error', telegramChatId, telegramMsgId);
+      this.sendActionResult(requestId || '', threadId, actionType, false, undefined, error instanceof Error ? error.message : 'Error');
     }
   }
 

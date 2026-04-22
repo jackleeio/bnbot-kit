@@ -1119,20 +1119,23 @@ IMPORTANT: You MUST respond entirely in ${isZh ? 'Chinese (简体中文)' : 'Eng
     <div className="flex flex-col h-full bg-transparent overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
       <div className="px-4 pt-4 pb-20 space-y-4">
 
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-black text-[var(--text-primary)] tracking-tight">
-            {isZh ? 'X 数据分析' : 'X Analytics'}
-          </h1>
-          <div className="ml-auto flex items-center gap-2">
+        {/* Top row — time range pills on the left, share / refresh on
+            the right. Most-used control sits first now. */}
+        <div className="flex items-center gap-2">
+          {timeRangeOptions.map((range) => (
             <button
-              onClick={handleAIAnalysis}
-              disabled={isLoading || !analyticsData || isAnalyzing}
-              className="px-3 py-1.5 rounded-full bg-[var(--text-primary)] text-[var(--bg-primary)] text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+              key={range}
+              onClick={() => setTimeRange(range)}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                timeRange === range
+                  ? 'bg-[var(--text-primary)] text-[var(--bg-primary)]'
+                  : 'bg-[var(--bg-primary)] text-[var(--text-secondary)] border border-[var(--border-color)] hover:bg-[var(--hover-bg)]'
+              }`}
             >
-              <TrendingUp size={14} />
-              {isAnalyzing ? (isZh ? '分析中...' : 'Analyzing...') : (isZh ? 'AI 分析' : 'AI Analysis')}
+              {range}
             </button>
+          ))}
+          <div className="ml-auto flex items-center gap-1">
             <button
               onClick={handleShare}
               disabled={isLoading || !analyticsData || isGeneratingScreenshot}
@@ -1159,76 +1162,12 @@ IMPORTANT: You MUST respond entirely in ${isZh ? 'Chinese (简体中文)' : 'Eng
           </div>
         </div>
 
-        {/* User Info Card */}
-        <div className="bg-[var(--bg-primary)] rounded-[1.5rem] border border-[var(--border-color)] pl-3 pr-4 py-3 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="relative w-12 h-12 flex-shrink-0">
-              {/* Placeholder/fallback - only show when no avatar URL */}
-              {!userInfo.avatarUrl && (
-                <div className="absolute inset-0 rounded-full bg-[var(--hover-bg)] flex items-center justify-center">
-                  <Users size={20} className="text-[var(--text-secondary)]" />
-                </div>
-              )}
-              {userInfo.avatarUrl && (
-                <img
-                  src={userInfo.avatarUrl}
-                  alt="Avatar"
-                  className="absolute inset-0 w-12 h-12 rounded-full object-cover"
-                  onError={(e) => {
-                    console.error('[XAnalytics] Avatar failed to load:', userInfo.avatarUrl);
-                    // Hide broken image
-                    (e.target as HTMLImageElement).style.display = 'none';
-                  }}
-                />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              {userInfo.username ? (
-                <>
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-base font-semibold text-[var(--text-primary)] truncate">
-                      {userInfo.displayName || userInfo.username}
-                    </p>
-                    {userInfo.isBlueVerified && (
-                      <BadgeCheck size={18} className="text-[#1D9BF0] flex-shrink-0" fill="#1D9BF0" stroke="white" />
-                    )}
-                  </div>
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    @{userInfo.username}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <div className="h-4 w-24 bg-[var(--hover-bg)] rounded animate-pulse mb-1" />
-                  <div className="h-3 w-20 bg-[var(--hover-bg)] rounded animate-pulse" />
-                </>
-              )}
-            </div>
-            {/* Yearly Impressions */}
-            <div className="flex-shrink-0 text-right">
-              <p className="text-xs text-[var(--text-secondary)]">{isZh ? '年度 Impressions' : 'Yearly Impressions'}</p>
-              <p className="text-lg font-bold text-[var(--text-primary)] tabular-nums">
-                <AnimatedCounter value={yearlyImpressions} duration={1500} />
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Time Range Selector */}
-        <div className="flex items-center gap-2">
-          {timeRangeOptions.map((range) => (
-            <button
-              key={range}
-              onClick={() => setTimeRange(range)}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                timeRange === range
-                  ? 'bg-[var(--text-primary)] text-[var(--bg-primary)]'
-                  : 'bg-[var(--bg-primary)] text-[var(--text-secondary)] border border-[var(--border-color)] hover:bg-[var(--hover-bg)]'
-              }`}
-            >
-              {range}
-            </button>
-          ))}
+        {/* Yearly Impressions row — moved below the time range. */}
+        <div className="flex items-center justify-end gap-2 leading-tight">
+          <span className="text-xs text-[var(--text-secondary)]">{isZh ? '年度 Impressions' : 'Yearly Impressions'}</span>
+          <span className="text-base font-bold text-[var(--text-primary)] tabular-nums">
+            <AnimatedCounter value={yearlyImpressions} duration={1500} />
+          </span>
         </div>
 
         {/* Error State */}
@@ -1501,7 +1440,7 @@ IMPORTANT: You MUST respond entirely in ${isZh ? 'Chinese (简体中文)' : 'Eng
 
           {/* Modal */}
           <div
-            className="relative bg-[var(--bg-primary)] rounded-2xl p-4 w-[360px] max-h-[85vh] flex flex-col shadow-xl"
+            className="relative bg-[var(--bg-primary)] rounded-2xl p-4 w-[360px] max-h-[96vh] flex flex-col shadow-xl"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3 flex-shrink-0">
