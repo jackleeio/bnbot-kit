@@ -733,9 +733,22 @@ export async function deleteViaDebugger(args: DeleteArgs): Promise<WriteResult> 
   }
   try {
     const target = await prepareTab(`https://x.com/i/status/${tweetId}`)
-    await waitForSelector(target.targetId, SEL.caretMain, 10_000)
+    // On a reply's detail page, X shows the parent tweet above and the
+    // focal reply below. `SEL.caretMain` matches any caret in any tweet
+    // article — the first match is the PARENT, whose menu has no
+    // "Delete" (not yours). Scope the caret lookup to the article whose
+    // permalink matches our focal tweetId.
+    const scopedCaretExpr = (action: 'find' | 'click'): string =>
+      `(function(){const arts=document.querySelectorAll('article[data-testid="tweet"]');for(const a of arts){if(a.querySelector('a[href*="/status/${tweetId}"]')){const c=a.querySelector('[data-testid="caret"]');if(c){${action === 'click' ? "c.scrollIntoView({block:'center'});c.click();" : ''}return true;}}}return false;})()`
+    const caretDeadline = Date.now() + 10_000
+    while (Date.now() < caretDeadline) {
+      const ok = await evalExpr<boolean>(target.targetId, scopedCaretExpr('find'))
+      if (ok) break
+      await sleep(200)
+    }
     await jitter(200, 500)
-    await clickSelector(target.targetId, SEL.caretMain)
+    const caretClicked = await evalExpr<boolean>(target.targetId, scopedCaretExpr('click'))
+    if (!caretClicked) throw new Error(`caret not found for tweet ${tweetId} — page may not have finished loading`)
 
     await waitForSelector(target.targetId, SEL.menu, 5_000)
     // Find the menu item containing "delete" or "删除" and click it by

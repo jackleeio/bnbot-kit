@@ -15,6 +15,11 @@
  */
 
 import { Command } from 'commander';
+
+// Collect `-m` / `--media` into an array without greedy variadic parsing.
+// Variadic `<url...>` consumes positional args (so `--media img.png <url>
+// <text>` ate the tweet URL). Repeat the flag instead: `-m a -m b`.
+const collectMedia = (val: string, prev: string[] = []): string[] => [...prev, val];
 import { BnbotWsServer } from './wsServer.js';
 import { CLI_TOOL_NAMES, runCliTool } from './cli.js';
 import { PUBLIC_SCRAPER_NAMES, runPublicScraper } from './publicScrapers.js';
@@ -283,7 +288,7 @@ function buildProgram(): Command {
     .option('-t, --time <time>', 'Schedule time (ISO 8601 or date string)')
     .option('--auto', 'Auto-schedule to next available slot')
     .option('--thread', 'Create thread (text is JSON array)')
-    .option('-m, --media <files...>', 'Attach media files (images or videos)')
+    .option('-m, --media <file>', 'Attach media file (repeat for multiple, or comma-separate)', collectMedia, [])
     .action(draftAddCommand);
 
   draft
@@ -332,7 +337,7 @@ function buildProgram(): Command {
   // x post
   x.command('post <text>')
     .description('Post a tweet')
-    .option('-m, --media <url...>', 'Media file(s) or URL(s) to attach')
+    .option('-m, --media <url>', 'Media file or URL (repeat for multiple, or comma-separate)', collectMedia, [])
     .option('-d, --draft', 'Draft mode: fill composer without posting')
     .option('--engine <engine>', 'Write engine: "dom" (content-script) or "debugger" (CDP)', 'dom')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
@@ -354,7 +359,7 @@ function buildProgram(): Command {
   // x reply
   x.command('reply <url> <text>')
     .description('Reply to a tweet')
-    .option('-m, --media <url...>', 'Media file(s) or URL(s) to attach')
+    .option('-m, --media <url>', 'Media file or URL (repeat for multiple, or comma-separate)', collectMedia, [])
     .option('--engine <engine>', 'Write engine: "dom" (content-script) or "debugger" (CDP)', 'dom')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(replyCommand);
@@ -362,7 +367,7 @@ function buildProgram(): Command {
   // x quote
   x.command('quote <url> <text>')
     .description('Quote a tweet')
-    .option('-m, --media <url...>', 'Media file(s) or URL(s) to attach')
+    .option('-m, --media <url>', 'Media file or URL (repeat for multiple, or comma-separate)', collectMedia, [])
     .option('--engine <engine>', 'Write engine: "dom" or "debugger"', 'dom')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(quoteCommand);

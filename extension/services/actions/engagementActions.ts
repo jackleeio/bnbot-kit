@@ -428,12 +428,36 @@ export const unfollowUserHandler: ActionHandler = async (params, callbacks) => {
 export const deleteTweetHandler: ActionHandler = async (params, callbacks) => {
   callbacks.onProgress?.({} as any, '正在删除推文...');
 
-  // 点击推文的三点菜单 (caret)
-  const caretBtn = await waitForSelector(['[data-testid="caret"]'], 5000) as HTMLElement;
+  // Scope the caret lookup to the article whose permalink matches the
+  // focal tweet — on a reply's detail page, the first `[data-testid="caret"]`
+  // is the PARENT tweet's caret (no Delete option in its menu).
+  const { tweetUrl } = (params as { tweetUrl?: string });
+  const tweetIdMatch = tweetUrl?.match(/\/status\/(\d+)/);
+  const tweetId = tweetIdMatch?.[1];
+
+  const findFocalCaret = (): HTMLElement | null => {
+    if (!tweetId) return document.querySelector('[data-testid="caret"]') as HTMLElement | null;
+    const articles = document.querySelectorAll('article[data-testid="tweet"]');
+    for (const a of articles) {
+      if (a.querySelector(`a[href*="/status/${tweetId}"]`)) {
+        return a.querySelector('[data-testid="caret"]') as HTMLElement | null;
+      }
+    }
+    return null;
+  };
+
+  const caretDeadline = Date.now() + 5000;
+  let caretBtn: HTMLElement | null = null;
+  while (Date.now() < caretDeadline) {
+    caretBtn = findFocalCaret();
+    if (caretBtn) break;
+    await new Promise((r) => setTimeout(r, 200));
+  }
   if (!caretBtn) {
     return { success: false, error: '未找到推文菜单按钮' };
   }
 
+  caretBtn.scrollIntoView({ block: 'center' });
   caretBtn.click();
   await HumanBehaviorSimulator.randomDelay(400, 800);
 

@@ -3,6 +3,11 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.9.7] - 2026-04-22
+
+### Fixed
+- **Delete 回复时找错 tweet 的 bug**: reply 的详情页里会显示父推（被回复的人）+ 焦点推（自己的回复），`SEL.caretMain` 旧实现是 `document.querySelector('[data-testid="caret"]')`，命中的是**父推**的 `...` 菜单 —— 里面没有"删除"选项，所以报 `delete menu item not found — not your tweet?`。改成从 `tweetUrl` 抽 `tweetId`，遍历 `article[data-testid="tweet"]` 找内含 `a[href*="/status/<tweetId>"]` 的那一条，点它内部的 caret。CDP 版（`deleteViaDebugger`）和 DOM 版（`deleteTweetHandler`）都修了。
+
 ## [0.9.6] - 2026-04-22
 
 ### Added
