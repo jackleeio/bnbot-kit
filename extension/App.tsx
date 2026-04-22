@@ -351,23 +351,41 @@ function AppContent() {
     }
   }, [isCollapsed]);
 
-  // Check for saved user on mount and restore access token
+  // Check for saved user on mount and restore access token.
+  //
+  // Stale-data guard: with the OAuth UI gone (login is CLI-driven now),
+  // there's no in-extension Sign Out button users can easily reach to
+  // clear leftover state from a previous account. So on startup, if we
+  // see a saved user but no valid token (and refresh fails), wipe the
+  // stale data so the UI doesn't show a phantom avatar / wrong email.
   useEffect(() => {
     const restoreUser = async () => {
       const savedUser = await authService.getUser();
-      if (savedUser) {
-        setUser(savedUser);
-        // If user has refresh token but no access token in memory, refresh it
-        // This handles page reload scenarios
-        const accessToken = await authService.getAccessToken();
-        if (!accessToken && savedUser.refresh_token) {
-          console.log('[BNBot] Access token missing after restore, attempting refresh...');
-          const newToken = await authService.refreshAccessToken();
-          if (!newToken) {
-            console.warn('[BNBot] Failed to refresh access token on startup');
-          }
+      if (!savedUser) return;
+
+      const accessToken = await authService.getAccessToken();
+      const refreshToken = await authService.getRefreshToken();
+
+      // No tokens at all — definitely stale (e.g. user data from before
+      // the OAuth UI was removed). Clear and bail.
+      if (!accessToken && !refreshToken) {
+        console.log('[BNBot] Saved user has no tokens — clearing stale state. Run `bnbot login` in CLI to re-auth.');
+        await authService.logout();
+        return;
+      }
+
+      // Have refresh token but no access token — try to refresh once.
+      // If that fails, the session is dead; wipe.
+      if (!accessToken && refreshToken) {
+        const ok = await authService.refreshAccessToken();
+        if (!ok) {
+          console.log('[BNBot] Refresh failed on startup — clearing stale state.');
+          await authService.logout();
+          return;
         }
       }
+
+      setUser(savedUser);
     };
     restoreUser();
   }, []);
