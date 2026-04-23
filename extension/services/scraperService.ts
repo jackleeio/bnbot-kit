@@ -13,14 +13,24 @@
 
 // ─── Tab pool with idle cleanup ────────────────────────────────────
 
-// Idle window lifetime — 120s gives room for scroll + think + act flows
-// (user reads a tweet for 30-60s, decides to like/reply) without losing
-// the pooled session. Shorter bursts (read N then like N) still fit.
-const IDLE_TIMEOUT = 120_000; // 2 minutes
+// Idle window lifetime — each completed action adds `IDLE_BONUS_*` to the
+// tab's remaining budget (not a hard reset). Unused budget from recent
+// activity carries forward, so active bursts build headroom while long
+// pauses let the tab close naturally.
+//
+//   first op:   closeAt = now + bonus
+//   next op at t<closeAt:  closeAt = closeAt + bonus      (stacks)
+//   next op at t>closeAt:  closeAt = now + bonus          (floor)
+//
+// Exploration / probing workflows (`bnbot debug eval`, `navigate_to_url`)
+// get a larger bonus so occasional multi-minute think gaps don't evict.
+const IDLE_BONUS_DEFAULT = 120_000; // 2 min bonus per read/write op
+export const IDLE_BONUS_EXPLORE = 300_000; // 5 min bonus per debug op
 interface PoolEntry {
   tabId: number;
   windowId: number;
   timer: ReturnType<typeof setTimeout> | null;
+  closeAt: number; // epoch ms when idle timer should fire
   userOwned?: boolean; // if true, don't close on idle (it's the user's own tab)
 }
 const tabPool = new Map<string, PoolEntry>();
@@ -169,6 +179,35 @@ export async function getTab(url: string): Promise<number> {
     tabPool.delete(expectedHost);
   }
 
+  // Pool miss — before spinning up a new window, try to adopt an
+  // existing tab on this host. When the extension reloads, our in-memory
+  // tabPool is wiped but the Chrome-side windows stay alive. Without
+  // adoption, every reload stacks a new compose window on top of the
+  // previous ones (user visibly sees 3+ XHS windows pile up).
+  //
+  // Heuristic for "ours vs user-owned": a bot-opened scraper window has
+  // exactly one tab. The user's main browsing window always has more.
+  try {
+    const candidates = await chrome.tabs.query({ url: `*://${expectedHost}/*` });
+    for (const t of candidates) {
+      if (t.id == null || t.windowId == null) continue;
+      if (!t.url?.startsWith('https://')) continue;
+      const winTabs = await chrome.tabs.query({ windowId: t.windowId });
+      if (winTabs.length !== 1) continue;
+      tabPool.set(expectedHost, {
+        tabId: t.id,
+        windowId: t.windowId,
+        timer: null,
+        closeAt: 0,
+      });
+      scraperWindowIds.add(t.windowId);
+      console.log(`[Scraper] Adopted orphaned ${expectedHost} tab ${t.id} (window ${t.windowId})`);
+      return t.id;
+    }
+  } catch (err) {
+    console.warn(`[Scraper] Adoption query failed for ${expectedHost}:`, err);
+  }
+
   // Always create a fresh dedicated scraper window. We intentionally do NOT reuse
   // user-owned tabs because they may carry stale chrome-extension:// iframes from
   // other extensions (password managers, translators, etc.) that cause
@@ -181,7 +220,7 @@ export async function getTab(url: string): Promise<number> {
     if (finalHost === expectedHost) {
       // Minimize the window now that page is loaded — keeps it out of the user's way
       chrome.windows.update(entry.windowId, { state: 'minimized' }).catch(() => {});
-      tabPool.set(expectedHost, { ...entry, timer: null });
+      tabPool.set(expectedHost, { ...entry, timer: null, closeAt: 0 });
       return entry.tabId;
     }
     // Hijacked — close and retry (or fail on second attempt)
@@ -199,12 +238,18 @@ export async function getTab(url: string): Promise<number> {
   throw new Error(`Failed to open ${expectedHost}`); // unreachable
 }
 
-/** Start idle countdown on all windows that don't have one running. */
-export function startAllIdleTimers(): void {
+/**
+ * Bump every pooled tab's idle deadline by `bonusMs`, anchored to the
+ * later of its current deadline or now. Active sessions carry forward
+ * unused budget; gaps longer than a previous bonus restart from now.
+ */
+export function startAllIdleTimers(bonusMs: number = IDLE_BONUS_DEFAULT): void {
+  const now = Date.now();
   for (const [domain, entry] of tabPool.entries()) {
-    if (!entry.timer) {
-      entry.timer = setTimeout(() => closePooledDomain(domain), IDLE_TIMEOUT);
-    }
+    if (entry.timer) clearTimeout(entry.timer);
+    const base = Math.max(entry.closeAt, now);
+    entry.closeAt = base + bonusMs;
+    entry.timer = setTimeout(() => closePooledDomain(domain), entry.closeAt - now);
   }
 }
 

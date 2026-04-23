@@ -7,7 +7,7 @@ import { localRelayManager, LocalActionRequest } from './utils/localRelayManager
 // taskAlarmScheduler removed — scheduling moved to bnbot CLI's `bnbot calendar` + macOS launchd.
 // draftService.ts (extension) is next to go once the desktop calendar UI is verified
 // against ~/.bnbot/calendar/ JSON.
-import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok, ensureDebuggerAttached, debuggerSend, getPoolTabs, openTabInScraperWindow, getTab } from './services/scraperService';
+import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, IDLE_BONUS_EXPLORE, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok, ensureDebuggerAttached, debuggerSend, getPoolTabs, openTabInScraperWindow, getTab } from './services/scraperService';
 import { debuggerWriteHandlers } from './services/debugger';
 
 /**
@@ -173,6 +173,236 @@ async function navigateTabViaCdp(args: {
   const tab = await chrome.tabs.get(tabId);
   return { tabId, url: tab.url || fullUrl, title: tab.title || '' };
 }
+
+/**
+ * Inject local file(s) into a file input on a scraper-pool tab via CDP
+ * DOM.setFileInputFiles. Dev/debug helper — the real XHS / other write
+ * paths will call this same primitive from their respective action
+ * modules, but for probing a new platform's form state we want it
+ * exposed at CLI level.
+ */
+async function debugSetFileInputFiles(args: {
+  selector: string;
+  files: string[];
+  tabId?: number;
+  targetHost?: string;
+}): Promise<{ tabId: number; url: string; nodeId: number; files: string[] }> {
+  if (!args.selector) throw new Error('debug_set_files: missing selector');
+  if (!args.files || args.files.length === 0) throw new Error('debug_set_files: missing files');
+
+  let tabId = args.tabId;
+  if (!tabId) {
+    const pool = getPoolTabs();
+    if (pool.length === 0) throw new Error('debug_set_files: no pool tabs');
+    const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    tabId = (hostMatch ?? pool[0]).tabId;
+  }
+
+  const targetId = await ensureDebuggerAttached(tabId, ['Page', 'DOM']);
+
+  const doc = await debuggerSend<{ root: { nodeId: number } }>(
+    targetId,
+    'DOM.getDocument',
+    { depth: -1, pierce: true },
+  );
+  const q = await debuggerSend<{ nodeId: number }>(
+    targetId,
+    'DOM.querySelector',
+    { nodeId: doc.root.nodeId, selector: args.selector },
+  );
+  if (!q?.nodeId) throw new Error(`file input not found: ${args.selector}`);
+
+  await debuggerSend(targetId, 'DOM.setFileInputFiles', {
+    nodeId: q.nodeId,
+    files: args.files,
+  });
+
+  const tab = await chrome.tabs.get(tabId);
+  return { tabId, url: tab.url || '', nodeId: q.nodeId, files: args.files };
+}
+
+/**
+ * Drag an element onto another via CDP `Input.dispatchMouseEvent`
+ * (trusted mousePressed + interpolated mouseMoved + mouseReleased).
+ * Needed for sortable-style drag reorder (XHS image strip, etc.) that
+ * reject synthetic pointer events.
+ */
+async function debugDrag(args: {
+  fromSelector: string;
+  toSelector: string;
+  steps?: number;
+  tabId?: number;
+  targetHost?: string;
+}): Promise<{ tabId: number; url: string; from: {x:number,y:number}; to: {x:number,y:number} }> {
+  if (!args.fromSelector) throw new Error('debug_drag: missing fromSelector');
+  if (!args.toSelector) throw new Error('debug_drag: missing toSelector');
+
+  let tabId = args.tabId;
+  if (!tabId) {
+    const pool = getPoolTabs();
+    if (pool.length === 0) throw new Error('debug_drag: no pool tabs');
+    const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    tabId = (hostMatch ?? pool[0]).tabId;
+  }
+
+  const targetId = await ensureDebuggerAttached(tabId, ['Runtime', 'Input']);
+
+  const coords = await debuggerSend<{ result: { value: { sx:number, sy:number, dx:number, dy:number } | null } }>(
+    targetId,
+    'Runtime.evaluate',
+    {
+      expression: `(function(){
+        const s = document.querySelector(${JSON.stringify(args.fromSelector)});
+        const d = document.querySelector(${JSON.stringify(args.toSelector)});
+        if (!s || !d) return null;
+        s.scrollIntoView({block:'center'});
+        const rs = s.getBoundingClientRect();
+        const rd = d.getBoundingClientRect();
+        return {sx: rs.x+rs.width/2, sy: rs.y+rs.height/2, dx: rd.x+rd.width/2, dy: rd.y+rd.height/2};
+      })()`,
+      returnByValue: true,
+    },
+  );
+  if (!coords?.result?.value) throw new Error(`debug_drag: element(s) not found (${args.fromSelector} → ${args.toSelector})`);
+  const { sx, sy, dx, dy } = coords.result.value;
+  const steps = Math.max(5, args.steps ?? 20);
+
+  await debuggerSend(targetId, 'Input.dispatchMouseEvent', {
+    type: 'mousePressed', x: sx, y: sy, button: 'left', clickCount: 1,
+  });
+  for (let i = 1; i <= steps; i++) {
+    const x = sx + (dx - sx) * (i / steps);
+    const y = sy + (dy - sy) * (i / steps);
+    await debuggerSend(targetId, 'Input.dispatchMouseEvent', {
+      type: 'mouseMoved', x, y, button: 'left',
+    });
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  await debuggerSend(targetId, 'Input.dispatchMouseEvent', {
+    type: 'mouseReleased', x: dx, y: dy, button: 'left', clickCount: 1,
+  });
+
+  const tab = await chrome.tabs.get(tabId);
+  return { tabId, url: tab.url || '', from: {x:sx, y:sy}, to: {x:dx, y:dy} };
+}
+
+/**
+ * Un-minimize a pool tab's window so the user can see what the scraper
+ * is doing. Pool windows are created minimized by design (don't clutter
+ * the user's real work), but during probing / debugging we want a
+ * visible surface.
+ */
+async function debugShowPoolWindow(args: {
+  tabId?: number;
+  targetHost?: string;
+}): Promise<{ tabId: number; windowId: number; url: string }> {
+  let tabId = args.tabId;
+  if (!tabId) {
+    const pool = getPoolTabs();
+    if (pool.length === 0) throw new Error('debug_show_window: no pool tabs');
+    const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    tabId = (hostMatch ?? pool[0]).tabId;
+  }
+  const tab = await chrome.tabs.get(tabId);
+  if (tab.windowId != null) {
+    await chrome.windows.update(tab.windowId, { state: 'normal', focused: true });
+  }
+  return { tabId, windowId: tab.windowId ?? -1, url: tab.url || '' };
+}
+
+/**
+ * Dispatch a REAL (trusted) mouse click at the element's center via CDP
+ * `Input.dispatchMouseEvent`. Needed for buttons whose framework code
+ * checks `event.isTrusted` (e.g. XHS emoji / share buttons) — synthetic
+ * JS events skip the handler there.
+ */
+async function debugTrustedClick(args: {
+  selector: string;
+  tabId?: number;
+  targetHost?: string;
+}): Promise<{ tabId: number; url: string; x: number; y: number }> {
+  if (!args.selector) throw new Error('debug_click: missing selector');
+
+  let tabId = args.tabId;
+  if (!tabId) {
+    const pool = getPoolTabs();
+    if (pool.length === 0) throw new Error('debug_click: no pool tabs');
+    const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    tabId = (hostMatch ?? pool[0]).tabId;
+  }
+
+  const targetId = await ensureDebuggerAttached(tabId, ['Runtime', 'Input']);
+
+  const rect = await debuggerSend<{ result: { value: { x: number; y: number } | null } }>(
+    targetId,
+    'Runtime.evaluate',
+    {
+      expression: `(function(){const el=document.querySelector(${JSON.stringify(args.selector)});if(!el)return null;el.scrollIntoView({block:'center'});const r=el.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`,
+      returnByValue: true,
+    },
+  );
+  if (!rect?.result?.value) throw new Error(`debug_click: element not found ${args.selector}`);
+  const { x, y } = rect.result.value;
+
+  await debuggerSend(targetId, 'Input.dispatchMouseEvent', {
+    type: 'mousePressed', x, y, button: 'left', clickCount: 1,
+  });
+  await debuggerSend(targetId, 'Input.dispatchMouseEvent', {
+    type: 'mouseReleased', x, y, button: 'left', clickCount: 1,
+  });
+
+  const tab = await chrome.tabs.get(tabId);
+  return { tabId, url: tab.url || '', x, y };
+}
+
+/**
+ * Run arbitrary JS inside a scraper-pool tab via CDP Runtime.evaluate.
+ * Dev/debug helper — lets us probe DOM selectors, check page state, etc.
+ * without adding per-case handlers. Safety: only targets tabs the
+ * extension already has CDP access to.
+ *
+ * Selection order:
+ *   - explicit tabId
+ *   - a pool tab whose host matches targetHost (if given)
+ *   - first pool tab
+ *
+ * Returns whatever the expression evaluates to (must be JSON-serializable).
+ */
+async function debugEvalInTab(args: {
+  expression: string;
+  tabId?: number;
+  targetHost?: string;
+  awaitPromise?: boolean;
+}): Promise<{ tabId: number; url: string; result: unknown; exception?: string }> {
+  if (!args.expression) throw new Error('debug_eval: missing expression');
+
+  let tabId = args.tabId;
+  if (!tabId) {
+    const pool = getPoolTabs();
+    if (pool.length === 0) throw new Error('debug_eval: no pool tabs — navigate somewhere first');
+    const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    tabId = (hostMatch ?? pool[0]).tabId;
+  }
+
+  const targetId = await ensureDebuggerAttached(tabId, ['Page']);
+  const res = await debuggerSend<{
+    result: { type: string; value?: unknown };
+    exceptionDetails?: { exception?: { description?: string }; text?: string };
+  }>(targetId, 'Runtime.evaluate', {
+    expression: args.expression,
+    awaitPromise: !!args.awaitPromise,
+    returnByValue: true,
+  });
+
+  const tab = await chrome.tabs.get(tabId);
+  if (res?.exceptionDetails) {
+    const msg = res.exceptionDetails.exception?.description
+      || res.exceptionDetails.text
+      || 'page threw';
+    return { tabId, url: tab.url || '', result: null, exception: msg };
+  }
+  return { tabId, url: tab.url || '', result: res?.result?.value ?? null };
+}
 import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications } from './services/scrapers/browser';
 
 // GOOGLE_CLIENT_ID / OAUTH_REDIRECT_URI removed — see handleGoogleLogin
@@ -331,9 +561,14 @@ localRelayManager.init({
       message.actionType === k || message.actionType === k.toLowerCase().replace(/_/g, '-')
     );
     if (scraperKey) {
+      // Exploration-style actions (human probing a new platform's DOM) need
+      // a bigger idle bonus than the default — think time between eval
+      // calls routinely exceeds a couple minutes.
+      const EXPLORE_ACTIONS = new Set(['debug_eval', 'debug_set_files', 'debug_click', 'debug_show_window', 'debug_drag', 'navigate_to_url', 'screenshot']);
+      const bonusMs = EXPLORE_ACTIONS.has(scraperKey) ? IDLE_BONUS_EXPLORE : undefined;
       try {
         const data = await scraperHandlers[scraperKey](message.actionPayload as any);
-        startAllIdleTimers();
+        startAllIdleTimers(bonusMs);
         localRelayManager.sendActionResult({
           type: 'action_result',
           requestId: message.requestId,
@@ -341,7 +576,7 @@ localRelayManager.init({
           data,
         });
       } catch (error) {
-        startAllIdleTimers();
+        startAllIdleTimers(bonusMs);
         localRelayManager.sendActionResult({
           type: 'action_result',
           requestId: message.requestId,
@@ -860,14 +1095,6 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     return true;
   }
 
-  // Fetch blob from URL (bypass CORS)
-  if (request.type === 'FETCH_BLOB') {
-    fetchBlobAsDataUrl(request.url)
-      .then(sendResponse)
-      .catch((error) => sendResponse({ error: error.message }));
-    return true;
-  }
-
   // Video proxy - fetch video and return as base64 data URL
   if (request.type === 'FETCH_VIDEO') {
     fetchVideoAsDataUrl(request.url)
@@ -1212,6 +1439,34 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   scrape_notifications: (m) => getTwitterNotifications(m.limit || 40),
   screenshot: (m) => captureTabScreenshot({ url: m.url, tabId: m.tabId, fullPage: m.fullPage }),
   navigate_to_url: (m) => navigateTabViaCdp({ url: m.url, tabId: m.tabId }),
+  debug_eval: (m) => debugEvalInTab({
+    expression: m.expression,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+    awaitPromise: m.awaitPromise,
+  }),
+  debug_set_files: (m) => debugSetFileInputFiles({
+    selector: m.selector,
+    files: m.files,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
+  debug_click: (m) => debugTrustedClick({
+    selector: m.selector,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
+  debug_show_window: (m) => debugShowPoolWindow({
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
+  debug_drag: (m) => debugDrag({
+    fromSelector: m.fromSelector,
+    toSelector: m.toSelector,
+    steps: m.steps,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
 };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

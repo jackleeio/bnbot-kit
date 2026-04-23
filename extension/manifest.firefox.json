@@ -16,11 +16,7 @@
   "host_permissions": [
     "*://api.bnbot.ai/*",
     "*://*.googlevideo.com/*",
-    "*://x.com/*",
-    "*://video.twimg.com/*",
     "*://mp.weixin.qq.com/*",
-    "*://*.tiktok.com/*",
-    "*://*.xiaohongshu.com/*",
     "*://*.xhscdn.com/*",
     "*://mmbiz.qpic.cn/*",
     "*://*.qpic.cn/*",

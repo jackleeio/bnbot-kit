@@ -21,6 +21,8 @@ import {
   replyViaDebugger,
   retweetViaDebugger,
 } from './debuggerWriteActions'
+import { postXhsNote, XhsEmojiSlot } from './xhsWriteActions'
+import { getXhsNoteStats, getXhsAccountStats } from './xhsStatsActions'
 
 type Payload = Record<string, unknown>
 
@@ -126,5 +128,42 @@ export const debuggerWriteHandlers: Record<string, (payload: Payload) => Promise
       return { text: obj.text, mediaPaths }
     })
     return postThreadViaDebugger({ tweets, visible: bool(payload, 'visible') })
+  },
+
+  // XHS compose + publish — one-shot, replaces ~10 CLI round-trips.
+  // See xhsWriteActions.ts for selector map and step breakdown.
+  xhs_post: async (payload) => {
+    const images = strArrayOrUndef(payload, 'images')
+    if (!images || images.length === 0) throw new Error('images (array) required')
+    const emojisRaw = payload.emojis
+    const emojis: XhsEmojiSlot[] | undefined = Array.isArray(emojisRaw)
+      ? emojisRaw.map((e, i) => {
+          if (!e || typeof e !== 'object') throw new Error(`emojis[${i}] invalid`)
+          const obj = e as Record<string, unknown>
+          if (typeof obj.paraIndex !== 'number') throw new Error(`emojis[${i}].paraIndex must be number`)
+          if (typeof obj.slug !== 'string') throw new Error(`emojis[${i}].slug must be string`)
+          return { paraIndex: obj.paraIndex, slug: obj.slug }
+        })
+      : undefined
+    const coverIndex = typeof payload.coverIndex === 'number' ? payload.coverIndex : 0
+    return postXhsNote({
+      images,
+      coverIndex,
+      title: str(payload, 'title'),
+      body: str(payload, 'body'),
+      emojis,
+      tags: strArrayOrUndef(payload, 'tags'),
+      autoFillTags: typeof payload.autoFillTags === 'boolean' ? payload.autoFillTags : undefined,
+      minTags: typeof payload.minTags === 'number' ? payload.minTags : undefined,
+      publish: bool(payload, 'publish'),
+    })
+  },
+
+  // XHS stats readers (navigate → DOM scrape). See xhsStatsActions.ts.
+  xhs_stats_note: async (payload) => {
+    return getXhsNoteStats(str(payload, 'noteId'))
+  },
+  xhs_stats_account: async () => {
+    return getXhsAccountStats()
   },
 }

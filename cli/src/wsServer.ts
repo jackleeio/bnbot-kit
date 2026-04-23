@@ -305,7 +305,8 @@ export class BnbotWsServer {
     // Set up timeout — CDP write actions with potential media (video
     // transcode can take >60s) get a longer budget than the default.
     const isDebuggerWrite = message.actionType.endsWith('_debugger');
-    const effectiveTimeout = isDebuggerWrite ? 240_000 : DEFAULT_TIMEOUT;
+    const isLongRunning = isDebuggerWrite || message.actionType === 'xhs_post';
+    const effectiveTimeout = isLongRunning ? 240_000 : DEFAULT_TIMEOUT;
     const timer = setTimeout(() => {
       this.pendingRequests.delete(internalId);
       this.cliPending.delete(internalId);
@@ -360,6 +361,7 @@ export class BnbotWsServer {
 
     // Forward to extension
     try {
+      console.log(`[BNBOT] Forward to extension: ${message.actionType} id=${internalId.slice(0, 8)}`);
       this.client.send(JSON.stringify(request));
     } catch (err) {
       clearTimeout(timer);

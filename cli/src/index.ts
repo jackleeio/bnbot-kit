@@ -55,6 +55,8 @@ import {
 } from './commands/actions.js';
 import { screenshotCommand } from './commands/screenshot.js';
 import { downloadCommand } from './commands/download.js';
+import { debugEvalCommand, debugUploadCommand, debugClickCommand, debugShowCommand, debugDragCommand } from './commands/debug.js';
+import { xhsPostCommand, xhsStatsNoteCommand, xhsStatsAccountCommand } from './commands/xhs.js';
 import {
   calendarAddCommand,
   calendarListCommand,
@@ -194,6 +196,64 @@ function buildProgram(): Command {
     .option('--format <kind>', 'video | audio (default video, best mp4; audio extracts m4a)')
     .option('--info', 'Print metadata JSON only, do not download')
     .action(downloadCommand);
+
+  // ── Debug helpers (CDP-level, for probing new platforms) ───
+  const debug = program.command('debug').description('Low-level CDP helpers (dev / exploration)');
+  debug
+    .command('eval <expression>')
+    .description('Run JS in a scraper pool tab via CDP Runtime.evaluate; prints the return value as JSON')
+    .option('--tab-id <id>', 'Target a specific chrome tab id')
+    .option('--host <hostname>', 'Target the pool tab for this host (e.g. creator.xiaohongshu.com)')
+    .option('--await-promise', 'Await if the expression returns a Promise')
+    .action(debugEvalCommand);
+  debug
+    .command('upload <selector> <files...>')
+    .description('Inject local file(s) into a file input via CDP DOM.setFileInputFiles')
+    .option('--tab-id <id>', 'Target a specific chrome tab id')
+    .option('--host <hostname>', 'Target the pool tab for this host')
+    .action(debugUploadCommand);
+  debug
+    .command('click <selector>')
+    .description('Click an element via CDP Input.dispatchMouseEvent (trusted event — opens popovers that reject synthetic clicks)')
+    .option('--tab-id <id>', 'Target a specific chrome tab id')
+    .option('--host <hostname>', 'Target the pool tab for this host')
+    .action(debugClickCommand);
+  debug
+    .command('show')
+    .description('Un-minimize the pool tab window (pool windows are minimized by default — use during probing)')
+    .option('--tab-id <id>', 'Target a specific chrome tab id')
+    .option('--host <hostname>', 'Target the pool tab for this host')
+    .action(debugShowCommand);
+  debug
+    .command('drag <fromSelector> <toSelector>')
+    .description('Drag one element onto another via CDP mouse events (sortable-style reorder, etc.)')
+    .option('--tab-id <id>', 'Target a specific chrome tab id')
+    .option('--host <hostname>', 'Target the pool tab for this host')
+    .option('--steps <n>', 'Number of interpolated mouseMoved steps (default 20)')
+    .action(debugDragCommand);
+
+  // ── Xiaohongshu ────────────────────────────────────────
+  // One-shot compose + optional publish. Plan JSON shape in
+  // cli/src/commands/xhs.ts. Replaces the ~10-call debug walk with a
+  // single WS round-trip (~3-5s vs ~20s).
+  const xhs = program.command('xhs').description('Xiaohongshu (creator.xiaohongshu.com) automation');
+  xhs
+    .command('post')
+    .description('Compose (and optionally publish) an image-text XHS note from a JSON plan')
+    .option('--plan <path>', 'Path to plan JSON, or `-` for stdin', '-')
+    .option('--publish', 'Actually click 发布 at the end (default: stop after compose)')
+    .action(xhsPostCommand);
+
+  xhs
+    .command('stats-note')
+    .description('Fetch per-note analytics (exposure/views/click rate/watch time/interactions) for a given noteId')
+    .argument('<noteId>', '24-char hex XHS note id')
+    .action(xhsStatsNoteCommand);
+
+  xhs
+    .command('stats-account')
+    .description('Fetch account-level analytics (4 tabs: 观看/互动/涨粉/发布 for current period)')
+    .action(xhsStatsAccountCommand);
 
   // ── Calendar commands ──────────────────────────────────
   // Content calendar: one launchd tick reads ~/.bnbot/calendar/<date>.json
@@ -482,6 +542,43 @@ function buildProgram(): Command {
     .option('-l, --limit <n>', 'Max tweets', '20')
     .option('--scrollAttempts <n>', 'Scroll attempts', '5')
     .action(scrapeUserTweetsCommand);
+
+  x
+    .command('stats-account')
+    .description('Fetch X account analytics (views, impressions, engagements). Mirrors the 5 time ranges from the extension panel (7D/2W/4W/3M/1Y).')
+    .option('--range <r>', 'Preset range: 7D | 2W | 4W | 3M | 1Y', '3M')
+    .option('--from <iso>', 'ISO start datetime (overrides --range)')
+    .option('--to <iso>', 'ISO end datetime (defaults to now)')
+    .option('--granularity <g>', 'Daily | Weekly | Monthly (auto-picked by --range if omitted)')
+    .action(
+      async (opts: { range: string; from?: string; to?: string; granularity?: string }) => {
+        const { runCliAction } = await import('./cli.js');
+        const now = new Date();
+        const to = new Date(now);
+        to.setHours(23, 59, 59, 999);
+        const from = new Date(now);
+        from.setHours(0, 0, 0, 0);
+        switch (opts.range) {
+          case '7D': from.setDate(from.getDate() - 7); break;
+          case '2W': from.setDate(from.getDate() - 14); break;
+          case '4W': from.setDate(from.getDate() - 28); break;
+          case '3M': from.setMonth(from.getMonth() - 3); break;
+          case '1Y': from.setFullYear(from.getFullYear() - 1); break;
+          default:
+            console.error(`Unknown --range '${opts.range}'. Use 7D|2W|4W|3M|1Y.`);
+            process.exit(2);
+        }
+        const toTime = opts.to ?? to.toISOString();
+        const fromTime = opts.from ?? from.toISOString();
+        // Matches XAnalyticsPanel behavior: 1Y → Weekly, otherwise Daily.
+        const granularity = opts.granularity ?? (opts.range === '1Y' ? 'Weekly' : 'Daily');
+        await runCliAction(
+          'account_analytics',
+          { fromTime, toTime, granularity },
+          18900,
+        );
+      },
+    );
 
   xScrape
     .command('user-profile <username>')
