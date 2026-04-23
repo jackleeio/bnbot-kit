@@ -305,7 +305,22 @@ async function debugShowPoolWindow(args: {
   }
   const tab = await chrome.tabs.get(tabId);
   if (tab.windowId != null) {
-    await chrome.windows.update(tab.windowId, { state: 'normal', focused: true });
+    // `debug show` is the explicit "raise to front" command. Un-minimize
+    // + move to a visible position. focused:true here — this IS the
+    // command where the user wants to look at it.
+    await chrome.windows.update(tab.windowId, {
+      state: 'normal',
+      focused: true,
+      left: 80,
+      top: 80,
+      width: 1280,
+      height: 800,
+    });
+    // Also make the target tab active within its window. Without this,
+    // `debug show --host x.com` un-minimizes the window but whichever
+    // tab was previously selected stays visible, forcing the user to
+    // click the tab manually.
+    await chrome.tabs.update(tabId, { active: true }).catch(() => {});
   }
   return { tabId, windowId: tab.windowId ?? -1, url: tab.url || '' };
 }

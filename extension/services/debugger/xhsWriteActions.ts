@@ -100,13 +100,24 @@ const HOME_URL = 'https://creator.xiaohongshu.com/new/home?source=official'
  */
 async function prepareXhsTab(): Promise<{ tabId: number; targetId: string }> {
   const tabId = await getTab(HOME_URL)
-  // Un-minimize the pool window for the duration of the compose flow.
-  // Chrome throttles JS in minimized windows (Vue never hydrates on
-  // Page.navigate), so XHS compose MUST run with a non-minimized
-  // window. The idle-close path will re-minimize on next getTab.
+  // Un-minimize + snap to a visible position. Scraper windows are
+  // created offscreen (20000, 20000) so creation doesn't flash; when
+  // we restore from minimized, Chrome puts it back at the last
+  // position — which is still offscreen — so we explicitly move it
+  // somewhere visible. `focused: false` keeps it behind the user's
+  // current app.
   const tab = await chrome.tabs.get(tabId).catch(() => null)
   if (tab?.windowId != null) {
-    await chrome.windows.update(tab.windowId, { state: 'normal', focused: false }).catch(() => {})
+    await chrome.windows
+      .update(tab.windowId, {
+        state: 'normal',
+        focused: false,
+        left: 80,
+        top: 80,
+        width: 1280,
+        height: 800,
+      })
+      .catch(() => {})
   }
   const targetId = await ensureDebuggerAttached(tabId, ['Page', 'Runtime', 'DOM', 'Input'])
   // SPA-aware: if the creator shell is already mounted (发布笔记 button

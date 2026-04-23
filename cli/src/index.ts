@@ -236,6 +236,16 @@ function buildProgram(): Command {
   // One-shot compose + optional publish. Plan JSON shape in
   // cli/src/commands/xhs.ts. Replaces the ~10-call debug walk with a
   // single WS round-trip (~3-5s vs ~20s).
+  // Top-level `navigate` — open ANY URL in a scraper pool window. Not
+  // X-specific despite `bnbot x navigate url` also existing (that's
+  // kept for backwards compat). New tabs land as the active tab in the
+  // minimized scraper window, so Dock → click gives you the URL.
+  program
+    .command('navigate <url>')
+    .alias('open')
+    .description('Open any URL in the bnbot scraper window (in the background, becomes the active tab)')
+    .action(navigateUrlCommand);
+
   const xhs = program.command('xhs').description('Xiaohongshu (creator.xiaohongshu.com) automation');
   xhs
     .command('post')

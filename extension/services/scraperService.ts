@@ -123,18 +123,42 @@ async function openScraperWindow(url: string): Promise<{ tabId: number; windowId
   await pruneDeadScraperWindows();
   if (scraperWindowIds.size > 0) {
     const windowId = scraperWindowIds.values().next().value!;
-    const created = await chrome.tabs.create({ windowId, url, active: false });
+    // `active: true` — when the user eventually un-minimizes this
+    // window (via Dock click or `debug show`), they see the latest
+    // navigate target instead of whatever tab was previously active.
+    // The window itself stays minimized either way, so this doesn't
+    // steal focus.
+    const created = await chrome.tabs.create({ windowId, url, active: true });
     if (created.id == null) throw new Error('Failed to create tab in scraper window');
     return { tabId: created.id, windowId };
   }
 
-  // Create unfocused (NOT minimized) so Chrome doesn't throttle the page load.
-  // Minimized tabs get aggressively throttled — heavy pages like TikTok may never
-  // reach status:'complete', causing debugger.attach to fail on a half-loaded page.
+  // Create a normal-type window but START IT MINIMIZED — the window
+  // materializes directly into the Dock without ever being drawn on
+  // the desktop, so the user never sees a flash. When the user wants
+  // to watch (via `debug show` or prepareXhsTab), we un-minimize.
+  //
+  // We use `type: 'normal'` (not `popup`) so the window, when shown,
+  // has the full Chrome UI (tab bar + address bar) instead of the
+  // bare popup chrome.
+  //
+  // NOTE: Chrome throttles JS in minimized windows. This was fine for
+  // simple scrapers in the past, but heavy SPAs like XHS's compose
+  // page need to be un-minimized before Page.navigate to hydrate.
+  // `prepareXhsTab` handles that.
+  // Do NOT pass `left`/`top` — that triggers macOS-level app activation
+  // (Chrome gets raised to the frontmost app to render the new window
+  // at the requested coords). Omit position entirely and Chrome uses
+  // its default offset-from-existing-window strategy, which matches
+  // opencli's behavior — the window appears in the background without
+  // interrupting the user's current app. `focused:false` keeps the
+  // window itself unfocused. getTab minimizes it once load completes.
   const win = await chrome.windows.create({
     url,
     type: 'normal',
     focused: false,
+    width: 1280,
+    height: 800,
   });
   const tabId = win.tabs?.[0]?.id;
   const windowId = win.id;
