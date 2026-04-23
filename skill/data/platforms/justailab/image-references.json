@@ -1,0 +1,702 @@
+[
+  {
+    "id": 277,
+    "grid_data_id": "18874f1a698c245d",
+    "chat_prefix": "aipic_free",
+    "title": "中国风年夜饭",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260211/9222171034-2c6d1770e8834e3196f08775fabf12aa.webp",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 1
+  },
+  {
+    "id": 264,
+    "grid_data_id": "2817893c69887703",
+    "chat_prefix": "aipic_free",
+    "title": "雅致温馨的国风新年风产品海报",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260208/9222171034-0ba085f64feb4605a2ec1c7540a4d7af.png",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 1
+  },
+  {
+    "id": 253,
+    "grid_data_id": "3ca523a669668d17",
+    "chat_prefix": "aipic_free",
+    "title": "烤鸡翅，优质食品广告摄影，白色背景。",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260114/20260114-openai_0f82fa71-66ff-4a00-94c4-0db0c3a59222.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 1
+  },
+  {
+    "id": 250,
+    "grid_data_id": "3fff17a0696685bd",
+    "chat_prefix": "aipic_free",
+    "title": "红烧肉盖饭",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260114/9222171034-877f0b92f3a7416287beb86c6f24c45e.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 1
+  },
+  {
+    "id": 248,
+    "grid_data_id": "590f2a8c696350c3",
+    "chat_prefix": "aipic_free",
+    "title": "异形牌风格的甜点促销海报，整体轮廓活泼有",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260111/20260111-openai_0bf440de-8eba-4e30-9a58-61f60a425888.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 1
+  },
+  {
+    "id": 247,
+    "grid_data_id": "cf6690806963506b",
+    "chat_prefix": "aipic_free",
+    "title": "画面主体是异形KT板形式的潮汕美食“秘制",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260111/20260111-openai_b286271f-d0c5-4893-acc6-480b41118759.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 1
+  },
+  {
+    "id": 232,
+    "grid_data_id": "b225f4b169382940",
+    "chat_prefix": "aipic_free",
+    "title": "一张美食摄影照片，主体是用[菠萝炒饭]的",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20251209/20251209-openai_a3176dad-c8bc-4e71-890d-11b079963198.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 1
+  },
+  {
+    "id": 231,
+    "grid_data_id": "1ecc43a0693828e5",
+    "chat_prefix": "aipic_free",
+    "title": "一张美食摄影照片，主体是用[辣椒炒肉]的",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20251209/20251209-openai_6ca0dd8d-6efc-4dfb-ad95-894b1baff3d7.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 1
+  },
+  {
+    "id": 229,
+    "grid_data_id": "1c626257692fa51e",
+    "chat_prefix": "aipic_free",
+    "title": "高端中式美食海报，解构式北京烤鸭，所有元",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20251203/20251203-openai_51710981-d02a-40fb-9d7b-f52d755ebfaa.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 1
+  },
+  {
+    "id": 217,
+    "grid_data_id": "cee06b5468fcbbc1",
+    "chat_prefix": "aipic_free",
+    "title": "创作一张餐饮春季菜品宣传海报，以“在山野",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20251025/20251025-openai_e3a033a7-9ffe-4954-b5bf-2d8368577be4.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 1
+  },
+  {
+    "id": 197,
+    "grid_data_id": "6fff850168b32334",
+    "chat_prefix": "aipic_free_nano",
+    "title": "Design 9 different h",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250831/20250831-replicate_5b00cfef-c471-434a-af18-3e17edec2682.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 2
+  },
+  {
+    "id": 175,
+    "grid_data_id": "beac17df68ac5952",
+    "chat_prefix": "aipic_free",
+    "title": "美容操作",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250825/image_gen_grid-20250825-9222171034-37b5aee59d6046608fc68b3cb54478e6.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 2
+  },
+  {
+    "id": 170,
+    "grid_data_id": "cb1f9476689eb67f",
+    "chat_prefix": "aipic_free",
+    "title": "烫发写真",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250815/image_gen_grid-20250815-9222171034-823e05a32cb84a95aabdf8bbab11fd6f.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 2
+  },
+  {
+    "id": 166,
+    "grid_data_id": "b6f30c826889df1f",
+    "chat_prefix": "aipic_free",
+    "title": "再来一张",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/03705202/img_gen-03705202-1-664d3a5c70992190f3cf36c1ed4c3731.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 2
+  },
+  {
+    "id": 165,
+    "grid_data_id": "41e42d7f6889de0b",
+    "chat_prefix": "aipic_free",
+    "title": "渐变黑粉鲻鱼头发型",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/03705202/img_gen-03705202-1-db3f3b84f84a2d89433e58a1d64ace12.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 2
+  },
+  {
+    "id": 132,
+    "grid_data_id": "8661ab316845c24e",
+    "chat_prefix": "aipic_free",
+    "title": "美容中式",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/IMG_3857.PNG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 2
+  },
+  {
+    "id": 131,
+    "grid_data_id": "7e95158f6845c24e",
+    "chat_prefix": "aipic_free",
+    "title": "医美高级模特",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/IMG_3856.PNG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 2
+  },
+  {
+    "id": 130,
+    "grid_data_id": "ccbda9996845c24e",
+    "chat_prefix": "aipic_free",
+    "title": "医美高级模特",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/IMG_3855.PNG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 2
+  },
+  {
+    "id": 129,
+    "grid_data_id": "0d6c9d616845c24e",
+    "chat_prefix": "aipic_free",
+    "title": "美容spa",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/IMG_3854.PNG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 2
+  },
+  {
+    "id": 128,
+    "grid_data_id": "c672785a6845c24e",
+    "chat_prefix": "aipic_free",
+    "title": "精致美甲亮片",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/IMG_3853.PNG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 2
+  },
+  {
+    "id": 177,
+    "grid_data_id": "3c174a8768ac5bdc",
+    "chat_prefix": "aipic_free",
+    "title": "外卖店入口图",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250825/image_gen_grid-20250825-9222171034-867b4a84c6f34903b5d861e4ab99d0d3.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 3
+  },
+  {
+    "id": 176,
+    "grid_data_id": "1d60c83368ac5b69",
+    "chat_prefix": "aipic_free",
+    "title": "外卖店入口图",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250825/image_gen_grid-20250825-9222171034-c053fd8e6a1148ebb88817019ecfd411.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 3
+  },
+  {
+    "id": 171,
+    "grid_data_id": "0ab3e3aa68ac5615",
+    "chat_prefix": "aipic_free",
+    "title": "面馆门头设计",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250825/image_gen_grid-20250825-9222171034-444adaf20dc14c7da737702965d3bd90.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 3
+  },
+  {
+    "id": 164,
+    "grid_data_id": "c5c8c2ec688956ff",
+    "chat_prefix": "aipic_free",
+    "title": "再来一张",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/03705202/img_gen-03705202-1-816990634a4568cb846348cb697820ce.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 3
+  },
+  {
+    "id": 141,
+    "grid_data_id": "8b7c4bd46873d3de",
+    "chat_prefix": "aipic_free",
+    "title": "老北京涮羊肉门头设计2",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/mentou/IMG_5263.JPG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 3
+  },
+  {
+    "id": 140,
+    "grid_data_id": "398eabb76873d3de",
+    "chat_prefix": "aipic_free",
+    "title": "老北京涮羊肉门头设计",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/mentou/IMG_5262.JPG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 3
+  },
+  {
+    "id": 139,
+    "grid_data_id": "2ff7c73f6873d3de",
+    "chat_prefix": "aipic_free",
+    "title": "韩式烤肉店门头设计",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/mentou/IMG_5255.JPG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 3
+  },
+  {
+    "id": 138,
+    "grid_data_id": "91eef4d46873d3de",
+    "chat_prefix": "aipic_free",
+    "title": "韩式炸鸡啤酒快餐店门头设计",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/mentou/IMG_5254.JPG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 3
+  },
+  {
+    "id": 137,
+    "grid_data_id": "6bc088d16873d38d",
+    "chat_prefix": "aipic_free",
+    "title": "卡大叔韩式烤肉门头设计",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/mentou/IMG_5252.JPG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 3
+  },
+  {
+    "id": 136,
+    "grid_data_id": "d21aedf56873d38d",
+    "chat_prefix": "aipic_free",
+    "title": "热干面门头设计",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/mentou/IMG_5253.JPG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 3
+  },
+  {
+    "id": 280,
+    "grid_data_id": "3c597e5a698c263a",
+    "chat_prefix": "aipic_free",
+    "title": "合家团圆",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260211/9222171034-cd86a45c4bca42189cc9237a41e98f98.webp",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 4
+  },
+  {
+    "id": 279,
+    "grid_data_id": "c68b38db698c2618",
+    "chat_prefix": "aipic_free",
+    "title": "马年红包",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260211/9222171034-c88f5581efd5459c95f2fe0ea9b12706.webp",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 4
+  },
+  {
+    "id": 278,
+    "grid_data_id": "ad04dd7a698c25ee",
+    "chat_prefix": "aipic_free",
+    "title": "小马公仔毛绒玩具 马年大吉",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260211/9222171034-c5d07dd374544418afb93c79c5cc98ac.webp",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 4
+  },
+  {
+    "id": 276,
+    "grid_data_id": "47ca439a698c242c",
+    "chat_prefix": "aipic_free",
+    "title": "3D立体团圆饭",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260211/9222171034-e5a3878f426b464cad7dc2392cd47c9a.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 4
+  },
+  {
+    "id": 275,
+    "grid_data_id": "8951d052698c23f7",
+    "chat_prefix": "aipic_free",
+    "title": "餐饮新春海报",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260211/9222171034-240a3aee6ad1406399baef5cdb08f054.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 4
+  },
+  {
+    "id": 269,
+    "grid_data_id": "2df064466988782d",
+    "chat_prefix": "aipic_free",
+    "title": "毛绒风海报",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260208/9222171034-9044fb50607146d4837770f74d0e5627.png",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 4
+  },
+  {
+    "id": 268,
+    "grid_data_id": "071f01fa698877e5",
+    "chat_prefix": "aipic_free",
+    "title": "春节挂件",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260208/9222171034-b06efea9a0ae45538861a34eab2512ac.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 4
+  },
+  {
+    "id": 267,
+    "grid_data_id": "a3e36271698877a9",
+    "chat_prefix": "aipic_free",
+    "title": "马年剪纸海报",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260208/9222171034-0010ec03185f45d0aae8bb12d214885d.png",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 4
+  },
+  {
+    "id": 266,
+    "grid_data_id": "9b0a321b69887750",
+    "chat_prefix": "aipic_free",
+    "title": "国潮书法风格春节海报",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260208/9222171034-8c741f4030e84f53a92c0281b3ded0ad.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 4
+  },
+  {
+    "id": 265,
+    "grid_data_id": "aa87bb5969887729",
+    "chat_prefix": "aipic_free",
+    "title": "纤细飘逸的艺术字体新年海报",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260208/9222171034-90adea397c1f4162bb4d0cab26c26bf1.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 4
+  },
+  {
+    "id": 174,
+    "grid_data_id": "2959fd3b68ac591d",
+    "chat_prefix": "aipic_free",
+    "title": "泰式按摩",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250825/image_gen_grid-20250825-9222171034-bfeae681099f4a9aba94a19022ae2459.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 5
+  },
+  {
+    "id": 173,
+    "grid_data_id": "a185e07168ac5818",
+    "chat_prefix": "aipic_free",
+    "title": "按摩spa",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250825/image_gen_grid-20250825-9222171034-eee587558bb0419babd52b28a1e5edf8.jpg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 5
+  },
+  {
+    "id": 148,
+    "grid_data_id": "68cf356b6873e4bc",
+    "chat_prefix": "aipic_free",
+    "title": "精油推背，养生",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5266.JPG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 5
+  },
+  {
+    "id": 147,
+    "grid_data_id": "064bb0ef6873e4bc",
+    "chat_prefix": "aipic_free",
+    "title": "养生按摩",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5265.JPG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 5
+  },
+  {
+    "id": 146,
+    "grid_data_id": "fef7df7c6873e249",
+    "chat_prefix": "aipic_free",
+    "title": "按摩让人身心愉悦",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5264.JPG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 5
+  },
+  {
+    "id": 145,
+    "grid_data_id": "ad390f836873e249",
+    "chat_prefix": "aipic_free",
+    "title": "健身房，美女做力量训练，画面突出美女力量，身体线条",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5261.JPG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 5
+  },
+  {
+    "id": 144,
+    "grid_data_id": "b656ccc96873e249",
+    "chat_prefix": "aipic_free",
+    "title": "健身房，美女做力量训练，画面突出美女力量，身体线条",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5260.JPG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 5
+  },
+  {
+    "id": 143,
+    "grid_data_id": "f97bb7026873e249",
+    "chat_prefix": "aipic_free",
+    "title": "按摩休闲spa",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5258.PNG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 5
+  },
+  {
+    "id": 142,
+    "grid_data_id": "15ea25146873e249",
+    "chat_prefix": "aipic_free",
+    "title": "中医理疗师给顾客做头疗",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5257.PNG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 5
+  },
+  {
+    "id": 99,
+    "grid_data_id": "b524e5e56845b851",
+    "chat_prefix": "aipic_free",
+    "title": "健身房美女",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/IMG_3824.PNG",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 5
+  },
+  {
+    "id": 283,
+    "grid_data_id": "0bd24bfd699820b0",
+    "chat_prefix": "aipic_tandian_batch",
+    "title": "AI生图_1770951714",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260213/20260213-aliyun_wanx_46440c34-a70a-41ac-bbc8-bafbb1820a84.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 6
+  },
+  {
+    "id": 282,
+    "grid_data_id": "5d67047d6998209e",
+    "chat_prefix": "aipic_tandian_batch",
+    "title": "AI生图_1769514130",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260127/20260127-aliyun_wanx_99a3abb8-3d1b-4694-8a09-a5c1fb7de562.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 6
+  },
+  {
+    "id": 274,
+    "grid_data_id": "6ae12920698c0e37",
+    "chat_prefix": "aipic_free",
+    "title": "在图片的杯子上方手绘画上红色为主的烟花",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260211/20260211-openai_b63bd3d7-19ec-47f3-aaa0-71e4c9297713.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 6
+  },
+  {
+    "id": 273,
+    "grid_data_id": "87262b2f698b3a19",
+    "chat_prefix": "aipic_free",
+    "title": "生成一位年轻女性在这张照片的店铺门口",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260210/20260210-openai_929b4f43-b9c7-4e62-ba93-22a77e6273db.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 6
+  },
+  {
+    "id": 272,
+    "grid_data_id": "98c96432698ae313",
+    "chat_prefix": "aipic_free",
+    "title": "在主体物边缘红色的手绘描边，在图中环绕主",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260210/20260210-openai_1ede6aa7-da8a-4313-b942-78ef9333fa32.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 6
+  },
+  {
+    "id": 271,
+    "grid_data_id": "34683317698ae1c8",
+    "chat_prefix": "aipic_free",
+    "title": "在主体物边缘红色的手绘描边，在图中环绕主",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260210/20260210-openai_4f655fbc-c0dd-487d-b03c-3be04b767de0.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 6
+  },
+  {
+    "id": 270,
+    "grid_data_id": "b68330ed698adf1a",
+    "chat_prefix": "aipic_free",
+    "title": "生成一位年轻女性在餐厅用餐的探店照片",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260210/20260210-openai_d8689986-4aa6-4369-81c8-566cfce5aa6b.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 6
+  },
+  {
+    "id": 261,
+    "grid_data_id": "f81d0da26981f87a",
+    "chat_prefix": "aipic_free",
+    "title": "Plog",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260203/9222171034-9562db975cd34cb2bb3e620ab86bd62a.png",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 6
+  },
+  {
+    "id": 260,
+    "grid_data_id": "8d3be6bc6981f847",
+    "chat_prefix": "aipic_free",
+    "title": "Plog",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260203/9222171034-1cd7eb2a3dc0410290ebcc998a9190bd.png",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 6
+  },
+  {
+    "id": 259,
+    "grid_data_id": "5d19e3466981f7f7",
+    "chat_prefix": "aipic_free",
+    "title": "Plog",
+    "content": "示例内容",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260203/9222171034-4c0a89c3a57c4cf4bd969d0c662cd10e.png",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 6
+  },
+  {
+    "id": 281,
+    "grid_data_id": "4e2f1930698ebb0f",
+    "chat_prefix": "aipic_free",
+    "title": "游戏CG风格，极具艺术感、震撼人心，色彩",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260213/20260213-openai_3698c182-37a1-4923-815e-0f4f7e4af391.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 7
+  },
+  {
+    "id": 256,
+    "grid_data_id": "2f38f78369777bb1",
+    "chat_prefix": "aipic_free",
+    "title": "游戏CG风格，极具艺术感、震撼人心，色彩",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260126/20260126-openai_3fe32f9b-c98e-490d-941c-55440565bbbd.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 7
+  },
+  {
+    "id": 218,
+    "grid_data_id": "a48e9a9c69050521",
+    "chat_prefix": "aipic_free",
+    "title": "将上传的图像转换为全毛绒质感的风格，保留",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20251101/20251101-openai_ddefa537-bf74-4c96-abe3-2f8372771946.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 7
+  },
+  {
+    "id": 214,
+    "grid_data_id": "bff5767568ee3b78",
+    "chat_prefix": "aipic_free",
+    "title": "在一个简约的艺术展厅里，背对镜头站立，旁",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20251014/20251014-openai_7c7d38a8-8142-4f6c-b4b9-de1b0b18ac7a.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 7
+  },
+  {
+    "id": 213,
+    "grid_data_id": "386d40f168d26556",
+    "chat_prefix": "aipic_free",
+    "title": "这一张图片以暖色为背景，采用九宫格排版，",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250923/20250923-openai_2ad532e4-3def-4eab-86f7-61839503866d.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 7
+  },
+  {
+    "id": 211,
+    "grid_data_id": "b0f8310c68ca9b0e",
+    "chat_prefix": "aipic_free",
+    "title": "一个3D风格的虚拟潮流角色肖像，角色特征",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250917/20250917-openai_dde0947a-2c05-4b7e-8885-53ef06e4770a.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 7
+  },
+  {
+    "id": 210,
+    "grid_data_id": "2a98f08468ca97c8",
+    "chat_prefix": "aipic_free",
+    "title": "宠物戴着蓝色星星透明派对帽，穿蓝色星星透",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250917/20250917-openai_bbb8a0d4-8a8f-48a6-ad39-8646d93e521c.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 7
+  },
+  {
+    "id": 209,
+    "grid_data_id": "adb108dd68ca9766",
+    "chat_prefix": "aipic_free",
+    "title": "场景是一间明亮的宠物主题店铺，白色货架上",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250917/20250917-openai_c50a4ae9-81d5-48ca-bb70-aa76e3f355ec.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 7
+  },
+  {
+    "id": 206,
+    "grid_data_id": "ff280da068c94783",
+    "chat_prefix": "aipic_free",
+    "title": "照片里的人物是一个明星，在机场被大批粉丝",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250916/20250916-openai_e3851153-dc97-440a-87d8-974889558f54.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 7
+  },
+  {
+    "id": 204,
+    "grid_data_id": "0d200ac668bea942",
+    "chat_prefix": "aipic_free_nano",
+    "title": "将照片中的人物转化为乐高小人包装盒的风格",
+    "content": "参考用例",
+    "picture_url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250908/20250908-replicate_a569897d-07d9-48f9-b5a6-0df48cef7bb2.jpeg",
+    "queried_type": "aipic_dianpuhaibao",
+    "queried_tag": 7
+  }
+]

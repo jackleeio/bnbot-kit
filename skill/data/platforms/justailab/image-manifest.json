@@ -1,0 +1,599 @@
+[
+  {
+    "category": "tools",
+    "subtype": "aipic_free",
+    "title": "自由生成图片",
+    "sub_title": "发挥你的想象，提任意的生图要求",
+    "url": "https://cos.justailab.xyz/media/scene_icons/tool_free.png"
+  },
+  {
+    "category": "tools",
+    "subtype": "pic_peitu",
+    "title": "笔记封面",
+    "sub_title": "根据笔记内容，AI 生成配图",
+    "url": "https://cos.justailab.xyz/media/scene_icons/tool_bijipeitu.png"
+  },
+  {
+    "category": "tools",
+    "subtype": "aipic_product",
+    "title": "商品图",
+    "sub_title": "",
+    "url": "https://cos.justailab.xyz/media/scene_icons/tool_product.png"
+  },
+  {
+    "category": "tools",
+    "subtype": "aipic_tandian_batch",
+    "title": "AI 探店图",
+    "sub_title": "",
+    "url": "https://cos.justailab.xyz/media/scene_icons/tool_AItandian.png"
+  },
+  {
+    "category": "tools",
+    "subtype": "aipic_dianpuhaibao",
+    "title": "店铺海报",
+    "sub_title": "",
+    "url": "https://cos.justailab.xyz/media/scene_icons/tool_haibao.png"
+  },
+  {
+    "category": "templates",
+    "subtype": "pic_peitu",
+    "template_id": 200,
+    "title": "大字报",
+    "description": "大字报随机风格",
+    "url": "https://cos.justailab.xyz/media/scene_icons/peitu_dazibao.png"
+  },
+  {
+    "category": "templates",
+    "subtype": "pic_peitu",
+    "template_id": 128,
+    "title": "备忘录",
+    "description": "备忘录封面",
+    "url": "https://cos.justailab.xyz/media/share/icon-ni-beiwanglu.png"
+  },
+  {
+    "category": "templates",
+    "subtype": "pic_peitu",
+    "template_id": 129,
+    "title": "光影",
+    "description": "光影封面",
+    "url": "https://cos.justailab.xyz/media/share/icon-ni-guangying.png"
+  },
+  {
+    "category": "templates",
+    "subtype": "pic_peitu",
+    "template_id": 3,
+    "title": "探店种草",
+    "description": "美食图片网格布局，配上美食攻略的标题，简洁大方。",
+    "url": "https://cos.justailab.xyz/media/share/tandianzhongcao.png"
+  },
+  {
+    "category": "templates",
+    "subtype": "pic_peitu",
+    "template_id": 2,
+    "title": "美食合集",
+    "description": "美食图片网格布局，配上美食攻略的标题，简洁大方。",
+    "url": "https://cos.justailab.xyz/media/share/meishiheji.png"
+  },
+  {
+    "category": "templates",
+    "subtype": "aipic_product",
+    "template_id": "111",
+    "title": "白底图",
+    "description": "",
+    "url": "https://cos.justailab.xyz/media/scene_icons/baiditu.png"
+  },
+  {
+    "category": "templates",
+    "subtype": "aipic_product",
+    "template_id": "222",
+    "title": "氛围场景",
+    "description": "",
+    "url": "https://cos.justailab.xyz/media/scene_icons/fenweichangjing.png"
+  },
+  {
+    "category": "templates",
+    "subtype": "aipic_product",
+    "template_id": "333",
+    "title": "手绘风",
+    "description": "",
+    "url": "https://cos.justailab.xyz/media/scene_icons/shouhuifeng.png"
+  },
+  {
+    "category": "templates",
+    "subtype": "aipic_product",
+    "template_id": "444",
+    "title": "单品海报",
+    "description": "",
+    "url": "https://cos.justailab.xyz/media/scene_icons/danpinhaibao.png"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 277,
+    "title": "中国风年夜饭",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260211/9222171034-2c6d1770e8834e3196f08775fabf12aa.webp"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 264,
+    "title": "雅致温馨的国风新年风产品海报",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260208/9222171034-0ba085f64feb4605a2ec1c7540a4d7af.png"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 253,
+    "title": "烤鸡翅，优质食品广告摄影，白色背景。",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260114/20260114-openai_0f82fa71-66ff-4a00-94c4-0db0c3a59222.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 250,
+    "title": "红烧肉盖饭",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260114/9222171034-877f0b92f3a7416287beb86c6f24c45e.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 248,
+    "title": "异形牌风格的甜点促销海报，整体轮廓活泼有",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260111/20260111-openai_0bf440de-8eba-4e30-9a58-61f60a425888.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 247,
+    "title": "画面主体是异形KT板形式的潮汕美食“秘制",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260111/20260111-openai_b286271f-d0c5-4893-acc6-480b41118759.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 232,
+    "title": "一张美食摄影照片，主体是用[菠萝炒饭]的",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20251209/20251209-openai_a3176dad-c8bc-4e71-890d-11b079963198.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 231,
+    "title": "一张美食摄影照片，主体是用[辣椒炒肉]的",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20251209/20251209-openai_6ca0dd8d-6efc-4dfb-ad95-894b1baff3d7.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 229,
+    "title": "高端中式美食海报，解构式北京烤鸭，所有元",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20251203/20251203-openai_51710981-d02a-40fb-9d7b-f52d755ebfaa.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 217,
+    "title": "创作一张餐饮春季菜品宣传海报，以“在山野",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20251025/20251025-openai_e3a033a7-9ffe-4954-b5bf-2d8368577be4.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free_nano",
+    "id": 197,
+    "title": "Design 9 different h",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250831/20250831-replicate_5b00cfef-c471-434a-af18-3e17edec2682.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 175,
+    "title": "美容操作",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250825/image_gen_grid-20250825-9222171034-37b5aee59d6046608fc68b3cb54478e6.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 170,
+    "title": "烫发写真",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250815/image_gen_grid-20250815-9222171034-823e05a32cb84a95aabdf8bbab11fd6f.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 166,
+    "title": "再来一张",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/03705202/img_gen-03705202-1-664d3a5c70992190f3cf36c1ed4c3731.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 165,
+    "title": "渐变黑粉鲻鱼头发型",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/03705202/img_gen-03705202-1-db3f3b84f84a2d89433e58a1d64ace12.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 132,
+    "title": "美容中式",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/IMG_3857.PNG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 131,
+    "title": "医美高级模特",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/IMG_3856.PNG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 130,
+    "title": "医美高级模特",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/IMG_3855.PNG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 129,
+    "title": "美容spa",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/IMG_3854.PNG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 128,
+    "title": "精致美甲亮片",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/IMG_3853.PNG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 177,
+    "title": "外卖店入口图",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250825/image_gen_grid-20250825-9222171034-867b4a84c6f34903b5d861e4ab99d0d3.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 176,
+    "title": "外卖店入口图",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250825/image_gen_grid-20250825-9222171034-c053fd8e6a1148ebb88817019ecfd411.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 171,
+    "title": "面馆门头设计",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250825/image_gen_grid-20250825-9222171034-444adaf20dc14c7da737702965d3bd90.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 164,
+    "title": "再来一张",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/03705202/img_gen-03705202-1-816990634a4568cb846348cb697820ce.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 141,
+    "title": "老北京涮羊肉门头设计2",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/mentou/IMG_5263.JPG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 140,
+    "title": "老北京涮羊肉门头设计",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/mentou/IMG_5262.JPG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 139,
+    "title": "韩式烤肉店门头设计",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/mentou/IMG_5255.JPG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 138,
+    "title": "韩式炸鸡啤酒快餐店门头设计",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/mentou/IMG_5254.JPG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 137,
+    "title": "卡大叔韩式烤肉门头设计",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/mentou/IMG_5252.JPG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 136,
+    "title": "热干面门头设计",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/mentou/IMG_5253.JPG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 280,
+    "title": "合家团圆",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260211/9222171034-cd86a45c4bca42189cc9237a41e98f98.webp"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 279,
+    "title": "马年红包",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260211/9222171034-c88f5581efd5459c95f2fe0ea9b12706.webp"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 278,
+    "title": "小马公仔毛绒玩具 马年大吉",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260211/9222171034-c5d07dd374544418afb93c79c5cc98ac.webp"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 276,
+    "title": "3D立体团圆饭",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260211/9222171034-e5a3878f426b464cad7dc2392cd47c9a.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 275,
+    "title": "餐饮新春海报",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260211/9222171034-240a3aee6ad1406399baef5cdb08f054.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 269,
+    "title": "毛绒风海报",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260208/9222171034-9044fb50607146d4837770f74d0e5627.png"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 268,
+    "title": "春节挂件",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260208/9222171034-b06efea9a0ae45538861a34eab2512ac.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 267,
+    "title": "马年剪纸海报",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260208/9222171034-0010ec03185f45d0aae8bb12d214885d.png"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 266,
+    "title": "国潮书法风格春节海报",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260208/9222171034-8c741f4030e84f53a92c0281b3ded0ad.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 265,
+    "title": "纤细飘逸的艺术字体新年海报",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260208/9222171034-90adea397c1f4162bb4d0cab26c26bf1.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 174,
+    "title": "泰式按摩",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250825/image_gen_grid-20250825-9222171034-bfeae681099f4a9aba94a19022ae2459.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 173,
+    "title": "按摩spa",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20250825/image_gen_grid-20250825-9222171034-eee587558bb0419babd52b28a1e5edf8.jpg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 148,
+    "title": "精油推背，养生",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5266.JPG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 147,
+    "title": "养生按摩",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5265.JPG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 146,
+    "title": "按摩让人身心愉悦",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5264.JPG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 145,
+    "title": "健身房，美女做力量训练，画面突出美女力量，身体线条",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5261.JPG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 144,
+    "title": "健身房，美女做力量训练，画面突出美女力量，身体线条",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5260.JPG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 143,
+    "title": "按摩休闲spa",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5258.PNG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 142,
+    "title": "中医理疗师给顾客做头疗",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/yundongjiankang/IMG_5257.PNG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 99,
+    "title": "健身房美女",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen_grid/IMG_3824.PNG"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_tandian_batch",
+    "id": 283,
+    "title": "AI生图_1770951714",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260213/20260213-aliyun_wanx_46440c34-a70a-41ac-bbc8-bafbb1820a84.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_tandian_batch",
+    "id": 282,
+    "title": "AI生图_1769514130",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260127/20260127-aliyun_wanx_99a3abb8-3d1b-4694-8a09-a5c1fb7de562.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 274,
+    "title": "在图片的杯子上方手绘画上红色为主的烟花",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260211/20260211-openai_b63bd3d7-19ec-47f3-aaa0-71e4c9297713.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 273,
+    "title": "生成一位年轻女性在这张照片的店铺门口",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260210/20260210-openai_929b4f43-b9c7-4e62-ba93-22a77e6273db.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 272,
+    "title": "在主体物边缘红色的手绘描边，在图中环绕主",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260210/20260210-openai_1ede6aa7-da8a-4313-b942-78ef9333fa32.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 271,
+    "title": "在主体物边缘红色的手绘描边，在图中环绕主",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260210/20260210-openai_4f655fbc-c0dd-487d-b03c-3be04b767de0.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 270,
+    "title": "生成一位年轻女性在餐厅用餐的探店照片",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260210/20260210-openai_d8689986-4aa6-4369-81c8-566cfce5aa6b.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 261,
+    "title": "Plog",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260203/9222171034-9562db975cd34cb2bb3e620ab86bd62a.png"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 260,
+    "title": "Plog",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260203/9222171034-1cd7eb2a3dc0410290ebcc998a9190bd.png"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 259,
+    "title": "Plog",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/image_gen_grid/20260203/9222171034-4c0a89c3a57c4cf4bd969d0c662cd10e.png"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 281,
+    "title": "游戏CG风格，极具艺术感、震撼人心，色彩",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260213/20260213-openai_3698c182-37a1-4923-815e-0f4f7e4af391.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 256,
+    "title": "游戏CG风格，极具艺术感、震撼人心，色彩",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20260126/20260126-openai_3fe32f9b-c98e-490d-941c-55440565bbbd.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 218,
+    "title": "将上传的图像转换为全毛绒质感的风格，保留",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20251101/20251101-openai_ddefa537-bf74-4c96-abe3-2f8372771946.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 214,
+    "title": "在一个简约的艺术展厅里，背对镜头站立，旁",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20251014/20251014-openai_7c7d38a8-8142-4f6c-b4b9-de1b0b18ac7a.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 213,
+    "title": "这一张图片以暖色为背景，采用九宫格排版，",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250923/20250923-openai_2ad532e4-3def-4eab-86f7-61839503866d.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 211,
+    "title": "一个3D风格的虚拟潮流角色肖像，角色特征",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250917/20250917-openai_dde0947a-2c05-4b7e-8885-53ef06e4770a.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 210,
+    "title": "宠物戴着蓝色星星透明派对帽，穿蓝色星星透",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250917/20250917-openai_bbb8a0d4-8a8f-48a6-ad39-8646d93e521c.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 209,
+    "title": "场景是一间明亮的宠物主题店铺，白色货架上",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250917/20250917-openai_c50a4ae9-81d5-48ca-bb70-aa76e3f355ec.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free",
+    "id": 206,
+    "title": "照片里的人物是一个明星，在机场被大批粉丝",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250916/20250916-openai_e3851153-dc97-440a-87d8-974889558f54.jpeg"
+  },
+  {
+    "category": "references",
+    "subtype": "aipic_free_nano",
+    "id": 204,
+    "title": "将照片中的人物转化为乐高小人包装盒的风格",
+    "url": "https://cos.justailab.xyz/media/images/cos_only/img_gen/20250908/20250908-replicate_a569897d-07d9-48f9-b5a6-0df48cef7bb2.jpeg"
+  }
+]
