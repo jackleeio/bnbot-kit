@@ -326,6 +326,143 @@ async function debugShowPoolWindow(args: {
 }
 
 /**
+ * Install a persistent fetch/XHR interceptor in a pool tab via CDP
+ * `Page.addScriptToEvaluateOnNewDocument`. Survives reloads and
+ * subsequent navigations — everything the page calls to /api/ or
+ * graphql lands in `window.__bnbotCap` as {url,status,method,body}.
+ * Pair with `debugRecordDump` to read and with `debugRecordStop` to
+ * remove. Used by `bnbot debug record <url>` to mirror third-party
+ * Next.js / SPA backends.
+ */
+let recordingScriptIds = new Map<string, string>();
+
+async function debugRecordStart(args: {
+  tabId?: number;
+  targetHost?: string;
+  filterPattern?: string;
+}): Promise<{ tabId: number; scriptId: string }> {
+  let tabId = args.tabId;
+  if (!tabId) {
+    const pool = getPoolTabs();
+    if (pool.length === 0) throw new Error('debug_record_start: no pool tabs');
+    const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    tabId = (hostMatch ?? pool[0]).tabId;
+  }
+  const targetId = await ensureDebuggerAttached(tabId, ['Page', 'Runtime']);
+  const filter = args.filterPattern || '/api/|graphql';
+  const source = `
+    (function () {
+      if (window.__bnbotHooked) { window.__bnbotCap = []; return; }
+      window.__bnbotHooked = true;
+      window.__bnbotCap = [];
+      const re = new RegExp(${JSON.stringify(filter)}, 'i');
+      const push = (method, url, status, body, reqBody) => {
+        try {
+          window.__bnbotCap.push({
+            method: String(method || 'GET'),
+            url: String(url),
+            status: Number(status || 0),
+            body: String(body || '').slice(0, 100000),
+            reqBody: String(reqBody || '').slice(0, 20000),
+            ts: Date.now(),
+          });
+        } catch {}
+      };
+      const origFetch = window.fetch;
+      window.fetch = async function (input, init) {
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        const method = (init && init.method) || (input && input.method) || 'GET';
+        let reqBody = '';
+        try { reqBody = typeof init?.body === 'string' ? init.body : ''; } catch {}
+        const resp = await origFetch.apply(this, arguments);
+        try {
+          if (re.test(url)) {
+            const text = await resp.clone().text();
+            push(method, url, resp.status, text, reqBody);
+          }
+        } catch {}
+        return resp;
+      };
+      const OO = XMLHttpRequest.prototype.open;
+      const OS = XMLHttpRequest.prototype.send;
+      XMLHttpRequest.prototype.open = function (method, url) {
+        this.__bnbotUrl = url;
+        this.__bnbotMethod = method;
+        return OO.apply(this, arguments);
+      };
+      XMLHttpRequest.prototype.send = function (body) {
+        try { this.__bnbotReqBody = typeof body === 'string' ? body : ''; } catch {}
+        this.addEventListener('load', () => {
+          try {
+            if (re.test(this.__bnbotUrl || '')) {
+              push(this.__bnbotMethod, this.__bnbotUrl, this.status, this.responseText, this.__bnbotReqBody);
+            }
+          } catch {}
+        });
+        return OS.apply(this, arguments);
+      };
+    })();
+  `;
+  // Remove any previous script so re-starting doesn't stack wrappers.
+  const existing = recordingScriptIds.get(targetId);
+  if (existing) {
+    await debuggerSend(targetId, 'Page.removeScriptToEvaluateOnNewDocument', { identifier: existing }).catch(() => {});
+  }
+  const { identifier } = await debuggerSend<{ identifier: string }>(
+    targetId,
+    'Page.addScriptToEvaluateOnNewDocument',
+    { source },
+  );
+  recordingScriptIds.set(targetId, identifier);
+  // Prime the live document too (so current page, pre-reload, also records).
+  await debuggerSend(targetId, 'Runtime.evaluate', { expression: source });
+  return { tabId, scriptId: identifier };
+}
+
+async function debugRecordDump(args: {
+  tabId?: number;
+  targetHost?: string;
+  clear?: boolean;
+}): Promise<Array<{ method: string; url: string; status: number; body: string; ts: number }>> {
+  let tabId = args.tabId;
+  if (!tabId) {
+    const pool = getPoolTabs();
+    if (pool.length === 0) throw new Error('debug_record_dump: no pool tabs');
+    const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    tabId = (hostMatch ?? pool[0]).tabId;
+  }
+  const targetId = await ensureDebuggerAttached(tabId, ['Page', 'Runtime']);
+  const result = await debuggerSend<{ result: { value?: unknown } }>(
+    targetId,
+    'Runtime.evaluate',
+    {
+      expression: `(()=>{ const c = window.__bnbotCap || []; ${args.clear ? 'window.__bnbotCap = [];' : ''} return c; })()`,
+      returnByValue: true,
+    },
+  );
+  return (result.result?.value as Array<{ method: string; url: string; status: number; body: string; ts: number }>) || [];
+}
+
+async function debugRecordStop(args: {
+  tabId?: number;
+  targetHost?: string;
+}): Promise<{ tabId: number; removed: boolean }> {
+  let tabId = args.tabId;
+  if (!tabId) {
+    const pool = getPoolTabs();
+    if (pool.length === 0) throw new Error('debug_record_stop: no pool tabs');
+    const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    tabId = (hostMatch ?? pool[0]).tabId;
+  }
+  const targetId = await ensureDebuggerAttached(tabId, ['Page', 'Runtime']);
+  const id = recordingScriptIds.get(targetId);
+  if (!id) return { tabId, removed: false };
+  await debuggerSend(targetId, 'Page.removeScriptToEvaluateOnNewDocument', { identifier: id }).catch(() => {});
+  recordingScriptIds.delete(targetId);
+  return { tabId, removed: true };
+}
+
+/**
  * Dispatch a REAL (trusted) mouse click at the element's center via CDP
  * `Input.dispatchMouseEvent`. Needed for buttons whose framework code
  * checks `event.isTrusted` (e.g. XHS emoji / share buttons) — synthetic
@@ -579,7 +716,7 @@ localRelayManager.init({
       // Exploration-style actions (human probing a new platform's DOM) need
       // a bigger idle bonus than the default — think time between eval
       // calls routinely exceeds a couple minutes.
-      const EXPLORE_ACTIONS = new Set(['debug_eval', 'debug_set_files', 'debug_click', 'debug_show_window', 'debug_drag', 'navigate_to_url', 'screenshot']);
+      const EXPLORE_ACTIONS = new Set(['debug_eval', 'debug_set_files', 'debug_click', 'debug_show_window', 'debug_drag', 'debug_record_start', 'debug_record_dump', 'debug_record_stop', 'navigate_to_url', 'screenshot']);
       const bonusMs = EXPLORE_ACTIONS.has(scraperKey) ? IDLE_BONUS_EXPLORE : undefined;
       try {
         const data = await scraperHandlers[scraperKey](message.actionPayload as any);
@@ -1472,6 +1609,20 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
     targetHost: m.targetHost,
   }),
   debug_show_window: (m) => debugShowPoolWindow({
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
+  debug_record_start: (m) => debugRecordStart({
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+    filterPattern: m.filterPattern,
+  }),
+  debug_record_dump: (m) => debugRecordDump({
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+    clear: m.clear,
+  }),
+  debug_record_stop: (m) => debugRecordStop({
     tabId: m.tabId,
     targetHost: m.targetHost,
   }),

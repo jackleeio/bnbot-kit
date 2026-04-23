@@ -110,6 +110,75 @@ export async function debugDragCommand(
   console.log(JSON.stringify(result, null, 2));
 }
 
+interface RecordArgs {
+  duration?: string;
+  out?: string;
+  host?: string;
+  tabId?: string;
+  filter?: string;
+  scroll?: boolean;
+}
+
+/**
+ * `bnbot debug record <url>` — mirror a third-party site's API calls.
+ *
+ * Injects a persistent fetch/XHR interceptor via CDP
+ * `Page.addScriptToEvaluateOnNewDocument`, navigates, waits, optionally
+ * auto-scrolls to trigger lazy-load, then dumps everything to JSON.
+ *
+ * Typical use: research other creator-tool SaaS by mirroring their
+ * internal API shape.
+ */
+export async function debugRecordCommand(url: string, opts: RecordArgs): Promise<void> {
+  const { writeFileSync } = await import('node:fs');
+  const duration = Number.parseFloat(opts.duration || '20') * 1000;
+  await ensureServer(DEFAULT_PORT);
+
+  // 1. First navigate to target so we have a pool tab on the right host.
+  //    addScriptToEvaluateOnNewDocument fires for SUBSEQUENT navigations,
+  //    not the one in flight, so we need two nav steps: nav → hook → nav.
+  await sendAction('navigate_to_url', { url });
+
+  // 2. Start recording (injects interceptor as Page.addScript... for the
+  //    next document load).
+  const startPayload: Record<string, unknown> = { filterPattern: opts.filter };
+  if (opts.tabId) startPayload.tabId = Number.parseInt(opts.tabId, 10);
+  if (opts.host) startPayload.targetHost = opts.host;
+  await sendAction('debug_record_start', startPayload);
+
+  // 3. Reload so interceptor catches the first-screen API calls too.
+  await sendAction('debug_eval', { expression: 'location.reload(); "reloading"' });
+
+  const deadline = Date.now() + duration;
+  const tick = 1500;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, tick));
+    if (opts.scroll) {
+      // Gentle scroll to trigger lazy-load feeds. Ignore errors —
+      // some pages scroll a nested container not window.
+      await sendAction('debug_eval', {
+        expression: `window.scrollBy({top: window.innerHeight * 0.8, behavior: 'instant'})`,
+      }).catch(() => null);
+    }
+  }
+
+  // 3. Dump buffer.
+  const dumpPayload: Record<string, unknown> = { clear: true };
+  if (opts.tabId) dumpPayload.tabId = Number.parseInt(opts.tabId, 10);
+  if (opts.host) dumpPayload.targetHost = opts.host;
+  const result = await sendAction('debug_record_dump', dumpPayload);
+
+  // 4. Write to file or stdout.
+  const json = JSON.stringify(result, null, 2);
+  if (opts.out) {
+    writeFileSync(opts.out, json);
+    const count = Array.isArray(result) ? result.length : 0;
+    console.log(`wrote ${count} captures to ${opts.out}`);
+  } else {
+    console.log(json);
+  }
+}
+
 function sendAction(actionType: string, payload: Record<string, unknown>): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://127.0.0.1:${DEFAULT_PORT}`);

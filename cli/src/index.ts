@@ -55,7 +55,7 @@ import {
 } from './commands/actions.js';
 import { screenshotCommand } from './commands/screenshot.js';
 import { downloadCommand } from './commands/download.js';
-import { debugEvalCommand, debugUploadCommand, debugClickCommand, debugShowCommand, debugDragCommand } from './commands/debug.js';
+import { debugEvalCommand, debugUploadCommand, debugClickCommand, debugShowCommand, debugDragCommand, debugRecordCommand } from './commands/debug.js';
 import { xhsPostCommand, xhsStatsNoteCommand, xhsStatsAccountCommand } from './commands/xhs.js';
 import {
   calendarAddCommand,
@@ -231,6 +231,17 @@ function buildProgram(): Command {
     .option('--host <hostname>', 'Target the pool tab for this host')
     .option('--steps <n>', 'Number of interpolated mouseMoved steps (default 20)')
     .action(debugDragCommand);
+
+  debug
+    .command('record <url>')
+    .description('Navigate + capture all fetch/XHR API responses (use to mirror third-party SaaS backends)')
+    .option('--duration <seconds>', 'How long to capture after navigate', '20')
+    .option('--out <path>', 'Write captures to this JSON file (default stdout)')
+    .option('--host <hostname>', 'Target the pool tab for this host')
+    .option('--tab-id <id>', 'Target a specific chrome tab id')
+    .option('--filter <regex>', 'URL filter regex (default: /api/|graphql)')
+    .option('--scroll', 'Auto-scroll the page to trigger lazy-load feeds')
+    .action(debugRecordCommand);
 
   // ── Xiaohongshu ────────────────────────────────────────
   // One-shot compose + optional publish. Plan JSON shape in
