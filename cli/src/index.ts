@@ -261,9 +261,24 @@ function buildProgram(): Command {
   xhs
     .command('post')
     .description('Compose (and optionally publish) an image-text XHS note from a JSON plan')
-    .option('--plan <path>', 'Path to plan JSON, or `-` for stdin', '-')
+    .argument(
+      '[plan-json-or-path]',
+      'Plan as inline JSON (e.g. \'{"title":...,"body":...}\'), OR a path to a JSON file, OR "-" for stdin. Defaults to stdin if omitted.',
+    )
+    .option('--plan <path>', 'Alias for the positional arg — path to plan JSON, or `-` for stdin', '-')
     .option('--publish', 'Actually click 发布 at the end (default: stop after compose)')
-    .action(xhsPostCommand);
+    .action((arg: string | undefined, opts: { plan?: string; publish?: boolean }) => {
+      // Three input shapes accepted (in priority order):
+      //   1. Positional inline JSON (starts with '{')  — convenient one-shot
+      //   2. Positional path to a .json file
+      //   3. --plan <path> (or '-' for stdin), kept for back-compat
+      const planSource =
+        arg && arg.trim().startsWith('{') ? { inline: arg } : { plan: arg ?? opts.plan ?? '-' }
+      return xhsPostCommand({
+        ...planSource,
+        publish: opts.publish,
+      })
+    });
 
   xhs
     .command('stats-note')

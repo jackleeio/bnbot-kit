@@ -208,6 +208,93 @@ async function pollEval(
   throw new Error(`pollEval timed out: ${expression}`)
 }
 
+/**
+ * Wait until the XHS composer has actually finished uploading every
+ * image, not just registered the file selection.
+ *
+ * The earlier ".status === N/18" check (step 2 in postXhsNote) only
+ * proves that XHS accepted the file selection — the bytes may still be
+ * uploading to xhscdn. Clicking 发布 during that window triggers the
+ * toast "图片正在上传，请稍后再发布" and the publish never fires;
+ * caller is left stuck on /publish/publish.
+ *
+ * We poll several "actually-done" signals together, since XHS doesn't
+ * expose a single canonical one:
+ *   1. Every image card mounted (>= expectedCount)
+ *   2. No upload-progress overlay on any card (selectors collected from
+ *      observed DOM + a defensive `[class*="loading"]` net)
+ *   3. The 发布 button is not in a disabled / loading state
+ *   4. No "上传中 / 正在上传" toast hanging around
+ *
+ * Generous 90s timeout — large image batches + slow uplinks really do
+ * take that long sometimes; aborting earlier just papers over the bug.
+ */
+async function waitForXhsUploadsComplete(
+  targetId: string,
+  expectedCount: number,
+  timeoutMs = 90_000,
+): Promise<void> {
+  const expression = `(()=>{
+    try {
+      const cards = [...document.querySelectorAll('.flex-list > .pr')];
+      if (cards.length < ${expectedCount}) return {ok:false, reason:'cards-missing:'+cards.length};
+      for (const c of cards) {
+        if (c.querySelector('.upload-progress, .progress, .loading-mask, .uploading, .pr-loading, [class*="loading"], [class*="Loading"]')) {
+          return {ok:false, reason:'card-uploading'};
+        }
+        const cls = (c.className||'')+'';
+        if (/uploading|loading/i.test(cls)) return {ok:false, reason:'card-class-pending'};
+      }
+      const btn = document.querySelector('button.custom-button.bg-red');
+      if (!btn) return {ok:false, reason:'no-btn'};
+      if (btn.disabled || /disabled|loading/i.test(btn.className||'')) return {ok:false, reason:'btn-disabled'};
+      const toastEls = document.querySelectorAll('.d-toast, .d-message, [class*="toast"], [class*="Toast"]');
+      for (const t of toastEls) {
+        const txt = ((t.textContent||'')+'').trim();
+        if (/上传中|正在上传/.test(txt)) return {ok:false, reason:'uploading-toast'};
+      }
+      return {ok:true};
+    } catch (err) {
+      return {ok:false, reason:'err:'+(err&&err.message?err.message:'unknown')};
+    }
+  })()`
+  const start = Date.now()
+  let lastReason = 'unknown'
+  while (Date.now() - start < timeoutMs) {
+    const res = await evalExpr<{ ok: boolean; reason?: string }>(targetId, expression).catch(
+      () => ({ ok: false as const, reason: 'eval-err' }),
+    )
+    if (res.ok) return
+    lastReason = res.reason ?? 'unknown'
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  throw new Error(`xhs upload wait timed out (${Math.round(timeoutMs / 1000)}s): ${lastReason}`)
+}
+
+/**
+ * Briefly poll for an "uploads still in progress" toast that XHS shows
+ * when 发布 is clicked while xhscdn hasn't finished receiving every
+ * file. Returns the toast text if seen, null otherwise (= publish went
+ * through). Bounded so a missing toast doesn't block forever.
+ */
+async function detectXhsPublishBlockedToast(
+  targetId: string,
+  windowMs = 2_000,
+): Promise<string | null> {
+  const deadline = Date.now() + windowMs
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 100))
+    const url = await evalExpr<string>(targetId, `location.href`).catch(() => '')
+    if (url.includes('/publish/success')) return null
+    const toast = await evalExpr<string | null>(
+      targetId,
+      `(()=>{const els=document.querySelectorAll('.d-toast, .d-message, [class*="toast"], [class*="Toast"], [class*="message"]');for(const e of els){const t=((e.textContent||'')+'').trim();if(/图片正在上传|请稍后|上传中/.test(t))return t;}return null;})()`,
+    ).catch(() => null)
+    if (toast) return toast
+  }
+  return null
+}
+
 async function trustedDrag(
   targetId: string,
   fromSelector: string,
@@ -613,6 +700,12 @@ export async function postXhsNote(payload: XhsPostPayload): Promise<XhsPostResul
   let noteUrl: string | null = null
   const responseBuffer: Array<{ url: string; status: number; body: string }> = []
   if (payload.publish === true) {
+    // Hard prereq: every uploaded image must be in steady state. Without
+    // this we'd race xhscdn — XHS shows "图片正在上传，请稍后再发布"
+    // and the publish never fires.
+    await waitForXhsUploadsComplete(targetId, payload.images.length)
+    log('uploads verified complete')
+
     await evalExpr(
       targetId,
       `(()=>{
@@ -652,11 +745,23 @@ export async function postXhsNote(payload: XhsPostPayload): Promise<XhsPostResul
         };
       })()`,
     )
-    // Click publish (same synthetic chain as before).
-    await evalExpr(
-      targetId,
-      `(()=>{const btn=document.querySelector('button.custom-button.bg-red');if(!btn)throw new Error('publish button not found');const r=btn.getBoundingClientRect();const opts={bubbles:true,cancelable:true,view:window,clientX:r.x+r.width/2,clientY:r.y+r.height/2,button:0,pointerType:'mouse'};btn.dispatchEvent(new PointerEvent('pointerdown',opts));btn.dispatchEvent(new MouseEvent('mousedown',opts));btn.dispatchEvent(new PointerEvent('pointerup',opts));btn.dispatchEvent(new MouseEvent('mouseup',opts));btn.dispatchEvent(new MouseEvent('click',opts));})()`,
-    )
+    // Click publish (same synthetic chain as before). If XHS still rejects
+    // with the upload-pending toast (waitForXhsUploadsComplete signals
+    // were imperfect / race), back off and retry once after re-checking.
+    const clickPublish = `(()=>{const btn=document.querySelector('button.custom-button.bg-red');if(!btn)throw new Error('publish button not found');const r=btn.getBoundingClientRect();const opts={bubbles:true,cancelable:true,view:window,clientX:r.x+r.width/2,clientY:r.y+r.height/2,button:0,pointerType:'mouse'};btn.dispatchEvent(new PointerEvent('pointerdown',opts));btn.dispatchEvent(new MouseEvent('mousedown',opts));btn.dispatchEvent(new PointerEvent('pointerup',opts));btn.dispatchEvent(new MouseEvent('mouseup',opts));btn.dispatchEvent(new MouseEvent('click',opts));})()`
+    await evalExpr(targetId, clickPublish)
+    let blockedToast = await detectXhsPublishBlockedToast(targetId)
+    if (blockedToast) {
+      log(`publish blocked: ${blockedToast} — backing off then retrying once`)
+      await new Promise((r) => setTimeout(r, 5_000))
+      await waitForXhsUploadsComplete(targetId, payload.images.length)
+      await evalExpr(targetId, clickPublish)
+      blockedToast = await detectXhsPublishBlockedToast(targetId)
+      if (blockedToast) {
+        throw new Error(`xhs publish blocked after retry: ${blockedToast}`)
+      }
+      log('publish retry succeeded')
+    }
     published = true
     // Poll responses. Stop when: we extract a noteId, OR the window got
     // replaced (navigate to /publish/success), OR we time out.

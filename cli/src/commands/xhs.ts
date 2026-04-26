@@ -26,13 +26,21 @@ const TIMEOUT_MS = 240_000 // uploads + SPA skeleton reload + waits
 const STATS_TIMEOUT_MS = 60_000
 
 interface PostArgs {
+  /** Inline JSON string (preferred when the agent can pass argv cleanly) */
+  inline?: string
+  /** Path to plan.json, or '-' for stdin */
   plan?: string
   publish?: boolean
 }
 
 export async function xhsPostCommand(opts: PostArgs): Promise<void> {
-  const planSource = opts.plan || '-'
-  const raw = planSource === '-' ? readFileSync(0, 'utf8') : readFileSync(planSource, 'utf8')
+  let raw: string
+  if (opts.inline !== undefined) {
+    raw = opts.inline
+  } else {
+    const planSource = opts.plan || '-'
+    raw = planSource === '-' ? readFileSync(0, 'utf8') : readFileSync(planSource, 'utf8')
+  }
   let plan: Record<string, unknown>
   try {
     plan = JSON.parse(raw)

@@ -9,6 +9,7 @@
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
+import { createServer, type Server as HttpServer } from 'http';
 import { randomUUID } from 'crypto';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -35,6 +36,7 @@ interface CliPending {
 
 export class BnbotWsServer {
   private wss: WebSocketServer | null = null;
+  private httpServer: HttpServer | null = null;
   private client: WebSocket | null = null;
   private pendingRequests: Map<string, PendingRequest> = new Map();
   /** CLI client requests: maps internal requestId -> CLI client info */
@@ -48,26 +50,61 @@ export class BnbotWsServer {
   }
 
   /**
-   * Start the WebSocket server
+   * Start the WebSocket + HTTP server.
+   *
+   * Both protocols share a single http.Server on the same port: WS
+   * handles `Upgrade` requests (existing extension + CLI clients), HTTP
+   * answers `GET /health` for liveness probes (`curl http://...:18900/health`).
+   *
+   * Why share the port: external tools (web.tsx auto-spawn, the agent's
+   * `curl /health` probe in the system prompt) need a way to ask "is
+   * the daemon up *and* is the extension connected?" without speaking
+   * WS handshake. Adding a sibling HTTP listener avoids the previous
+   * bug where probes timed out against a WS-only port and concluded
+   * the daemon was offline even when it was running fine.
    */
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.wss = new WebSocketServer({ port: this.port, host: '127.0.0.1' });
+      this.httpServer = createServer((req, res) => {
+        if (req.method === 'GET' && (req.url === '/health' || req.url === '/healthz')) {
+          const info = this.getExtensionInfo();
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-store');
+          res.end(
+            JSON.stringify({
+              ok: true,
+              port: this.port,
+              extensionConnected: info.connected,
+              extensionVersion: info.version,
+            }),
+          );
+          return;
+        }
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'text/plain');
+        res.end('Not Found. WS clients should use ws://; probes use GET /health.');
+      });
 
-      this.wss.on('listening', () => {
-        console.error(`[BNBOT] WebSocket server listening on ws://localhost:${this.port}`);
+      this.wss = new WebSocketServer({ server: this.httpServer });
+
+      this.httpServer.on('listening', () => {
+        console.error(`[BNBOT] WS + HTTP server listening on http://127.0.0.1:${this.port} (ws + GET /health)`);
         resolve();
       });
 
-      this.wss.on('error', (error: NodeJS.ErrnoException) => {
+      this.httpServer.on('error', (error: NodeJS.ErrnoException) => {
         if (error.code === 'EADDRINUSE') {
           console.error(`[BNBOT] Port ${this.port} is already in use. Continuing without WebSocket server (public API tools still work).`);
           this.wss = null;
+          this.httpServer = null;
           resolve(); // non-fatal: tools that don't need extension still work
         } else {
           reject(error);
         }
       });
+
+      this.httpServer.listen(this.port, '127.0.0.1');
 
       this.wss.on('connection', (ws) => {
         // We don't know yet if this is an extension or a CLI client.
@@ -389,6 +426,10 @@ export class BnbotWsServer {
     if (this.wss) {
       this.wss.close();
       this.wss = null;
+    }
+    if (this.httpServer) {
+      this.httpServer.close();
+      this.httpServer = null;
     }
     // Reject all pending
     for (const [id, pending] of this.pendingRequests) {
