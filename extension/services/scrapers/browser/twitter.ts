@@ -14,7 +14,14 @@ const BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Z
 const QID = {
   HomeTimeline: 'c-CzHF1LboFilMpsx4ZCrQ',
   HomeLatestTimeline: 'BKB7oi212Fi7kQtCBGE4zA',
-  SearchTimeline: 'MJpjKqXlT-Kf2m3AepDxMg',
+  // Refreshed 2026-04-27 from `fa0311/twitter-openapi` upstream — X
+  // rotates these GraphQL queryIds frequently (every few months). Old
+  // value `MJpjKqXlT-Kf2m3AepDxMg` started returning HTTP 404. The
+  // resolveQueryId() helper still tries to fetch the latest from the
+  // upstream JSON first, but GitHub raw is sometimes blocked/slow on
+  // mainland China connections, so the hardcoded fallback needs to
+  // stay current too.
+  SearchTimeline: 'VhUd6vHVmLBcw0uX-6jMLA',
   UserByScreenName: 'qRednkZG-rn1P6b48NINmQ',
   UserTweets: 'q6xj5bs0hapm9309hexA_g',
   TweetDetail: 'xd_EMdYvB9hfZsZ6Idri0w',

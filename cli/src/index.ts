@@ -301,7 +301,7 @@ function buildProgram(): Command {
     .description('Post a tweet')
     .option('-m, --media <url>', 'Media file or URL (repeat for multiple, or comma-separate)', collectMedia, [])
     .option('-d, --draft', 'Draft mode: fill composer without posting')
-    .option('--engine <engine>', 'Write engine: "dom" (content-script) or "debugger" (CDP)', 'dom')
+    .option('--engine <engine>', 'Write engine: "debugger" (default for live publish — CDP, robust against X UI churn) or "dom" (default for --draft; content-script). Omit to auto-pick by mode.')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(postCommand);
 
@@ -314,7 +314,7 @@ function buildProgram(): Command {
   // x thread
   x.command('thread <tweets-json>')
     .description('Post a tweet thread (JSON array)')
-    .option('--engine <engine>', 'Write engine: "dom" (default) or "debugger" (chrome.debugger / CDP)', 'dom')
+    .option('--engine <engine>', 'Write engine: "debugger" (default, CDP) or "dom" (content-script)', 'debugger')
     .option('--visible', 'Bring the automation window to front during the action')
     .action(threadCommand);
 
@@ -322,7 +322,7 @@ function buildProgram(): Command {
   x.command('reply <url> <text>')
     .description('Reply to a tweet')
     .option('-m, --media <url>', 'Media file or URL (repeat for multiple, or comma-separate)', collectMedia, [])
-    .option('--engine <engine>', 'Write engine: "dom" (content-script) or "debugger" (CDP)', 'dom')
+    .option('--engine <engine>', 'Write engine: "debugger" (CDP, default — robust against X UI churn) or "dom" (content-script, fallback for --draft)', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(replyCommand);
 
@@ -330,33 +330,33 @@ function buildProgram(): Command {
   x.command('quote <url> <text>')
     .description('Quote a tweet')
     .option('-m, --media <url>', 'Media file or URL (repeat for multiple, or comma-separate)', collectMedia, [])
-    .option('--engine <engine>', 'Write engine: "dom" or "debugger"', 'dom')
+    .option('--engine <engine>', 'Write engine: "debugger" (default) or "dom"', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(quoteCommand);
 
   // x like / unlike
   x.command('like <url>')
     .description('Like a tweet')
-    .option('--engine <engine>', 'Write engine: "dom" or "debugger"', 'dom')
+    .option('--engine <engine>', 'Write engine: "debugger" (default) or "dom"', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(likeCommand);
 
   x.command('unlike <url>')
     .description('Unlike a tweet')
-    .option('--engine <engine>', 'Write engine: "dom" or "debugger"', 'dom')
+    .option('--engine <engine>', 'Write engine: "debugger" (default) or "dom"', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(unlikeCommand);
 
   // x retweet / unretweet
   x.command('retweet <url>')
     .description('Retweet a tweet')
-    .option('--engine <engine>', 'Write engine: "dom" or "debugger"', 'dom')
+    .option('--engine <engine>', 'Write engine: "debugger" (default) or "dom"', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(retweetCommand);
 
   x.command('unretweet <url>')
     .description('Unretweet a tweet')
-    .option('--engine <engine>', 'Write engine: "dom" or "debugger"', 'dom')
+    .option('--engine <engine>', 'Write engine: "debugger" (default) or "dom"', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(unretweetCommand);
 
@@ -372,7 +372,7 @@ function buildProgram(): Command {
   // x delete
   x.command('delete <url>')
     .description('Delete a tweet')
-    .option('--engine <engine>', 'Write engine: "dom" (default) or "debugger" (chrome.debugger / CDP)', 'dom')
+    .option('--engine <engine>', 'Write engine: "debugger" (default, CDP) or "dom" (content-script)', 'debugger')
     .option('--visible', 'Bring the automation window to front during the action')
     .action(deleteCommand);
 

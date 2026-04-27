@@ -269,7 +269,18 @@ export async function runCliAction(actionType: string, params: Record<string, un
           clearTimeout(timeout);
           resolved = true;
           if (msg.success) {
-            console.log(JSON.stringify(msg.data, null, 2));
+            // Enrich the result with a clickable X URL when the
+            // extension returned a tweetId but no url. The CLI's
+            // primary consumer is now the bnbot agent, which surfaces
+            // the JSON to humans verbatim — pasting an `id` is
+            // useless, pasting `https://x.com/i/status/<id>` opens
+            // the post in one click.
+            const data = (msg.data || {}) as Record<string, unknown>;
+            const tweetId = typeof data.tweetId === 'string' ? data.tweetId : null;
+            if (tweetId && !data.url && !data.tweetUrl) {
+              data.tweetUrl = `https://x.com/i/status/${tweetId}`;
+            }
+            console.log(JSON.stringify(data, null, 2));
           } else {
             console.error(msg.error || 'Action failed');
           }

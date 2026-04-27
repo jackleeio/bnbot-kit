@@ -10,8 +10,23 @@ import { resolveMediaListAsync, resolveMediaListAsPaths } from '../tools/mediaUt
 
 type WriteEngine = 'dom' | 'debugger';
 
-function normEngine(e?: string): WriteEngine {
-  return e === 'debugger' ? 'debugger' : 'dom';
+/**
+ * Pick the write-path engine. Default switched debugger → dom only when
+ * the caller explicitly passes `--engine dom`, or when they pass
+ * `--draft` (debugger has no draft mode yet — it always publishes).
+ *
+ * Why default to debugger: the dom (chrome.scripting) path drives X's
+ * compose box by hunting for input fields in the live DOM, and X's
+ * frequent UI churn makes it intermittently miss the field and time
+ * out at 60s. The debugger path drives the same flow via CDP against
+ * a dedicated automation tab, which is far more stable. Cost: a
+ * "BNBot is debugging this browser" bar appears on the tab during
+ * the call (purely cosmetic).
+ */
+function normEngine(e?: string, opts: { draft?: boolean } = {}): WriteEngine {
+  if (e === 'dom') return 'dom';
+  if (e === 'debugger') return 'debugger';
+  return opts.draft ? 'dom' : 'debugger';
 }
 
 /** Parse media option into an array of source strings. */
@@ -56,7 +71,7 @@ async function resolveMedia(
 
 export async function postCommand(text: string, options: { media?: string | string[]; draft?: boolean; engine?: string; visible?: boolean }): Promise<void> {
   const isDraft = options.draft || false;
-  const engine = normEngine(options.engine);
+  const engine = normEngine(options.engine, { draft: isDraft });
   const preview = text.slice(0, 80) + (text.length > 80 ? '...' : '');
   console.error(isDraft ? `Drafting: "${preview}"` : `Posting: "${preview}"` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
 
