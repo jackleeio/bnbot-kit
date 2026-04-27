@@ -571,11 +571,40 @@ export async function searchTikTok(query: string, limit = 10): Promise<TikTokSea
 
 // ─── TikTok Explore ────────────────────────────────────────────────
 
+// Rich explore result — mirrors the actual TikTok API shape we get back
+// from `/api/recommend/item_list/`. Earlier this only carried 4 fields
+// (rank/author/views/url), which left downstream LLMs blind to the
+// video's actual content — they'd see a bare URL and hallucinate a topic
+// when writing companion posts. Now we surface caption, hashtags, cover,
+// duration, and engagement so the agent can decide trend relevance and
+// vision-describe the cover when caption is empty.
 export interface TikTokExploreResult {
   rank: number;
   author: string;
-  views: string;
+  authorName: string;
   url: string;
+  views: string;
+  // Content
+  desc: string;
+  hashtags: string[];
+  cover: string;
+  duration: number;
+  // Engagement
+  likes: number;
+  comments: number;
+  shares: number;
+  collects: number;
+  // Meta
+  music: string;
+  createTime: number;
+  language: string;
+  isAd: boolean;
+  // Author signal — small-account-going-viral is the realest trend signal.
+  followers: number;
+  // Video aspect — TikTok-native is portrait; landscape ≈ reposted YouTube.
+  ratio: string;
+  width: number;
+  height: number;
 }
 
 export async function fetchTikTokExplore(limit = 20): Promise<TikTokExploreResult[]> {
@@ -585,10 +614,13 @@ export async function fetchTikTokExplore(limit = 20): Promise<TikTokExploreResul
 
   const data = await executeInPage(tabId, async (lim: number) => {
       try {
-        // Try multiple API endpoints for trending/explore content
+        // Try multiple API endpoints for trending/explore content. As of
+        // 2026-04 the `/api/explore/item_list/` endpoint returns 10201
+        // "missing required fields" without extra signing params, while
+        // `/api/recommend/item_list/` works anonymously with just count+aid.
         const apis = [
-          '/api/explore/item_list/?count=' + lim + '&aid=1988',
           '/api/recommend/item_list/?count=' + lim + '&aid=1988',
+          '/api/explore/item_list/?count=' + lim + '&aid=1988',
           '/api/search/general/full/?keyword=&offset=0&count=' + lim + '&aid=1988',
         ];
         for (const apiUrl of apis) {
@@ -604,13 +636,43 @@ export async function fetchTikTokExplore(limit = 20): Promise<TikTokExploreResul
               return items.map((v: any, idx: number) => {
                 const a = v.author || {};
                 const s = v.stats || {};
+                const vid = v.video || {};
+                const mus = v.music || {};
+                // Hashtags can come from textExtra (typed entries) or be
+                // inferred from the desc as a fallback. We prefer textExtra
+                // since it's already structured and stable.
+                const tags: string[] = Array.isArray(v.textExtra)
+                  ? v.textExtra
+                      .map((t: any) => (typeof t?.hashtagName === 'string' ? t.hashtagName : ''))
+                      .filter((s: string) => s.length > 0)
+                  : [];
+                const aStats = v.authorStats || {};
                 return {
                   rank: idx + 1,
                   author: a.uniqueId || '',
-                  views: s.playCount ? String(s.playCount) : '-',
+                  authorName: a.nickname || '',
                   url: (a.uniqueId && v.id)
                     ? 'https://www.tiktok.com/@' + a.uniqueId + '/video/' + v.id
                     : '',
+                  views: s.playCount ? String(s.playCount) : '-',
+                  desc: typeof v.desc === 'string'
+                    ? v.desc.replace(/\s+/g, ' ').trim().slice(0, 300)
+                    : '',
+                  hashtags: tags,
+                  cover: vid.cover || vid.dynamicCover || vid.originCover || '',
+                  duration: typeof vid.duration === 'number' ? vid.duration : 0,
+                  likes: typeof s.diggCount === 'number' ? s.diggCount : 0,
+                  comments: typeof s.commentCount === 'number' ? s.commentCount : 0,
+                  shares: typeof s.shareCount === 'number' ? s.shareCount : 0,
+                  collects: typeof s.collectCount === 'number' ? s.collectCount : 0,
+                  music: typeof mus.title === 'string' ? mus.title : '',
+                  createTime: typeof v.createTime === 'number' ? v.createTime : 0,
+                  language: typeof v.textLanguage === 'string' ? v.textLanguage : '',
+                  isAd: Boolean(v.isAd),
+                  followers: typeof aStats.followerCount === 'number' ? aStats.followerCount : 0,
+                  ratio: typeof vid.ratio === 'string' ? vid.ratio : '',
+                  width: typeof vid.width === 'number' ? vid.width : 0,
+                  height: typeof vid.height === 'number' ? vid.height : 0,
                 };
               });
             }
