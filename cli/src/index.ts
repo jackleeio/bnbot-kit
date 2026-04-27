@@ -113,6 +113,42 @@ function buildProgram(): Command {
     .name('bnbot')
     .description('BNBot — AI-powered personal branding toolkit for X')
     .version(pkg.version);
+  // Active diagnostics on typo'd verbs / flags. The primary caller of
+  // this CLI is now the bnbot agent (an LLM), and LLMs hallucinate
+  // command names like `tiktok trending` (real verb is `explore`) or
+  // unsupported flags like `--json` (output is already JSON by default).
+  // Without these settings the agent gets a bare `error: unknown
+  // command 'trending'` and has to spend an extra turn running `--help`
+  // to discover the actual verb. With `showHelpAfterError(true)` the
+  // help text (including the list of available subcommands) gets dumped
+  // right after the error, so the model can self-correct in a single
+  // turn. Commander only applies these settings to the Command they're
+  // configured on — not to nested children — so we monkey-patch every
+  // newly-created Command to inherit them.
+  const origCommand = program.command.bind(program);
+  function applyFriendlyDiagnostics(cmd: Command): Command {
+    cmd.showSuggestionAfterError(true);
+    cmd.showHelpAfterError(true);
+    const origNested = cmd.command.bind(cmd);
+    cmd.command = ((...args: Parameters<typeof origNested>) => {
+      const child = origNested(...args);
+      // `command()` returns either the new sub-command or the parent
+      // (for executable subcommand specs). Only augment Commands.
+      if (child instanceof Command && child !== cmd) {
+        applyFriendlyDiagnostics(child);
+      }
+      return child;
+    }) as typeof cmd.command;
+    return cmd;
+  }
+  applyFriendlyDiagnostics(program);
+  program.command = ((...args: Parameters<typeof origCommand>) => {
+    const child = origCommand(...args);
+    if (child instanceof Command && child !== program) {
+      applyFriendlyDiagnostics(child);
+    }
+    return child;
+  }) as typeof program.command;
 
   // ── Top-level: setup, login, serve, status ─────────────
 
