@@ -9,7 +9,6 @@ import remarkBreaks from 'remark-breaks';
 import rehypeRaw from 'rehype-raw';
 import { chatService } from '../../services/chatService';
 import { authService } from '../../services/authService';
-import { draftService } from '../../services/draftService';
 
 import { ChatMessage } from '../../types';
 import { useLanguage } from '../LanguageContext';
@@ -5126,14 +5125,17 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onLoginClick, onCreditsCli
                                       handleGenerateImage(json.data.header_image.prompt);
                                     }
                                   }}
-                                  onSaveDraft={async (editedData: ArticleData) => {
-                                    try {
-                                      await draftService.saveArticleDraft(editedData);
-                                      setToast({ message: '草稿保存成功', type: 'success' });
-                                    } catch (error: any) {
-                                      console.error('[ChatPanel] Save article draft error:', error);
-                                      setToast({ message: error.message || '保存草稿失败', type: 'error' });
-                                    }
+                                  onSaveDraft={async (_editedData: ArticleData) => {
+                                    // draftService removed — server-side
+                                    // article draft API is being retired in
+                                    // favour of the bnbot agent's local
+                                    // markdown workflow. Caller still gets a
+                                    // toast so the UI doesn't appear hung.
+                                    setToast({
+                                      message:
+                                        '草稿存储已下线，请用桌面 App 在本地编辑。',
+                                      type: 'success',
+                                    });
                                   }}
                                 />
                               </div>

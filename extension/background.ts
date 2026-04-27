@@ -4,9 +4,9 @@
 import { isFirefox, isChrome } from './utils/browserCompat';
 import { WebSocketManager } from './utils/websocketManager';
 import { localRelayManager, LocalActionRequest } from './utils/localRelayManager';
-// taskAlarmScheduler removed — scheduling moved to bnbot CLI's `bnbot calendar` + macOS launchd.
-// draftService.ts (extension) is next to go once the desktop calendar UI is verified
-// against ~/.bnbot/calendar/ JSON.
+// taskAlarmScheduler + draftService removed — scheduling moved to the
+// bnbot main repo's auto-publish loop (see bnbot/src/services/autoPublish/),
+// and the server-side draft product line was retired.
 import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, IDLE_BONUS_EXPLORE, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok, ensureDebuggerAttached, debuggerSend, getPoolTabs, openTabInScraperWindow, getTab } from './services/scraperService';
 import { debuggerWriteHandlers } from './services/debugger';
 
@@ -673,8 +673,9 @@ localRelayManager.init({
       return;
     }
 
-    // draft_alarm_sync / draft_alarm_remove handlers removed — bnbot CLI calendar
-    // owns scheduling now. draftService (extension) is the next removal.
+    // draft_alarm_sync / draft_alarm_remove handlers removed — the
+    // server-side draft product line was retired in favour of the bnbot
+    // main repo's local-markdown auto-publish loop.
 
     // Handle debugger-based write actions directly in background.
     // These open a background X tab, attach chrome.debugger, drive the

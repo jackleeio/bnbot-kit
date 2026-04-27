@@ -16,7 +16,7 @@
  * emojis) + `published: true|false`. Until the user runs with
  * `publish: true`, the post stays drafted in the creator tab.
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import WebSocket from 'ws'
 import { ensureServer } from '../cli'
@@ -31,6 +31,10 @@ interface PostArgs {
   /** Path to plan.json, or '-' for stdin */
   plan?: string
   publish?: boolean
+  /** Path to a draft .md whose `status:` frontmatter should flip to
+   *  `published` on a successful publish. Lets the desktop calendar
+   *  card update from SCHEDULED → PUBLISHED automatically. */
+  markMd?: string
 }
 
 export async function xhsPostCommand(opts: PostArgs): Promise<void> {
@@ -56,6 +60,40 @@ export async function xhsPostCommand(opts: PostArgs): Promise<void> {
   const elapsed = ((Date.now() - start) / 1000).toFixed(2)
   console.log(JSON.stringify(result, null, 2))
   console.log(`⏱  ${elapsed}s`)
+
+  if (opts.markMd && opts.publish && isPublishedResult(result)) {
+    try {
+      markMdPublished(opts.markMd)
+      console.log(`✓ marked ${opts.markMd} → status: published`)
+    } catch (err) {
+      console.error(
+        `[bnbot xhs post] could not update ${opts.markMd}: ${(err as Error).message}`,
+      )
+    }
+  }
+}
+
+function isPublishedResult(result: unknown): boolean {
+  return (
+    typeof result === 'object' &&
+    result !== null &&
+    (result as Record<string, unknown>).published === true
+  )
+}
+
+/** Rewrite the YAML frontmatter `status:` line in a draft .md to
+ *  `status: published`. Leaves the rest of the file untouched. If the
+ *  file has no `status:` line, inject one before the closing `---`. */
+function markMdPublished(path: string): void {
+  const content = readFileSync(path, 'utf8')
+  const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+  if (!fmMatch) throw new Error('no YAML frontmatter found')
+  const fmBody = fmMatch[1]
+  const newFmBody = /^status:\s*.+$/m.test(fmBody)
+    ? fmBody.replace(/^status:\s*.+$/m, 'status: published')
+    : `${fmBody}\nstatus: published`
+  const updated = content.replace(fmMatch[0], `---\n${newFmBody}\n---`)
+  writeFileSync(path, updated, 'utf8')
 }
 
 export async function xhsStatsNoteCommand(noteId: string): Promise<void> {

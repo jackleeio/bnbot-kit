@@ -58,32 +58,6 @@ import { downloadCommand } from './commands/download.js';
 import { debugEvalCommand, debugUploadCommand, debugClickCommand, debugShowCommand, debugDragCommand, debugRecordCommand } from './commands/debug.js';
 import { xhsPostCommand, xhsStatsNoteCommand, xhsStatsAccountCommand } from './commands/xhs.js';
 import {
-  calendarAddCommand,
-  calendarListCommand,
-  calendarRemoveCommand,
-  calendarTickCommand,
-  calendarInstallCommand,
-  calendarUninstallCommand,
-} from './commands/calendar.js';
-import {
-  inboxTickCommand,
-  inboxInstallCommand,
-  inboxStartCommand,
-  inboxStopCommand,
-  inboxUninstallCommand,
-  inboxStatusCommand,
-} from './commands/inboxTick.js';
-import {
-  draftAddCommand,
-  draftListCommand,
-  draftScheduleCommand,
-  draftUnscheduleCommand,
-  draftDeleteCommand,
-  draftShareCommand,
-  draftSlotsCommand,
-  draftSlotsSetCommand,
-} from './commands/draft.js';
-import {
   tiktokSearchCommand, tiktokExploreCommand,
   youtubeSearchCommand, youtubeVideoCommand, youtubeTranscriptCommand,
   redditSearchCommand, redditHotCommand,
@@ -267,18 +241,28 @@ function buildProgram(): Command {
     )
     .option('--plan <path>', 'Alias for the positional arg — path to plan JSON, or `-` for stdin', '-')
     .option('--publish', 'Actually click 发布 at the end (default: stop after compose)')
-    .action((arg: string | undefined, opts: { plan?: string; publish?: boolean }) => {
-      // Three input shapes accepted (in priority order):
-      //   1. Positional inline JSON (starts with '{')  — convenient one-shot
-      //   2. Positional path to a .json file
-      //   3. --plan <path> (or '-' for stdin), kept for back-compat
-      const planSource =
-        arg && arg.trim().startsWith('{') ? { inline: arg } : { plan: arg ?? opts.plan ?? '-' }
-      return xhsPostCommand({
-        ...planSource,
-        publish: opts.publish,
-      })
-    });
+    .option(
+      '--mark-md <path>',
+      'On a successful publish, flip the `status:` frontmatter of this draft .md to `published`. Use it whenever the plan came from a saved draft so the desktop calendar card updates SCHEDULED → PUBLISHED.',
+    )
+    .action(
+      (
+        arg: string | undefined,
+        opts: { plan?: string; publish?: boolean; markMd?: string },
+      ) => {
+        // Three input shapes accepted (in priority order):
+        //   1. Positional inline JSON (starts with '{')  — convenient one-shot
+        //   2. Positional path to a .json file
+        //   3. --plan <path> (or '-' for stdin), kept for back-compat
+        const planSource =
+          arg && arg.trim().startsWith('{') ? { inline: arg } : { plan: arg ?? opts.plan ?? '-' }
+        return xhsPostCommand({
+          ...planSource,
+          publish: opts.publish,
+          markMd: opts.markMd,
+        })
+      },
+    );
 
   xhs
     .command('stats-note')
@@ -291,146 +275,20 @@ function buildProgram(): Command {
     .description('Fetch account-level analytics (4 tabs: 观看/互动/涨粉/发布 for current period)')
     .action(xhsStatsAccountCommand);
 
-  // ── Calendar commands ──────────────────────────────────
-  // Content calendar: one launchd tick reads ~/.bnbot/calendar/<date>.json
-  // every 5 min and fires entries whose time has arrived. See
-  // skills/schedule/SKILL.md for usage and the difference from ad-hoc plists.
+  // (Scheduling moved to the bnbot main repo: it's an orchestration
+  // concern, not a social-platform action. The auto-publish loop now
+  // lives in `bnbot/src/services/autoPublish/` and runs inside the
+  // bnbot WS server's 5-min interval. The kit stays scope: read +
+  // write social platforms.)
 
-  const calendar = program
-    .command('calendar')
-    .description('Calendar-based scheduled posts (queue + tick)');
+  // (Inbox auto-respond loop moved to the bnbot main repo too — same
+  // architectural reason as calendar. The kit still owns the scrape
+  // itself: `scrape_notifications` action handler in `bnbot serve` is
+  // what bnbot's inbox loop calls over WS to read fresh notifications.)
 
-  calendar
-    .command('add <action>')
-    .description('Append a scheduled entry to a day file. `action` is the full shell command to run at fire time (e.g. `bnbot x post --engine debugger "hi"`).')
-    .option('--at <HH:MM>', 'Local time of day to fire', '09:00')
-    .option('--date <YYYY-MM-DD>', 'Date to schedule on (default: today)')
-    .option('--kind <kind>', 'Entry kind: post|thread|reply|quote|like|retweet|command (auto-inferred from action)')
-    .option('--note <text>', 'Free-form note shown in listings')
-    .action(calendarAddCommand);
-
-  calendar
-    .command('list')
-    .description('List today\'s scheduled entries (or --all days)')
-    .option('-d, --date <YYYY-MM-DD>', 'Day to list')
-    .option('--all', 'Summary across all calendar files')
-    .action(calendarListCommand);
-
-  calendar
-    .command('remove <id>')
-    .description('Delete a scheduled entry by id')
-    .option('-d, --date <YYYY-MM-DD>', 'Day to search (default: scan all files)')
-    .action(calendarRemoveCommand);
-
-  calendar
-    .command('tick')
-    .description('Fire all pending entries whose time has arrived (invoked by launchd every 5 min)')
-    .action(calendarTickCommand);
-
-  calendar
-    .command('install')
-    .description('Install the com.bnbot.calendar-tick launchd agent (runs `calendar tick` every 5 min)')
-    .action(calendarInstallCommand);
-
-  calendar
-    .command('uninstall')
-    .description('Remove the calendar-tick launchd agent')
-    .action(calendarUninstallCommand);
-
-  // ── Inbox tick (auto-poll X notifications every 5 min) ──
-  // Cheap path: scrape notifications, dedup against seen-state. If 0
-  // fresh actionable items (mention/reply/quote/new_post), exit. On
-  // hot path: spawn headless bnbot session running /inbox-triage --auto
-  // to evaluate + post via CDP. Captures the high-freshness reply
-  // window (rank 1-3 = 55% of parent exposure) that timeline-scrape
-  // misses.
-
-  const inbox = program
-    .command('inbox')
-    .description('Inbox tick — automated processing of X notifications');
-
-  inbox
-    .command('tick')
-    .description('Run one tick (called every 5 min by launchd; safe to call manually)')
-    .action(inboxTickCommand);
-
-  inbox
-    .command('install')
-    .description('Write the launchd plist (does NOT start it — run `bnbot inbox start` after)')
-    .option('--interval <sec>', 'Tick interval in seconds (default 900 = 15 min)', '900')
-    .action(inboxInstallCommand);
-
-  inbox
-    .command('start')
-    .description('Bootstrap the launchd agent — begin polling at the configured interval')
-    .action(inboxStartCommand);
-
-  inbox
-    .command('stop')
-    .description('Bootout the launchd agent — pause polling (plist preserved)')
-    .action(inboxStopCommand);
-
-  inbox
-    .command('uninstall')
-    .description('Stop polling AND delete the plist file')
-    .action(inboxUninstallCommand);
-
-  inbox
-    .command('status')
-    .description('Show installed?, running?, last tick, seen count')
-    .action(inboxStatusCommand);
-
-  // ── Draft commands ──────────────────────────────────────
-
-  const draft = program
-    .command('draft')
-    .description('Tweet draft management');
-
-  draft
-    .command('add <text>')
-    .description('Create a tweet draft')
-    .option('-t, --time <time>', 'Schedule time (ISO 8601 or date string)')
-    .option('--auto', 'Auto-schedule to next available slot')
-    .option('--thread', 'Create thread (text is JSON array)')
-    .option('-m, --media <file>', 'Attach media file (repeat for multiple, or comma-separate)', collectMedia, [])
-    .action(draftAddCommand);
-
-  draft
-    .command('list')
-    .description('List all drafts')
-    .option('--scheduled', 'Only show scheduled drafts')
-    .option('-l, --limit <n>', 'Max results', '20')
-    .action(draftListCommand);
-
-  draft
-    .command('schedule <id> <time>')
-    .description('Schedule a draft for publishing')
-    .action(draftScheduleCommand);
-
-  draft
-    .command('unschedule <id>')
-    .description('Cancel a draft schedule')
-    .action(draftUnscheduleCommand);
-
-  draft
-    .command('delete <id>')
-    .description('Delete a draft')
-    .action(draftDeleteCommand);
-
-  draft
-    .command('share')
-    .description('Get calendar share link')
-    .action(draftShareCommand);
-
-  const draftSlots = draft
-    .command('slots')
-    .description('Show or set time slots')
-    .action(draftSlotsCommand);
-
-  draftSlots
-    .command('set <slots>')
-    .description('Set time slots (e.g. "9:00,12:00,18:00,21:00")')
-    .action(draftSlotsSetCommand);
+  // (`bnbot draft *` removed — server-side Buffer-clone scheduler that
+  // wasn't used by the bnbot agent. The auto-publish loop in bnbot main
+  // covers scheduling now.)
 
   // ── X platform commands ────────────────────────────────
 
