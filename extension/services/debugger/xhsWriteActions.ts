@@ -597,6 +597,19 @@ export async function postXhsNote(payload: XhsPostPayload): Promise<XhsPostResul
           }
           if (items.length === 0) {
             logArr.push('miss:' + (searchTerm || '<auto>') + ':no-dropdown');
+            // The dropdown never showed, so the '#' + searchTerm we typed
+            // is still sitting in the editor as plain text. We need to
+            // (a) press Escape so tiptap closes any half-open suggestion
+            // span (otherwise the next '#' gets folded into THIS span and
+            // XHS publishes them concatenated as "#OOTD#显瘦穿搭"), and
+            // (b) leave a trailing space so the next '#' has a clean
+            // separator. Same recovery applies when no item is clickable
+            // (all-dup case below).
+            const t = document.querySelector('div.tiptap.ProseMirror');
+            t.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',keyCode:27,which:27,bubbles:true,cancelable:true}));
+            t.dispatchEvent(new KeyboardEvent('keyup',{key:'Escape',keyCode:27,which:27,bubbles:true,cancelable:true}));
+            await new Promise(r => setTimeout(r, 50));
+            document.execCommand('insertText', false, ' ');
             return false;
           }
           // Pick best match: first item whose .name contains searchTerm
@@ -619,6 +632,13 @@ export async function postXhsNote(payload: XhsPostPayload): Promise<XhsPostResul
           }
           if (!target) {
             logArr.push('miss:' + (searchTerm || '<auto>') + ':all-dup');
+            // Same recovery as the no-dropdown path: close the suggestion
+            // span + leave a separator space so the next '#' lands cleanly.
+            const t = document.querySelector('div.tiptap.ProseMirror');
+            t.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',keyCode:27,which:27,bubbles:true,cancelable:true}));
+            t.dispatchEvent(new KeyboardEvent('keyup',{key:'Escape',keyCode:27,which:27,bubbles:true,cancelable:true}));
+            await new Promise(r => setTimeout(r, 50));
+            document.execCommand('insertText', false, ' ');
             return false;
           }
           const name = (target.querySelector('.name')?.textContent || '').trim();
