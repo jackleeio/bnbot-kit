@@ -9,9 +9,6 @@ const T = {
   disconnected: isZh ? '未连接 — bnbot serve 未运行?' : 'Disconnected — is `bnbot serve` running?',
   reconnecting: isZh ? '正在重连...' : 'Reconnecting...',
   reconnect: isZh ? '重连' : 'Reconnect',
-  docs: isZh ? '文档' : 'Documentation',
-  openX: isZh ? '打开 X 主页' : 'Open X',
-  version: isZh ? '版本' : 'Version',
 };
 
 function Popup() {
@@ -133,33 +130,6 @@ function Popup() {
         )}
       </div>
 
-      {/* Footer links */}
-      <div
-        style={{
-          marginTop: 14,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 8,
-        }}
-      >
-        <a
-          href="https://bnbot.ai"
-          target="_blank"
-          rel="noreferrer"
-          style={{ fontSize: 12, color: 'var(--link)', textDecoration: 'none' }}
-        >
-          {T.docs}
-        </a>
-        <a
-          href="https://x.com/home"
-          target="_blank"
-          rel="noreferrer"
-          style={{ fontSize: 12, color: 'var(--text-mute)', textDecoration: 'none' }}
-        >
-          {T.openX} →
-        </a>
-      </div>
     </div>
   );
 }
