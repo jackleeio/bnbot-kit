@@ -166,22 +166,19 @@ export class BnbotFabInjector {
         z-index: 9998;
         opacity: 1;
         transform: scale(1);
+        /* No bottom/right transition — when Grok collapses, the FAB
+         * should snap to its new spot, not glide. Animating position
+         * causes a visible "drop from above" effect that the user
+         * doesn't want. Only opacity/transform animate (fade + scale). */
         transition:
           opacity 0.22s ease,
           transform 0.18s ease,
-          box-shadow 0.15s ease,
-          bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-          right 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+          box-shadow 0.15s ease;
       }
       #${FAB_ID}.bnbot-fab-hidden {
         opacity: 0;
         transform: scale(0.92);
         pointer-events: none;
-        /* No bottom/right transition while hidden — Grok header
-         * positions wildly during its open animation; if we let the
-         * FAB animate-follow that, you see a ghost icon flying across
-         * the screen as it fades out. Snap to whatever the next align
-         * tick decides, invisibly. */
         transition: opacity 0.22s ease, transform 0.18s ease;
       }
       #${FAB_ID}:hover {
