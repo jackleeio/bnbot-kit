@@ -76,18 +76,15 @@ export class BnbotFabInjector {
     this.ensureButton();
     this.startAlignmentLoop();
 
-    // Wait until X's primary column actually renders before fading
-    // the FAB in. window.load fires too early — X is a SPA and the
-    // HTML is "loaded" while only the splash X logo is visible;
-    // hydration + first data fetch take another 1-3s. Watching for
-    // [data-testid="primaryColumn"] (or role=main as a fallback) is a
-    // reliable "page is real now" signal.
+    // Wait until X's Grok button actually mounts before fading the FAB
+    // in. window.load and even [data-testid="primaryColumn"] fire too
+    // early — those exist while only the splash X logo is visible.
+    // Grok's drawer (the float we anchor against) only appears after X
+    // finishes hydrating + first data fetch, so it's a reliable "page
+    // is real now" signal *and* it means our anchor target exists.
     this.waitForXReady(() => {
-      // 500ms extra for X's own hydration animations to settle.
-      setTimeout(() => {
-        this.pageLoaded = true;
-        this.applyVisibility();
-      }, 500);
+      this.pageLoaded = true;
+      this.applyVisibility();
     });
 
     // Re-attach if body gets replaced by SPA navigation quirks.
@@ -310,7 +307,10 @@ export class BnbotFabInjector {
   }
 
   private waitForXReady(cb: () => void): void {
-    const READY_SELECTOR = '[data-testid="primaryColumn"], main[role="main"]';
+    // Anchor on Grok — its drawer/header is the last UI piece X mounts
+    // and the exact thing we align against. If Grok exists, X is real.
+    const READY_SELECTOR =
+      '[data-testid="GrokDrawerHeader"], [data-testid="GrokDrawer"]';
     const check = () => !!document.querySelector(READY_SELECTOR);
     if (check()) {
       cb();
@@ -332,14 +332,26 @@ export class BnbotFabInjector {
         { once: true },
       );
     }
-    // Hard timeout fallback — if X hangs / route blocks, still fade in
-    // after 8s so the FAB isn't permanently invisible.
+    // Hard timeout fallback — some routes (login, settings) may never
+    // mount Grok. After 12s, fall back to primaryColumn / main, and if
+    // even that fails, fade in regardless so the FAB isn't permanently
+    // invisible.
+    setTimeout(() => {
+      if (this.pageLoaded) return;
+      const fallback = document.querySelector(
+        '[data-testid="primaryColumn"], main[role="main"]',
+      );
+      if (fallback) {
+        observer.disconnect();
+        cb();
+      }
+    }, 12000);
     setTimeout(() => {
       if (!this.pageLoaded) {
         observer.disconnect();
         cb();
       }
-    }, 8000);
+    }, 20000);
   }
 
   private setVisible(visible: boolean): void {
