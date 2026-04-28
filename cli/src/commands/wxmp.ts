@@ -237,22 +237,21 @@ async function ensureEditor(editorUrl?: string): Promise<void> {
   const url = String(current)
   if (url.includes('appmsg_edit')) return
 
-  // Naming notes (these are non-obvious):
-  //   - type=77 createType=0 IS the 公众号 图文文章 entry. The breadcrumb
-  //     in the page chrome sometimes reads "商品消息" depending on
-  //     navigation referrer, but the actual data schema (cover / digest /
-  //     title without product fields) and the 草稿箱 list both confirm
-  //     it's a normal article.
-  //   - type=10 createType=100 is a SEPARATE article entry that pops a
-  //     "选择已有内容" dialog gate on load — saving content goes through
-  //     extra validation steps and the dialog gate breaks our automation.
-  //     Avoid that path.
-  //   - The home page "新的创作 → 文章" button uses
-  //     /cgi-bin/appmsg?...isNew=1&type=77&createType=0 (verified by
-  //     hooking window.open). Same URL we use here.
+  // Naming notes — appmsg type & createType for 公众号 editor entries:
+  //   - type=10 (no createType param) = 普通图文文章 (article). Page has
+  //     #js_cover_area, #js_submit, #js_preview (jQuery-bound), 原创声明
+  //     setting, no startup dialog. THIS is what we want.
+  //   - type=10 + createType=100 = same article schema BUT the editor
+  //     pops a "选择已有内容" gate dialog on load that intercepts paste
+  //     and breaks automation. Avoid.
+  //   - type=77 createType=0 = 商品消息 (product message). Different
+  //     schema (cover / digest fields render under "商品消息" breadcrumb;
+  //     no #js_submit, no 原创 entry, weui-desktop-only buttons).
+  //   - type=11 / type=12 — video / audio variants, separate flows.
+  // We pick type=10 (no createType) for the normal article path.
   const target =
     editorUrl ??
-    `https://${HOST}/cgi-bin/appmsg?t=media/appmsg_edit_v2&action=edit&isNew=1&type=77&createType=0&lang=zh_CN`
+    `https://${HOST}/cgi-bin/appmsg?t=media/appmsg_edit_v2&action=edit&isNew=1&type=10&lang=zh_CN`
   await sendAction('navigate_to_url', { url: target })
   // Wait for editor to mount.
   await waitFor(`!!document.querySelector('#title') && !!document.querySelector('.ProseMirror')`, 30_000)
@@ -383,11 +382,23 @@ async function pasteRichContent(html: string, imagePaths: string[]): Promise<num
 }
 
 /** Read a local file or fetch a remote URL, return base64-encoded body
- *  + mime type. */
+ *  + mime type. Remote fetch goes through undici ProxyAgent so the user's
+ *  https_proxy / http_proxy / all_proxy env vars apply (needed for blogs
+ *  / CDNs blocked from China without VPN). */
 async function loadImageAsBase64(src: string): Promise<{ b64: string; mime: string }> {
   if (/^https?:\/\//.test(src)) {
-    const { fetch } = await import('undici')
-    const res = await fetch(src)
+    const { fetch, ProxyAgent } = await import('undici')
+    const proxyUrl =
+      process.env.https_proxy ||
+      process.env.http_proxy ||
+      process.env.all_proxy ||
+      process.env.HTTPS_PROXY ||
+      process.env.HTTP_PROXY
+    const dispatcher = proxyUrl ? new ProxyAgent(proxyUrl.replace(/^socks5:\/\//, 'http://')) : undefined
+    const res = await fetch(src, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      ...(dispatcher ? ({ dispatcher } as any) : {}),
+    })
     if (!res.ok) throw new Error(`fetch ${src} failed: ${res.status}`)
     const buf = Buffer.from(await res.arrayBuffer())
     const mime = res.headers.get('content-type') || guessMimeFromUrl(src)
@@ -614,11 +625,15 @@ async function verifyDraftInList(title: string, timeoutMs: number): Promise<bool
     const found = await evalJs(`(async () => {
       const token = location.href.match(/token=(\\d+)/)?.[1];
       if (!token) return false;
-      const url = '/cgi-bin/appmsg?begin=0&count=10&type=77&action=list_card&token=' + token + '&lang=zh_CN&_t=' + Date.now();
+      // Check both article (type=10) and the legacy commerce list (type=77),
+      // since older drafts may still live there.
+      const urls = [
+        '/cgi-bin/appmsg?begin=0&count=10&type=10&action=list_card&token=' + token + '&lang=zh_CN&_t=' + Date.now(),
+        '/cgi-bin/appmsg?begin=0&count=10&type=77&action=list_card&token=' + token + '&lang=zh_CN&_t=' + Date.now(),
+      ];
       try {
-        const r = await fetch(url, { credentials: 'same-origin' });
-        const html = await r.text();
-        return html.includes(${JSON.stringify(title)});
+        const results = await Promise.all(urls.map(u => fetch(u, { credentials: 'same-origin' }).then(r => r.text())));
+        return results.some(html => html.includes(${JSON.stringify(title)}));
       } catch { return false; }
     })()`, true)
     if (found === true) return true
@@ -777,23 +792,18 @@ async function evalJs(expr: string, awaitPromise = false): Promise<unknown> {
  *  ClipboardEvent or other native event directly, not go through here.
  */
 /**
- * Click the element returned by `findExpr`.
+ * Tag the element returned by `findExpr` with data-bnbot-target='1' and
+ * fire a TRUSTED CDP click. This works for both jQuery-delegated handlers
+ * (because they listen on document-level click events) and React-bound
+ * widgets that explicitly check isTrusted.
  *
- * Strategy: prefer jQuery `.trigger('click')` because microWeChat's MP
- * editor binds most action handlers via jQuery 1.9.1 (.on('click') /
- * delegated). jQuery's trigger ALSO calls `element.click()` under the
- * hood, which dispatches a native click event — React-bound widgets
- * (.weui-desktop-* dialog buttons, checkboxes) listen to that and react
- * normally. So one jq.trigger handles both binding styles in a single
- * fire, and we never get the double-fire bug we hit during v0.3.31 dev
- * where CDP-trusted-click + jq.trigger toggled the same React state
- * twice.
- *
- * Fallback to trusted CDP click only when jQuery isn't loaded on the page
- * (defensive — shouldn't happen on mp.weixin.qq.com).
+ * Exception: a few elements (#js_submit, #js_preview) have a custom click
+ * handler that blocks non-jQuery-synthesized events. For those, callers
+ * use `jqTriggerClick(selector)` directly via evalJs — see saveDraft and
+ * openPreview implementations.
  */
 async function tagAndClick(findExpr: string): Promise<void> {
-  const result = (await evalJs(`(() => {
+  const tagged = (await evalJs(`(() => {
     document.querySelectorAll('[data-bnbot-target]').forEach(el => el.removeAttribute('data-bnbot-target'));
     const el = ${findExpr};
     if (!el || !(el instanceof Element)) return JSON.stringify({ ok: false, reason: 'not-found' });
@@ -802,22 +812,31 @@ async function tagAndClick(findExpr: string): Promise<void> {
     if (r.width === 0 && r.height === 0) {
       el.scrollIntoView({ block: 'center' });
     }
-    const jq = window.$ || window.jQuery;
-    if (jq) {
-      jq(el).trigger('click');
-      return JSON.stringify({ ok: true, jq: true });
-    }
-    return JSON.stringify({ ok: true, jq: false });
-  })()`)) as { ok?: boolean; reason?: string; jq?: boolean } | string
-  const parsed = typeof result === 'string' ? JSON.parse(result) : result
+    return JSON.stringify({ ok: true });
+  })()`)) as { ok?: boolean; reason?: string } | string
+  const parsed = typeof tagged === 'string' ? JSON.parse(tagged) : tagged
   if (!parsed?.ok) throw new Error(`tagAndClick: target not found (${parsed?.reason})`)
 
-  if (!parsed.jq) {
-    await sendAction('debug_click', {
-      selector: '[data-bnbot-target="1"]',
-      targetHost: HOST,
-    })
-  }
+  await sendAction('debug_click', {
+    selector: '[data-bnbot-target="1"]',
+    targetHost: HOST,
+  })
+}
+
+/** Fire jQuery `.trigger('click')` on the given selector inside the page.
+ *  Use this only for elements whose click handler explicitly requires a
+ *  jQuery-synthesized event (#js_submit, #js_preview). For everything else
+ *  prefer tagAndClick. */
+async function jqTriggerClick(selector: string): Promise<boolean> {
+  const result = (await evalJs(`(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return false;
+    const jq = window.$ || window.jQuery;
+    if (!jq) return false;
+    jq(el).trigger('click');
+    return true;
+  })()`)) as boolean
+  return result === true
 }
 
 async function waitFor(boolExpr: string, timeoutMs: number): Promise<void> {
