@@ -136,18 +136,15 @@ async function runPost(plan: WxmpPostPlan): Promise<Record<string, unknown>> {
   const summary: Record<string, unknown> = { steps: [] as string[] }
   const log = (s: string) => (summary.steps as string[]).push(s)
 
-  // 0. Normalize plan — `cover` prepends into pasteImages so it becomes
-  //    the first body image (uploaded to mmbiz). We do NOT auto-enable
-  //    coverFromBody because that triggers a multi-step dialog flow
-  //    (popover → 选择图片 → 下一步 → 编辑封面 → 确认) that involves a
-  //    server-side crop step. In automated runs the crop hangs in a
-  //    perpetual loading state and the saved draft ends up with cover="".
-  //    Workaround for the user: after CLI saves the draft, open it in
-  //    the 草稿箱, drag/select a cover manually (10 seconds, then click
-  //    save). Or set coverFromBody:true to opt into the experimental
-  //    auto-cover flow.
+  // 0. Normalize plan: prepend `cover` into pasteImages and auto-enable
+  //    coverFromBody so the cover-selection flow runs. The flow is:
+  //    popover → 选择图片 → 下一步 → 编辑封面 → 确认 → server crop +
+  //    persist mmbiz URL into the cover field. The 下一步 / 确认 buttons
+  //    require a full pointer/mouse event chain (single trusted click is
+  //    silently dropped) — see dispatchMouseChain in setCoverFromBody.
   if (plan.cover) {
     plan.pasteImages = [plan.cover, ...(plan.pasteImages ?? [])]
+    if (plan.coverFromBody === undefined) plan.coverFromBody = true
   }
 
   // 1. Make sure we're on an editor page. If not, open a fresh one.
@@ -544,41 +541,52 @@ async function setCoverFromBody(): Promise<void> {
     { viaJq: true },
   )
 
-  // 4. Click 下一步 — Note: weui-desktop dialog primary buttons use
-  //    React, not jQuery delegate. Trusted CDP click required.
-  await tagAndClick(
+  // Settle: image-item click was a jq.trigger which sets internal state
+  // async. Need a tick for React to register the selection before we
+  // press 下一步, otherwise the next-button is fired against stale state.
+  await sleep(800)
+
+  // 4. Click 下一步 — weui-desktop React button that listens to
+  //    pointer/mousedown, NOT bare click. Trusted CDP click silently
+  //    no-ops; jq.trigger fires element.click() but React's filter
+  //    discards it (or routes to wrong handler). Full mouse-event chain
+  //    is the only thing that works.
+  await dispatchMouseChain(
     `(() => {
       const dlg = [...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('选择图片'));
       return [...(dlg?.querySelectorAll('button') ?? [])].find(b => (b.innerText || '').trim() === '下一步' && !b.disabled) ?? null;
     })()`,
   )
 
-  // 5. Wait for 编辑封面 step, then click 确认 — also jQuery-bound. type=10
-  //    can take longer to transition; allow 30s.
+  // 5. Wait for 编辑封面 step, then click 确认 — same React mouse-chain
+  //    treatment as 下一步. type=10 server crop is slower than type=77;
+  //    allow 30s for dialog transition.
   await waitFor(
     `!![...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('编辑封面'))`,
     30_000,
   )
-  await tagAndClick(
+  // Let server-side suggested-crop API land before pressing 确认.
+  // Without this, 确认 fires while crop_suggestion is still in-flight and
+  // the resulting cover field stays empty.
+  await sleep(1500)
+  await dispatchMouseChain(
     `(() => {
       const dlg = [...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('编辑封面'));
       return [...(dlg?.querySelectorAll('button') ?? [])].find(b => (b.innerText || '').trim() === '确认' && !b.disabled) ?? null;
     })()`,
   )
-  // Cover commit is async — server crops + uploads, then UI swaps the
-  // .select-cover__loading__mask spinner away and reveals
-  // .js_cover_preview_new with a real backgroundImage. We must wait for
-  // the loading to clear before proceeding to saveDraft, otherwise the
-  // saved doc has cover="" (verified empirically).
+  // Cover commit signal: .js_cover_preview_new gets a backgroundImage
+  // pointing to mmbiz CDN. We do NOT also wait for .js_cover_loading
+  // to disappear — empirically it stays in display:flex even after
+  // the cover is fully committed (microWeChat UI bug, not a real loading
+  // state). Backgroundimage presence is the source of truth.
   await waitFor(
     `(() => {
-      const loading = document.querySelector('.js_cover_loading');
-      // visible (display !== none) means still uploading
-      if (loading && getComputedStyle(loading).display !== 'none') return false;
       const preview = document.querySelector('.js_cover_preview_new');
       if (!preview) return false;
+      if (getComputedStyle(preview).display === 'none') return false;
       const bg = getComputedStyle(preview).backgroundImage || '';
-      return bg.includes('http') && bg.includes('mmbiz');
+      return bg.includes('http') && (bg.includes('mmbiz') || bg.includes('qlogo'));
     })()`,
     30_000,
   )
@@ -911,6 +919,32 @@ async function jqTriggerClick(selector: string): Promise<boolean> {
     return true;
   })()`)) as boolean
   return result === true
+}
+
+/** Dispatch a full pointer/mouse event chain
+ *  (pointerdown/mousedown/pointerup/mouseup/click) on the element
+ *  returned by `findExpr`. Required for some weui-desktop React buttons
+ *  inside dialog flows (the cover-selection 下一步 + 编辑封面 确认 buttons)
+ *  whose React handler listens on pointerdown/mousedown rather than
+ *  bare click — a single trusted CDP click silently no-ops on those.
+ *
+ *  Use sparingly. tagAndClick(... viaJq:true) is enough for jQuery
+ *  buttons, and tagAndClick (no opts) is enough for typical React
+ *  widgets. This chain dispatch is the escape hatch for the dialog
+ *  buttons inside the cover crop flow. */
+async function dispatchMouseChain(findExpr: string): Promise<void> {
+  const result = (await evalJs(`(() => {
+    const el = ${findExpr};
+    if (!el || !(el instanceof Element)) return false;
+    ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(type => {
+      el.dispatchEvent(new MouseEvent(type, {
+        bubbles: true, cancelable: true, view: window,
+        button: 0, buttons: 1, detail: 1,
+      }));
+    });
+    return true;
+  })()`)) as boolean
+  if (!result) throw new Error('dispatchMouseChain: target not found')
 }
 
 async function waitFor(boolExpr: string, timeoutMs: number): Promise<void> {
