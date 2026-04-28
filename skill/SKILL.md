@@ -853,9 +853,10 @@ the rest of the agent loop — invoke them directly when the intent fits:
 | `/schedule` | Schedule one-shot or recurring posts via macOS launchd. System-level, fires even when bnbot REPL is closed. |
 | `/auto-reply` | Autonomous engagement loop — scrape `notifications` (mentions/replies/quotes) + optional `timeline --type=following`, Claude evaluates each, drafts reply in user voice, posts via CDP. Built-in safety rails (per-user cooldown, daily caps, must-approve drafts). |
 | `/inbox-triage` | Reactive notifications cleanup — read inbox, classify, batch-decide actions (reply / like / follow-back / skip), execute after user approval. |
+| `/wxmp-post` | Generate a WeChat MP (微信公众号) article and push it to the user's draft box (草稿箱). Long-form 1500–3500 字 with proper 排版 (h1/h2 sections, lists, blockquotes, inline color) and images auto-uploaded to mmbiz CDN. Stops at draft — never publishes (发表 stays a manual click). |
 
-When the user's request is clearly one of these three, prefer the
-sibling — don't try to handle it inside `/bnbot`.
+When the user's request is clearly one of these, prefer the sibling —
+don't try to handle it inside `/bnbot`.
 
 ## Notes
 

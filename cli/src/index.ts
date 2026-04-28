@@ -57,6 +57,7 @@ import { screenshotCommand } from './commands/screenshot.js';
 import { downloadCommand } from './commands/download.js';
 import { debugEvalCommand, debugUploadCommand, debugClickCommand, debugShowCommand, debugDragCommand, debugRecordCommand } from './commands/debug.js';
 import { xhsPostCommand, xhsStatsNoteCommand, xhsStatsAccountCommand } from './commands/xhs.js';
+import { wxmpPostCommand } from './commands/wxmp.js';
 import {
   tiktokSearchCommand, tiktokExploreCommand,
   youtubeSearchCommand, youtubeVideoCommand, youtubeTranscriptCommand,
@@ -845,6 +846,29 @@ function buildProgram(): Command {
 
   const weixin = program.command('weixin').description('WeChat');
   weixin.command('article <url>').description('Fetch WeChat article').action(fetchWeixinArticleCommand);
+
+  // ── WeChat MP (公众号) creator automation ────────────
+  // 🚫 No --publish flag by design: 发表 must always be a manual click
+  // by the user in the MP backend. We only automate up to 保存草稿 + 预览.
+  const wxmp = program.command('wxmp').description('WeChat MP (公众号) editor automation — compose / save draft / preview only');
+  wxmp
+    .command('post')
+    .description('Compose a 公众号 article from a JSON plan; save draft + optional preview. Never publishes.')
+    .argument(
+      '[plan-json-or-path]',
+      'Plan as inline JSON, OR a path to a JSON file, OR "-" for stdin. Defaults to stdin.',
+    )
+    .option('--plan <path>', 'Alias for the positional arg — path to plan JSON, or `-` for stdin', '-')
+    .action(
+      (
+        arg: string | undefined,
+        opts: { plan?: string },
+      ) => {
+        const planSource =
+          arg && arg.trim().startsWith('{') ? { inline: arg } : { plan: arg ?? opts.plan ?? '-' }
+        return wxmpPostCommand(planSource)
+      },
+    );
 
   return program;
 }
