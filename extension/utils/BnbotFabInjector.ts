@@ -70,6 +70,11 @@ export class BnbotFabInjector {
   // flash in over a half-rendered X UI.
   private pageLoaded = false;
   private pendingVisible = true;
+  // Set when user clicks a Grok/DM/chat trigger. While this window is
+  // open, alignToGrok won't re-show even if the drawer hasn't yet
+  // crossed the height threshold (drawer animation is mid-flight). Once
+  // it expires, normal drawerExpanded logic decides visibility.
+  private suppressShowUntilMs = 0;
 
   start(): void {
     this.injectStylesOnce();
@@ -106,6 +111,11 @@ export class BnbotFabInjector {
       if (X_HIDE_TRIGGERS.some((sel) => target.closest(sel))) {
         this.broadcastGrokExpanded(true);
         this.setVisible(false);
+        // Suppress alignToGrok re-show for the duration of X's drawer
+        // animation. Without this, alignToGrok could fire before the
+        // drawer height crosses GROK_EXPANDED_HEIGHT_PX and re-show the
+        // FAB mid-fade-out.
+        this.suppressShowUntilMs = Date.now() + 600;
         // Same reset as alignToGrok's expanded branch — re-anchor at
         // fallback so re-showing later doesn't fade in at a stale high spot.
         const btn = this.btn ?? (document.getElementById(FAB_ID) as HTMLButtonElement | null);
@@ -276,14 +286,13 @@ export class BnbotFabInjector {
       return;
     }
 
-    // While the FAB is hidden (e.g. user just clicked Grok and we're
-    // still in the fade-out frame), don't follow Grok's header
-    // position. Grok header coordinates fly all over the screen during
-    // its own open animation; chasing them would briefly flash the
-    // FAB at center / left of the viewport before it finishes fading.
-    // Wait until the user re-summons the FAB (drawer fully collapsed
-    // → setVisible(true) reached on next tick).
-    if (!this.pendingVisible) return;
+    // Just-clicked guard: if the user tapped a Grok/DM/chat trigger
+    // within the last ~600ms, the drawer animation may not yet have
+    // crossed the height threshold above. Don't re-show during that
+    // window — once it expires, the next tick decides freely based on
+    // the real drawerExpanded state. This is what lets the FAB come
+    // back when the drawer finally collapses.
+    if (Date.now() < this.suppressShowUntilMs) return;
 
     this.setVisible(true);
 
