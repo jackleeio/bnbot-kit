@@ -154,11 +154,16 @@ export class BnbotFabInjector {
 
     // If the Grok drawer is expanded into a full panel, hide our FAB
     // entirely — it would otherwise float above Grok's expanded view
-    // and block content. Re-show automatically when Grok collapses.
+    // and block content. Also signal the React popup to collapse so
+    // the BNBot panel doesn't sit on top of Grok either. Re-show
+    // automatically when Grok collapses (FAB only — the popup stays
+    // closed; user re-opens it when they want it).
     const drawerRoot =
       document.querySelector('[data-testid="GrokDrawer"]') as HTMLElement | null;
     const drawerHeight = drawerRoot?.getBoundingClientRect().height ?? 0;
-    if (drawerHeight > GROK_EXPANDED_HEIGHT_PX) {
+    const grokExpanded = drawerHeight > GROK_EXPANDED_HEIGHT_PX;
+    this.broadcastGrokExpanded(grokExpanded);
+    if (grokExpanded) {
       btn.style.display = 'none';
       return;
     }
@@ -181,6 +186,15 @@ export class BnbotFabInjector {
     // Broadcast FAB position so the React popup can anchor itself above
     // the FAB (so opening the popup doesn't cover the FAB).
     this.broadcastPosition(desiredBottom, desiredRight);
+  }
+
+  private lastGrokExpanded: boolean | null = null;
+  private broadcastGrokExpanded(expanded: boolean): void {
+    if (this.lastGrokExpanded === expanded) return;
+    this.lastGrokExpanded = expanded;
+    window.dispatchEvent(
+      new CustomEvent('bnbot-grok-expanded', { detail: { expanded } }),
+    );
   }
 
   private lastBroadcast: { bottom: number; right: number } | null = null;

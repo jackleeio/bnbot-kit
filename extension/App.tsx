@@ -777,11 +777,21 @@ function AppContent() {
     };
     window.addEventListener('bnbot-fab-aligned', handleFabAligned);
 
+    // FAB injector tells us when X's Grok drawer expanded into a full
+    // panel — collapse our popup so it doesn't overlap Grok. Don't
+    // auto-reopen on collapse; the user re-opens via the FAB.
+    const handleGrokExpanded = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.expanded) setIsCollapsed(true);
+    };
+    window.addEventListener('bnbot-grok-expanded', handleGrokExpanded);
+
     return () => {
       window.removeEventListener('bnbot-open-boost-tab', handleOpenBoostTab);
       window.removeEventListener('bnbot-open-sidebar', handleOpenSidebar);
       window.removeEventListener('bnbot-toggle-popup', handleTogglePopup);
       window.removeEventListener('bnbot-fab-aligned', handleFabAligned);
+      window.removeEventListener('bnbot-grok-expanded', handleGrokExpanded);
     };
   }, []);
 
