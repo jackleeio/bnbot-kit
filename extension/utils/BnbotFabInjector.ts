@@ -137,12 +137,6 @@ export class BnbotFabInjector {
         border-radius: 50%;
         pointer-events: none;
       }
-      @media (prefers-color-scheme: dark) {
-        #${FAB_ID} {
-          background: #16181c;
-          border-color: rgba(255, 255, 255, 0.1);
-        }
-      }
     `;
     document.head.appendChild(style);
   }
