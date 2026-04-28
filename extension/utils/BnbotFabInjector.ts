@@ -127,13 +127,10 @@ export class BnbotFabInjector {
         // drawer height crosses GROK_EXPANDED_HEIGHT_PX and re-show the
         // FAB mid-fade-out.
         this.suppressShowUntilMs = Date.now() + 600;
-        // Same reset as alignToGrok's expanded branch — re-anchor at
-        // fallback so re-showing later doesn't fade in at a stale high spot.
-        const btn = this.btn ?? (document.getElementById(FAB_ID) as HTMLButtonElement | null);
-        if (btn) {
-          btn.style.bottom = `${FALLBACK_BOTTOM}px`;
-          btn.style.right = '20px';
-        }
+        // Don't touch btn.style.bottom/right here — the FAB is in the
+        // middle of fading out, and snapping its position would be
+        // visible to the user as a "drop down" before disappearing.
+        // alignToGrok will recompute on the next visible tick.
       }
     };
     document.addEventListener('pointerdown', this.hideClickListener, true);
@@ -285,12 +282,10 @@ export class BnbotFabInjector {
     this.broadcastGrokExpanded(drawerExpanded);
     if (drawerExpanded) {
       this.setVisible(false);
-      // Reset to fallback position while hidden so the next reveal
-      // doesn't briefly fade in at the old "stuck-high" coords from
-      // when Grok was still expanding. Position transitions during
-      // hidden state are invisible to the user.
-      btn.style.bottom = `${FALLBACK_BOTTOM}px`;
-      btn.style.right = '20px';
+      // Don't snap position here either — if the FAB is still fading
+      // out from a pointerdown click, repositioning would be visible
+      // as a drop-down. When the drawer collapses again this branch
+      // is skipped and alignToGrok recomputes the correct spot.
       return;
     }
 
