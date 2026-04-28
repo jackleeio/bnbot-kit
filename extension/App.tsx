@@ -786,12 +786,28 @@ function AppContent() {
     };
     window.addEventListener('bnbot-grok-expanded', handleGrokExpanded);
 
+    // Generic click-outside-to-close — pointerdown anywhere outside the
+    // popup or the FAB collapses it. Lets users dismiss BNBot by tapping
+    // X's right rail / sidebar / timeline without hunting for the FAB.
+    // Capture phase so we run before X's own click handlers.
+    const handleOutsideClick = (e: Event) => {
+      const target = e.target as Element | null;
+      if (!target?.closest) return;
+      // Inside the popup itself — keep open.
+      if (target.closest('[data-bnbot-popup="true"]')) return;
+      // Inside the FAB — its own onClick toggles, don't double-handle.
+      if (target.closest('#bnbot-fab-trigger')) return;
+      setIsCollapsed(true);
+    };
+    document.addEventListener('pointerdown', handleOutsideClick, true);
+
     return () => {
       window.removeEventListener('bnbot-open-boost-tab', handleOpenBoostTab);
       window.removeEventListener('bnbot-open-sidebar', handleOpenSidebar);
       window.removeEventListener('bnbot-toggle-popup', handleTogglePopup);
       window.removeEventListener('bnbot-fab-aligned', handleFabAligned);
       window.removeEventListener('bnbot-grok-expanded', handleGrokExpanded);
+      document.removeEventListener('pointerdown', handleOutsideClick, true);
     };
   }, []);
 
@@ -870,6 +886,7 @@ function AppContent() {
     // pointer-events-none on wrapper, pointer-events-auto on interactive elements
     <div
       className={theme}
+      data-bnbot-popup="true"
       style={{
         position: 'fixed',
         // Anchor above the FAB — add FAB height + 12px gap, so the popup
