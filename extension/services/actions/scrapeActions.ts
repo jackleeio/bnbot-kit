@@ -392,6 +392,24 @@ export const postImpressionsHandler: ActionHandler = async (params, callbacks) =
 };
 
 /**
+ * 获取 KOL 最近推文（用于 /kol-pulse skill）
+ */
+export const kolPulseHandler: ActionHandler = async (params, callbacks) => {
+  const { kol_type = 'crypto', page_size = 100 } = params as {
+    kol_type?: string;
+    page_size?: number;
+  };
+  callbacks.onProgress?.({} as any, `正在获取 ${kol_type} KOL 推文...`);
+  try {
+    const { analysisService } = await import('../analysisService');
+    const response = await analysisService.getKolRecentData({ kol_type, page_size });
+    return { success: true, data: response };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : '获取失败' };
+  }
+};
+
+/**
  * 获取回复推文曝光数据
  */
 export const replyImpressionsHandler: ActionHandler = async (params, callbacks) => {
@@ -577,6 +595,7 @@ export const scrapeHandlers: Record<string, ActionHandler> = {
   account_analytics: accountAnalyticsHandler,
   post_impressions: postImpressionsHandler,
   reply_impressions: replyImpressionsHandler,
+  kol_pulse: kolPulseHandler,
   scrape_user_profile: scrapeUserProfileHandler,
   scrape_user_tweets: scrapeUserTweetsHandler,
 };

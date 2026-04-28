@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Zap, TrendingUp, Wallet, RefreshCw } from 'lucide-react';
+import { Zap, Wallet, RefreshCw } from 'lucide-react';
 import { Tab } from '../types';
 import { useLanguage } from './LanguageContext';
 declare const chrome: any;
@@ -61,7 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems = [
     // Chat tab removed — chat lives in the bnbot desktop app now;
     // extension is pure browser executor.
-    { id: Tab.ANALYSIS, icon: TrendingUp, label: t.sidebar.analysis },
+    // ANALYSIS tab removed — KOL pulse moved to /kol-pulse skill.
     // Auto Reply tab removed — see /auto-reply, /inbox-watch skills.
     { id: Tab.BOOST, icon: Zap, label: t.sidebar.boost },
     // Drafts/Schedule tab removed — scheduling moved to `bnbot calendar` + launchd.

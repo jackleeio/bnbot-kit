@@ -36,7 +36,6 @@ export const en = {
   sidebar: {
     chat: '',
     boost: 'Boost',
-    analysis: 'Trends',
     autoReply: 'Auto Pilot',
     tweetContext: 'Tweet',
     drafts: 'Schedule',
@@ -248,19 +247,6 @@ export const en = {
     dayTotal: '-day Total',
     stripeInfo: 'Secure payment via Stripe. Your boost activates immediately after payment.',
     disclaimer: 'AI monitors engagement and distributes rewards automatically. Secure payment via Stripe.',
-  },
-
-  // Analysis Panel
-  analysis: {
-    crypto: 'Crypto',
-    ai: 'AI',
-    noTweets: 'No tweets found',
-    tryLater: 'Try checking back later',
-    askAboutTweet: 'Ask me anything about this tweet',
-    summary: 'Summary',
-    aiReply: 'AI Reply',
-    aiQuote: 'AI Quote',
-    stayOnPage: 'Stay',
   },
 
   // Credits Panel

@@ -3,7 +3,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { ChatPanel } from './components/panels/ChatPanel';
 import { BoostPanel } from './components/panels/BoostPanel';
-import { AnalysisPanel } from './components/panels/AnalysisPanel';
+// AnalysisPanel removed — KOL pulse moved to bnbot skill `/kol-pulse`
+// (skills/kol-pulse/SKILL.md). Extension no longer hosts the trends UI.
 // CreditsPanel removed — subscription / credits managed via CLI / desktop app
 // (extension is a thin browser executor, no account UI).
 // LoginPanel / LoginModal removed — login flow owned by CLI (`bnbot login`).
@@ -44,7 +45,6 @@ function AppContent() {
   const [currentTweetId, setCurrentTweetId] = useState<string | null>(null);
   const [pendingAgentMessage, setPendingAgentMessage] = useState<string | null>(null);
   const [previousTab, setPreviousTab] = useState<Tab | null>(null);
-  const [analysisStayOnPage, setAnalysisStayOnPage] = useState(false);
   const [chatResetKey, setChatResetKey] = useState(0);
   const [globalChatResetTrigger, setGlobalChatResetTrigger] = useState(0); // Add reset trigger for global Chat
   const [tweetHighlightEnabled, setTweetHighlightEnabled] = useState(true);
@@ -714,7 +714,7 @@ function AppContent() {
       history.pushState = originalPushState;
       history.replaceState = originalReplaceState;
     };
-  }, [activeTab, currentTweetId, previousTab, analysisStayOnPage, tweetHighlightEnabled]);
+  }, [activeTab, currentTweetId, previousTab, tweetHighlightEnabled]);
 
   // Listen for X Boost button clicks from injected DOM
   useEffect(() => {
@@ -848,9 +848,6 @@ function AppContent() {
         return (
           <XBalancePanel />
         );
-      case Tab.ANALYSIS:
-        // AnalysisPanel is rendered separately to persist state
-        return null;
       default: return null;
     }
   };
@@ -917,17 +914,6 @@ function AppContent() {
 
             {/* Content Area */}
             <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', height: '100%', zIndex: 10, overflow: 'hidden' }}>
-              {/* Persistent AnalysisPanel - stays mounted to preserve state */}
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  display: activeTab === Tab.ANALYSIS && !showLoginHint ? 'flex' : 'none',
-                  flexDirection: 'column',
-                }}
-              >
-                <AnalysisPanel onStayOnPageChange={setAnalysisStayOnPage} />
-              </div>
               {/* Persistent BoostPanel - stays mounted to preserve state */}
               <div
                 style={{
@@ -973,7 +959,7 @@ function AppContent() {
                 style={{
                   position: 'absolute',
                   inset: 0,
-                  display: (showLoginHint && !user) || (activeTab !== Tab.ANALYSIS && activeTab !== Tab.CHAT && activeTab !== Tab.BOOST) ? 'flex' : 'none',
+                  display: (showLoginHint && !user) || (activeTab !== Tab.CHAT && activeTab !== Tab.BOOST) ? 'flex' : 'none',
                   flexDirection: 'column',
                   zIndex: 20,
                 }}

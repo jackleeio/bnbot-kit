@@ -460,6 +460,19 @@ export const REPLY_IMPRESSIONS: ActionDefinition = {
   timeout: 60000
 };
 
+export const KOL_PULSE: ActionDefinition = {
+  id: 'kol_pulse',
+  name: 'KOL Pulse',
+  nameKey: 'actions.kolPulse',
+  category: 'scrape',
+  trigger: 'both',
+  parameters: [
+    { name: 'kol_type', type: 'string', required: false, default: 'crypto', description: 'crypto | ai' },
+    { name: 'page_size', type: 'number', required: false, default: 100, description: '每页推文数' }
+  ],
+  timeout: 30000
+};
+
 // ============================================
 // 通知类 Actions
 // ============================================
@@ -842,6 +855,7 @@ class ActionRegistry {
       ACCOUNT_ANALYTICS,
       POST_IMPRESSIONS,
       REPLY_IMPRESSIONS,
+      KOL_PULSE,
       // 通知类
       PROCESS_NOTIFICATIONS,
       CLICK_NOTIFICATION,

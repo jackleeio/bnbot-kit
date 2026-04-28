@@ -36,7 +36,6 @@ export const zh = {
   sidebar: {
     chat: '',
     boost: '助推',
-    analysis: '趋势',
     autoReply: 'Auto Pilot',
     tweetContext: '推文',
     drafts: '排期',
@@ -238,19 +237,6 @@ export const zh = {
     dayTotal: '天 总计',
     stripeInfo: '通过 Stripe 安全支付，付款后立即激活助推。',
     disclaimer: 'AI 监控互动并自动向参与者分发奖励。通过 Stripe 安全支付。',
-  },
-
-  // Analysis Panel
-  analysis: {
-    crypto: '加密货币',
-    ai: 'AI',
-    noTweets: '暂无推文',
-    tryLater: '请稍后再试',
-    askAboutTweet: '关于此推文，随时问我',
-    summary: '摘要',
-    aiReply: 'AI回复',
-    aiQuote: 'AI引用',
-    stayOnPage: '常驻',
   },
 
   // Credits Panel
