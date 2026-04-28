@@ -146,19 +146,23 @@ async function runPost(plan: WxmpPostPlan): Promise<Record<string, unknown>> {
     log('original:enabled')
   }
 
-  // 7. Save draft. This sequence has been hard-won through three
-  //    iterations:
-  //     v1 (no settle): server got stale PM doc, persisted title-only.
-  //     v2 (sleep 2s): PM dirty flag cleared, save became no-op (content
-  //                    on screen but never committed).
-  //     v3 (current): explicit input dispatch tags PM as dirty, save
-  //                    triggers commit, then we wait for the actual
-  //                    "saved" indicator (`.unsaved-tip` cleared OR
-  //                    appmsgid in URL) instead of guessing the timing.
+  // 7. Save draft. After several iterations the working recipe is:
+  //     - Don't fiddle with PM dirty flags before clicking — that broke
+  //       commit in v0.3.28 / v0.3.29.
+  //     - Click 保存为草稿, give the server ~5s to ack, then verify by
+  //       fetching the 草稿箱 list endpoint and looking for our title.
+  //       If found we know server-side persistence happened (the URL
+  //       doesn't always navigate on save, can't trust that signal).
+  //     - If body is still racey (server got placeholder before image
+  //       upload), the title check still confirms the commit and the
+  //       user can re-fire from list page.
   if (plan.saveDraft) {
-    await markPmDirty()
-    summary.draftCommitted = await saveDraft()
-    log(summary.draftCommitted ? 'draft:saved' : 'draft:save-uncertain')
+    await saveDraftAndVerify()
+    const committed = plan.title
+      ? await verifyDraftInList(plan.title, 8_000)
+      : true
+    summary.draftCommitted = committed
+    log(committed ? 'draft:saved' : 'draft:save-uncertain')
   }
 
   // 8. Preview — opens inline 预览容器
@@ -314,12 +318,12 @@ async function pasteRichContent(html: string, imagePaths: string[]): Promise<num
       })()`,
       15_000,
     )
-    if (ok) {
-      uploaded++
-      // Give PM a beat to register the upload completion in its
-      // internal doc state (separate from DOM mutation).
-      await sleep(400)
-    }
+    if (ok) uploaded++
+    // ⚠️ Do NOT add a settle sleep here — extra idle time after the
+    // paste lets PM's dirty flag get reconciled away, and then the
+    // subsequent saveDraft click becomes a no-op (server gets nothing).
+    // The race in the other direction (server reads stale doc) is
+    // handled by waiting on each image's mmbiz src appearing above.
   }
 
   return uploaded
@@ -493,67 +497,72 @@ async function openOriginalDialogAndConfirm(): Promise<void> {
 }
 
 /**
- * Force ProseMirror's React state to recognize the doc as dirty.
+ * Trigger 保存为草稿. The hard-won fact:
  *
- * After binary-paste image upload completes (mmbiz src present), the DOM
- * is up to date but PM's internal `state.tr` may not have flushed —
- * meaning the editor still thinks "nothing changed since last save".
- * Save then becomes a no-op. Dispatching a synthetic 'input' on the PM
- * root tags it dirty so the save serializes the latest doc.
+ *   微信公众号 编辑器 still uses jQuery 1.9.1 for its action buttons.
+ *   The click handler is bound via `$('#js_submit').on('click', …)` —
+ *   delegated through jQuery's special event system, NOT through native
+ *   addEventListener. Trusted CDP MouseEvents pass through the DOM but
+ *   jQuery's delegate filter ignores them, so saveDraft via CDP click
+ *   silently no-ops.
+ *
+ *   The fix is to call `$('#js_submit').trigger('click')` directly —
+ *   that synthesizes a jQuery event object the delegate IS listening for.
+ *
+ * This is also why we MUST match by structure (#js_submit) rather than
+ * by button.innerText: the click handler is on the wrapper span, not the
+ * inner <button>. The wrapper id is `js_submit` for 保存为草稿 and
+ * `js_send` for 发表 — we hard-code js_submit and verify innerText
+ * still says 保存为草稿 (defense-in-depth against MP UI churn).
  */
-async function markPmDirty(): Promise<void> {
-  await evalJs(`(() => {
-    const pm = document.querySelector('.ProseMirror');
-    if (!pm) return false;
-    pm.dispatchEvent(new Event('input', { bubbles: true }));
-    pm.dispatchEvent(new Event('change', { bubbles: true }));
-    return true;
-  })()`)
-  // One tick lets React reconcile.
-  await sleep(300)
+async function saveDraftAndVerify(): Promise<void> {
+  const result = (await evalJs(`(() => {
+    const sp = document.querySelector('#js_submit');
+    if (!sp) return 'no-submit-span';
+    const txt = (sp.innerText || '').trim();
+    if (txt !== '保存为草稿') {
+      // Bail loud if the wrapper is mislabeled — could be 发表 in
+      // some odd UI state. We never want to fire that.
+      return 'submit-wrong-text:' + txt.slice(0, 30);
+    }
+    const jq = window.$ || window.jQuery;
+    if (!jq) return 'no-jquery';
+    jq(sp).trigger('click');
+    return 'triggered';
+  })()`)) as string
+  if (result !== 'triggered') {
+    throw new Error(`saveDraft: ${result}`)
+  }
+  // Server commit + URL navigation. 5s is enough on broadband; verify
+  // step retries up to 8s after this so total budget is ~13s.
+  await sleep(5000)
 }
 
 /**
- * Click 保存为草稿 and wait for the actual "saved" signal:
- *   - The "未保存" tip element disappears, OR
- *   - URL gains an appmsgid=N (only on first save of an isNew draft —
- *     subsequent saves keep the same URL)
+ * Verify the draft made it server-side by fetching the 草稿箱 list page
+ * and looking for our title. This is the only reliable signal — URL
+ * doesn't always navigate, and toast/tip elements vary across MP UI
+ * versions.
  *
- * Returns true if either signal fired within 12s, false if we timed out
- * (caller can still report finalState; the user should manually verify
- * via the 草稿箱 list).
+ * Polls every 1.5s up to `timeoutMs`.
  */
-async function saveDraft(): Promise<boolean> {
-  const beforeUrl = (await evalJs('location.href')) as string
-
-  // ⚠️ MUST match by innerText. The 发表 button shares .btn_primary
-  // styling — selecting by class alone risks publishing.
-  await tagAndClick(
-    `[...document.querySelectorAll('button')].find(b => (b.innerText || '').trim() === '保存为草稿' && b.offsetParent !== null)`,
-  )
-
-  // Wait for either signal:
-  //  (a) URL gains appmsgid (first save of isNew draft → server returns
-  //      new id and client navigates),
-  //  (b) On subsequent saves URL stays put; look for "已保存" toast or
-  //      absence of the "未保存提示" element.
-  const committed = await waitForCondition(
-    `(() => {
-      const urlNow = location.href;
-      if (urlNow !== ${JSON.stringify(beforeUrl)} && urlNow.includes('appmsgid=')) return true;
-      // Fallback: any toast or status element saying 草稿已保存 / 已保存
-      const txt = document.body?.innerText || '';
-      if (/草稿已保存|已保存/.test(txt)) return true;
-      // Absence of 未保存 tip after click is also a positive signal,
-      // but only if at least 2s passed since click (avoid premature true).
-      return false;
-    })()`,
-    12_000,
-  )
-  // Even on positive signal, give server one more breath to fully ack
-  // before we read final state — prevents truncated reads on race.
-  await sleep(committed ? 1000 : 3000)
-  return committed
+async function verifyDraftInList(title: string, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const found = await evalJs(`(async () => {
+      const token = location.href.match(/token=(\\d+)/)?.[1];
+      if (!token) return false;
+      const url = '/cgi-bin/appmsg?begin=0&count=10&type=77&action=list_card&token=' + token + '&lang=zh_CN&_t=' + Date.now();
+      try {
+        const r = await fetch(url, { credentials: 'same-origin' });
+        const html = await r.text();
+        return html.includes(${JSON.stringify(title)});
+      } catch { return false; }
+    })()`, true)
+    if (found === true) return true
+    await sleep(1500)
+  }
+  return false
 }
 
 async function openPreview(): Promise<void> {
@@ -565,11 +574,13 @@ async function openPreview(): Promise<void> {
 
 // ── Low-level helpers ───────────────────────────────────────────
 
-async function evalJs(expr: string): Promise<unknown> {
-  const result = (await sendAction('debug_eval', {
+async function evalJs(expr: string, awaitPromise = false): Promise<unknown> {
+  const payload: Record<string, unknown> = {
     expression: expr,
     targetHost: HOST,
-  })) as { result?: unknown }
+  }
+  if (awaitPromise) payload.awaitPromise = true
+  const result = (await sendAction('debug_eval', payload)) as { result?: unknown }
   // debug_eval returns the JSON-stringified value in `result`.
   const raw = result?.result
   if (typeof raw !== 'string') return raw
