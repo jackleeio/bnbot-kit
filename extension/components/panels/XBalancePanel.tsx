@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { RotateCw, Coins, Wallet, Info, CalendarCheck } from 'lucide-react';
+import { RotateCw, Coins, Wallet, Info, CalendarCheck, ArrowLeft } from 'lucide-react';
 import { useLanguage } from '../LanguageContext';
 import { useVaultBalance, TokenInfo } from '../../hooks/useVaultBalance';
 import { useXUser } from '../../hooks/useXUsername';
 import { navigateToUrl } from '../../utils/navigationUtils';
 
-export const XBalancePanel: React.FC = () => {
+interface XBalancePanelProps {
+    onBack?: () => void;
+}
+
+export const XBalancePanel: React.FC<XBalancePanelProps> = ({ onBack }) => {
     const { t, language } = useLanguage();
     const [showWithdrawPrompt, setShowWithdrawPrompt] = useState(false);
     const [avatarLoaded, setAvatarLoaded] = useState(false);
@@ -49,6 +53,15 @@ export const XBalancePanel: React.FC = () => {
 
                 {/* Header */}
                 <div className="flex items-center gap-3">
+                    {onBack && (
+                        <button
+                            onClick={onBack}
+                            className="w-8 h-8 -ml-1 flex items-center justify-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--hover-bg)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                            title="Back to Boost"
+                        >
+                            <ArrowLeft size={18} />
+                        </button>
+                    )}
                     <h1 className="text-2xl font-black text-[var(--text-primary)] tracking-tight">{t.common.xBalance}</h1>
                     <div className="flex items-center gap-2 ml-auto">
                         {/* Activities Button */}

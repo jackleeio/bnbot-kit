@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Users, Eye, Search, Sparkles, Clock, Trophy, Check, Loader2, AlertCircle, Zap, ExternalLink, BadgeCheck, Layers, ChevronDown, ChevronUp, Filter, RefreshCw, X } from 'lucide-react';
+import { ChevronLeft, Users, Eye, Search, Sparkles, Clock, Trophy, Check, Loader2, AlertCircle, Zap, ExternalLink, BadgeCheck, Layers, ChevronDown, ChevronUp, Filter, RefreshCw, X, Wallet } from 'lucide-react';
 import { boostService, Boost, weiToToken, formatRemainingTime, BoostSearchParams } from '../../services/boostService';
 import { useLanguage } from '../LanguageContext';
 import { navigateToUrl } from '../../utils/navigationUtils';
@@ -33,9 +33,10 @@ interface BoostPanelProps {
     onGenerate?: (taskText: string) => void;
     onLogin?: () => void;
     onSwitchToContext?: (options: { mode: 'boost' | 'agent', tweetId?: string }) => void;
+    onOpenWallet?: () => void;
 }
 
-export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContextMode = false, onGenerate, onLogin, onSwitchToContext }) => {
+export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContextMode = false, onGenerate, onLogin, onSwitchToContext, onOpenWallet }) => {
     const { t } = useLanguage();
     const { username: currentUsername } = useXUser();
 
@@ -1262,7 +1263,18 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
                 transform: showHeader ? 'translateY(0)' : 'translateY(-100%)',
                 transition: 'transform 0.3s ease-in-out'
             }}>
-                <h1 className="text-lg font-bold text-[var(--text-primary)] shrink-0">Boost</h1>
+                <div className="flex items-center gap-2 shrink-0">
+                    {onOpenWallet && (
+                        <button
+                            onClick={onOpenWallet}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--hover-bg)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                            title="Wallet"
+                        >
+                            <Wallet size={16} />
+                        </button>
+                    )}
+                    <h1 className="text-lg font-bold text-[var(--text-primary)]">Boost</h1>
+                </div>
                 <div className="flex items-center gap-2">
                     {/* Search Bar - compact by default, expands on click */}
                     <div className="relative group">

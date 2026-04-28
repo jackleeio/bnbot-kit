@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Sidebar } from './components/Sidebar';
+// Sidebar removed — bottom nav is gone; X_Balance entry moved into BoostPanel
+// header (top-left wallet icon).
 import { ChatPanel } from './components/panels/ChatPanel';
 import { BoostPanel } from './components/panels/BoostPanel';
 // AnalysisPanel removed — KOL pulse moved to bnbot skill `/kol-pulse`
@@ -846,7 +847,7 @@ function AppContent() {
         );
       case Tab.X_BALANCE:
         return (
-          <XBalancePanel />
+          <XBalancePanel onBack={() => setActiveTab(Tab.BOOST)} />
         );
       default: return null;
     }
@@ -928,6 +929,7 @@ function AppContent() {
                   onGenerate={handleBoostGenerate}
                   onLogin={() => setShowLoginHint(true)}
                   onSwitchToContext={handleSwitchToContext}
+                  onOpenWallet={() => setActiveTab(Tab.X_BALANCE)}
                 />
               </div>
               {/* Persistent ChatPanel - stays mounted to preserve state */}
@@ -978,17 +980,6 @@ function AppContent() {
             </div>
           </main>
 
-          <Sidebar
-            activeTab={activeTab}
-            onTabChange={(tab) => {
-              setShowLoginHint(false);
-              setActiveTab(tab);
-            }}
-            onCollapse={() => setIsCollapsed(true)}
-            currentTweetId={currentTweetId}
-            tweetHighlightEnabled={tweetHighlightEnabled}
-            onToggleTweetHighlight={handleToggleTweetHighlight}
-          />
         </div>
       </div>
     </div>
