@@ -136,13 +136,16 @@ async function runPost(plan: WxmpPostPlan): Promise<Record<string, unknown>> {
   const summary: Record<string, unknown> = { steps: [] as string[] }
   const log = (s: string) => (summary.steps as string[]).push(s)
 
-  // 0. Normalize plan — sugar fields (`cover`) get expanded into the
-  //    canonical fields (pasteImages prepend) so the rest of the
-  //    pipeline doesn't need to know about them. Note that for type=10
-  //    图文文章 editor we DO NOT auto-trigger coverFromBody because the
-  //    editor automatically uses the first body image as cover ("默认首图
-  //    为封面"). coverFromBody is only meaningful for type=77 商品消息
-  //    where the cover dialog walks through .appmsg_content_img_item.
+  // 0. Normalize plan — `cover` prepends into pasteImages so it becomes
+  //    the first body image (uploaded to mmbiz). We do NOT auto-enable
+  //    coverFromBody because that triggers a multi-step dialog flow
+  //    (popover → 选择图片 → 下一步 → 编辑封面 → 确认) that involves a
+  //    server-side crop step. In automated runs the crop hangs in a
+  //    perpetual loading state and the saved draft ends up with cover="".
+  //    Workaround for the user: after CLI saves the draft, open it in
+  //    the 草稿箱, drag/select a cover manually (10 seconds, then click
+  //    save). Or set coverFromBody:true to opt into the experimental
+  //    auto-cover flow.
   if (plan.cover) {
     plan.pasteImages = [plan.cover, ...(plan.pasteImages ?? [])]
   }
@@ -482,9 +485,20 @@ async function insertBodyImageFromLibrary(): Promise<void> {
 }
 
 async function setCoverFromBody(): Promise<void> {
-  // 1. Open cover popover. #js_cover_area is jQuery-delegated.
-  await tagAndClick(`document.querySelector('#js_cover_area')`, { viaJq: true })
-  await waitFor(`!![...document.querySelectorAll('.pop-opr__list')].find(l => l.offsetParent !== null)`, 5_000)
+  // 1. Open cover popover — idempotent. If a previous step (cover-area
+  //    hover, prior call) already opened a popover, clicking again would
+  //    TOGGLE it CLOSED. Only fire the trigger when popover is not yet
+  //    visible.
+  const popoverAlreadyOpen = (await evalJs(
+    `!![...document.querySelectorAll('.pop-opr__list')].find(l => l.offsetParent !== null && l.querySelector('.js_selectCoverFromContent, .js_imagedialog'))`,
+  )) === true
+  if (!popoverAlreadyOpen) {
+    await tagAndClick(`document.querySelector('#js_cover_area')`, { viaJq: true })
+    await waitFor(
+      `!![...document.querySelectorAll('.pop-opr__list')].find(l => l.offsetParent !== null && l.querySelector('.js_selectCoverFromContent, .js_imagedialog'))`,
+      5_000,
+    )
+  }
 
   // 2. Click "从正文选择" — this opens a dialog containing the body's
   //    inserted images (.appmsg_content_img_item). Selector differs by
@@ -504,9 +518,12 @@ async function setCoverFromBody(): Promise<void> {
     })()`,
     { viaJq: true },
   )
+  // type=10 文章 dialog open is async — server fetches the body image
+  // list which can take a few seconds on slower connections. Allow up to
+  // 30s before giving up.
   await waitFor(
     `!![...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('选择图片'))`,
-    15_000,
+    30_000,
   )
   // Wait for body images to render in the picker.
   await waitFor(
@@ -514,40 +531,57 @@ async function setCoverFromBody(): Promise<void> {
       const dlg = [...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('选择图片'));
       return !!dlg?.querySelector('.appmsg_content_img_item');
     })()`,
-    20_000,
+    30_000,
   )
 
-  // 3. Click first body image — React widget, trusted CDP click.
+  // 3. Click first body image — empirically jQuery-bound on the cover
+  //    selector dialog (verified via jq._data, trusted CDP click no-ops).
   await tagAndClick(
     `(() => {
       const dlg = [...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('选择图片'));
       return dlg?.querySelector('.appmsg_content_img_item') ?? null;
     })()`,
+    { viaJq: true },
   )
 
-  // 4. Click 下一步 — dialog button, jQuery-bound.
+  // 4. Click 下一步 — Note: weui-desktop dialog primary buttons use
+  //    React, not jQuery delegate. Trusted CDP click required.
   await tagAndClick(
     `(() => {
       const dlg = [...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('选择图片'));
       return [...(dlg?.querySelectorAll('button') ?? [])].find(b => (b.innerText || '').trim() === '下一步' && !b.disabled) ?? null;
     })()`,
-    { viaJq: true },
   )
 
-  // 5. Wait for 编辑封面 step, then click 确认 — also jQuery-bound.
+  // 5. Wait for 编辑封面 step, then click 确认 — also jQuery-bound. type=10
+  //    can take longer to transition; allow 30s.
   await waitFor(
     `!![...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('编辑封面'))`,
-    15_000,
+    30_000,
   )
   await tagAndClick(
     `(() => {
       const dlg = [...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('编辑封面'));
       return [...(dlg?.querySelectorAll('button') ?? [])].find(b => (b.innerText || '').trim() === '确认' && !b.disabled) ?? null;
     })()`,
-    { viaJq: true },
   )
-  // Cover renders as background-image — wait for it.
-  await waitFor(`!!document.querySelector('.js_cover_preview_new')`, 10_000)
+  // Cover commit is async — server crops + uploads, then UI swaps the
+  // .select-cover__loading__mask spinner away and reveals
+  // .js_cover_preview_new with a real backgroundImage. We must wait for
+  // the loading to clear before proceeding to saveDraft, otherwise the
+  // saved doc has cover="" (verified empirically).
+  await waitFor(
+    `(() => {
+      const loading = document.querySelector('.js_cover_loading');
+      // visible (display !== none) means still uploading
+      if (loading && getComputedStyle(loading).display !== 'none') return false;
+      const preview = document.querySelector('.js_cover_preview_new');
+      if (!preview) return false;
+      const bg = getComputedStyle(preview).backgroundImage || '';
+      return bg.includes('http') && bg.includes('mmbiz');
+    })()`,
+    30_000,
+  )
 }
 
 async function openOriginalDialogAndConfirm(): Promise<void> {

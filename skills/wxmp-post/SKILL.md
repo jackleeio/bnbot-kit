@@ -168,7 +168,7 @@ CLI 输出包含 `finalState.appmsgid`. Tell the user:
 | `title` | string | 公众号标题(微信限 64 字符,中文按 1 字符算) |
 | `author` | string | 作者名,不填默认账号注册名 |
 | `digest` | string | 摘要 / description(可选;不填微信自动从正文取前 54 字)。展示在分享卡片和公众号主页 |
-| `cover` | string | 封面图(本地路径 or https URL)。会被 binary paste 到正文最前 + 自动设为封面;如同时给 pasteImages,会塞到 pasteImages[0] 之前 |
+| `cover` | string | 封面图(本地路径 or https URL)。会被 binary paste 到正文最前(也作为正文首图)。⚠️ **持久化到服务端 cover 字段需要走多步裁剪 dialog,在 type=10 文章 编辑器里这个流程目前不稳定**(server-side crop 卡 loading)— 当前实现只把图放到正文首位,真正设封面建议 CLI 跑完后用户在草稿箱手动选一次。或显式设 `coverFromBody:true` 试用实验性自动流程 |
 | `pasteHtml` | string | 富文本 HTML — h1/h2/h3/strong/em/ul/ol/blockquote/code/a/span color 全保留 |
 | `pasteImages` | string[] | 本地路径 or https URL,按顺序 binary paste 触发自动上传 |
 | `bodyHtml` | string | (legacy) 直接 innerHTML 写入 — 服务端会 strip 图片 + 部分样式,**不推荐** |
