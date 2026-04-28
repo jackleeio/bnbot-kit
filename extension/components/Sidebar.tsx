@@ -130,10 +130,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             : { backgroundColor: '#9ca3af', animation: 'bnbot-breathe 2s ease-in-out infinite' }
           }
         />
-        <RefreshCw
-          size={11}
-          className="opacity-0 group-hover:opacity-100 transition-opacity"
-        />
+        <RefreshCw size={11} />
       </button>
     </div>
   );
