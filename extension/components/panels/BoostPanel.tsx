@@ -54,6 +54,7 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
     // Search and filter state
     const [searchQuery, setSearchQuery] = useState('');
     const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+    const [searchExpanded, setSearchExpanded] = useState(false);
     const [searchParams, setSearchParams] = useState<BoostSearchParams>({
         sort_by: 'created_at',
         sort_order: 'desc',
@@ -62,6 +63,7 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const filterDropdownRef = useRef<HTMLDivElement>(null);
     const retweetMenuRef = useRef<HTMLDivElement>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     // Scroll state for header auto-hide
     const [showHeader, setShowHeader] = useState(true);
@@ -1275,27 +1277,44 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
                     )}
                 </div>
                 <div className="flex items-center gap-2">
-                    {/* Search Bar - compact by default, expands on click */}
-                    <div className="relative group">
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] group-focus-within:text-[var(--accent-color)] transition-colors" />
-                        <input
-                            type="text"
-                            placeholder="Search"
-                            value={searchQuery}
-                            onChange={(e) => handleSearchChange(e.target.value)}
-                            onFocus={() => setShowFilterDropdown(true)}
-                            onBlur={() => { if (!searchQuery) setShowFilterDropdown(false); }}
-                            className={`pl-9 pr-3 py-1.5 bg-transparent rounded-full text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none border border-[var(--border-color)] focus:border-[var(--accent-color)] transition-all font-medium ${showFilterDropdown ? 'w-48' : 'w-24'}`}
-                        />
-                        {searchQuery && (
-                            <button
-                                onMouseDown={(e) => { e.preventDefault(); setSearchQuery(''); handleSearchChange(''); }}
-                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
-                            >
-                                <X size={14} />
-                            </button>
-                        )}
-                    </div>
+                    {/* Search — collapsed icon by default, expands on click */}
+                    {searchExpanded || searchQuery ? (
+                        <div className="relative">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+                            <input
+                                ref={searchInputRef}
+                                type="text"
+                                placeholder="Search"
+                                value={searchQuery}
+                                onChange={(e) => handleSearchChange(e.target.value)}
+                                onFocus={() => setShowFilterDropdown(true)}
+                                onBlur={() => {
+                                    setShowFilterDropdown(false);
+                                    if (!searchQuery) setSearchExpanded(false);
+                                }}
+                                className="pl-9 pr-8 py-1.5 bg-transparent rounded-full text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none border border-[var(--border-color)] focus:border-[var(--accent-color)] w-48 font-medium transition-all"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onMouseDown={(e) => { e.preventDefault(); setSearchQuery(''); handleSearchChange(''); searchInputRef.current?.focus(); }}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => {
+                                setSearchExpanded(true);
+                                setTimeout(() => searchInputRef.current?.focus(), 0);
+                            }}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--hover-bg)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                            title="Search"
+                        >
+                            <Search size={16} />
+                        </button>
+                    )}
                     {/* Status Filter Dropdown */}
                     <div className="relative" ref={filterDropdownRef}>
                         <select
