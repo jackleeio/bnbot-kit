@@ -1273,7 +1273,6 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
                             <Wallet size={16} />
                         </button>
                     )}
-                    <h1 className="text-lg font-bold text-[var(--text-primary)]">Boost</h1>
                 </div>
                 <div className="flex items-center gap-2">
                     {/* Search Bar - compact by default, expands on click */}
