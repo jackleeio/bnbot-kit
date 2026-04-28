@@ -167,14 +167,43 @@ CLI 输出包含 `finalState.appmsgid`. Tell the user:
 |---|---|---|
 | `title` | string | 公众号标题(微信限 64 字符,中文按 1 字符算) |
 | `author` | string | 作者名,不填默认账号注册名 |
-| `digest` | string | 摘要(可选;不填微信自动从正文取前 54 字) |
+| `digest` | string | 摘要 / description(可选;不填微信自动从正文取前 54 字)。展示在分享卡片和公众号主页 |
+| `cover` | string | 封面图(本地路径 or https URL)。会被 binary paste 到正文最前 + 自动设为封面;如同时给 pasteImages,会塞到 pasteImages[0] 之前 |
 | `pasteHtml` | string | 富文本 HTML — h1/h2/h3/strong/em/ul/ol/blockquote/code/a/span color 全保留 |
 | `pasteImages` | string[] | 本地路径 or https URL,按顺序 binary paste 触发自动上传 |
 | `bodyHtml` | string | (legacy) 直接 innerHTML 写入 — 服务端会 strip 图片 + 部分样式,**不推荐** |
 | `original` | boolean | 是否开原创声明(文字原创 + 已开启快捷转载) |
-| `saveDraft` | boolean | 默认 true |
-| `preview` | boolean | 是否进预览面板(本地 dev 调试用,生产不必) |
+| `saveDraft` | boolean | 默认 true。⚠️ 永远不会触发"发表",只到草稿箱 |
+| `previewLink` | boolean | 保存后捕获预览链接(`https://mp.weixin.qq.com/s/...`),返回到 `finalState.previewUrl`。可分享到微信群/朋友手机预览 |
+| `preview` | boolean | 仅打开预览 UI(用于 dev 调试),不提取链接;若同时给 `previewLink` 优先后者 |
 | `editorUrl` | string | (override) 复用已有草稿 URL |
+
+完整 plan 示例:
+
+```json
+{
+  "title":   "为什么 X 被高估了",
+  "author":  "BNBot",
+  "digest":  "我从 3 个角度拆解为什么主流叙事错了",
+  "cover":   "/abs/path/to/cover.png",
+  "pasteHtml": "<h1>主标题</h1><p>开篇 <strong>钩子</strong>...</p><h2>1. 第一点</h2>...",
+  "pasteImages": ["/abs/inline-1.png", "https://blog.example.com/inline-2.jpg"],
+  "original":     true,
+  "saveDraft":    true,
+  "previewLink":  true
+}
+```
+
+返回:
+
+```json
+{
+  "steps": ["editor:ready", "meta:set", "paste:html+3-images", "cover:set", "original:enabled", "draft:saved", "preview:link-captured"],
+  "draftCommitted": true,
+  "previewUrl":     "https://mp.weixin.qq.com/s/abcdef...",
+  "finalState":     { "appmsgid": "100005280", "bodyChars": 2380, ... }
+}
+```
 
 ## Safety rules (HARD)
 

@@ -53,6 +53,8 @@ const HOST = 'mp.weixin.qq.com'
 export interface WxmpPostPlan {
   title?: string
   author?: string
+  /** 摘要 — shown on the share card and 公众号 home page. Defaults to first
+   *  ~54 chars of body if not set (微信 auto-fills). */
   digest?: string
   /** Direct innerHTML write — fast but strips structure on save. */
   bodyHtml?: string
@@ -64,11 +66,25 @@ export interface WxmpPostPlan {
    *  so WeChat auto-uploads to mmbiz CDN. By default appended at end; use
    *  `<p data-bnbot-img-slot="N"></p>` markers in pasteHtml for in-place. */
   pasteImages?: string[]
+  /** Cover image (本地路径 / 远程 URL). Pasted FIRST so it ends up as the
+   *  first image in body, then `coverFromBody` is auto-triggered to set
+   *  it as the article cover (#js_cover_area). Convenience for callers
+   *  who want explicit cover separation rather than relying on
+   *  pasteImages[0] convention. */
+  cover?: string
   insertBodyImage?: boolean
+  /** Pick first body image as cover. Auto-set to true when `cover` is
+   *  provided. */
   coverFromBody?: boolean
+  /** Open 原创声明 dialog (文字原创 + 默认快捷转载). */
   original?: boolean
   saveDraft?: boolean
+  /** Open the preview dialog after save. Useful for visual debug; for
+   *  programmatic preview-link extraction use `previewLink` instead. */
   preview?: boolean
+  /** After save, fetch a preview link for the draft (microWeChat phone
+   *  preview). Returned in `finalState.previewUrl` if successful. */
+  previewLink?: boolean
   /** Optional override editor URL (e.g. when resuming an existing draft).
    *  Default: open a fresh editor via &isNew=1. */
   editorUrl?: string
@@ -105,6 +121,17 @@ function readPlanFromArgOrStdin(planArg?: string): string {
 async function runPost(plan: WxmpPostPlan): Promise<Record<string, unknown>> {
   const summary: Record<string, unknown> = { steps: [] as string[] }
   const log = (s: string) => (summary.steps as string[]).push(s)
+
+  // 0. Normalize plan — sugar fields (`cover`) get expanded into the
+  //    canonical fields (pasteImages prepend) so the rest of the
+  //    pipeline doesn't need to know about them. Note that for type=10
+  //    图文文章 editor we DO NOT auto-trigger coverFromBody because the
+  //    editor automatically uses the first body image as cover ("默认首图
+  //    为封面"). coverFromBody is only meaningful for type=77 商品消息
+  //    where the cover dialog walks through .appmsg_content_img_item.
+  if (plan.cover) {
+    plan.pasteImages = [plan.cover, ...(plan.pasteImages ?? [])]
+  }
 
   // 1. Make sure we're on an editor page. If not, open a fresh one.
   await ensureEditor(plan.editorUrl)
@@ -165,8 +192,21 @@ async function runPost(plan: WxmpPostPlan): Promise<Record<string, unknown>> {
     log(committed ? 'draft:saved' : 'draft:save-uncertain')
   }
 
-  // 8. Preview — opens inline 预览容器
-  if (plan.preview) {
+  // 8a. Preview link — programmatic extraction. Opens 预览 dialog,
+  //     scrapes the share URL or QR-code link, then reports back.
+  if (plan.previewLink) {
+    const url = await fetchPreviewLink()
+    if (url) {
+      summary.previewUrl = url
+      log('preview:link-captured')
+    } else {
+      log('preview:link-unavailable')
+    }
+  }
+
+  // 8b. Preview UI — visible 预览容器, useful when the user wants to
+  //     manually inspect on phone via QR code rather than capture URL.
+  if (plan.preview && !plan.previewLink) {
     await openPreview()
     log('preview:opened')
   }
@@ -197,6 +237,19 @@ async function ensureEditor(editorUrl?: string): Promise<void> {
   const url = String(current)
   if (url.includes('appmsg_edit')) return
 
+  // Naming notes (these are non-obvious):
+  //   - type=77 createType=0 IS the 公众号 图文文章 entry. The breadcrumb
+  //     in the page chrome sometimes reads "商品消息" depending on
+  //     navigation referrer, but the actual data schema (cover / digest /
+  //     title without product fields) and the 草稿箱 list both confirm
+  //     it's a normal article.
+  //   - type=10 createType=100 is a SEPARATE article entry that pops a
+  //     "选择已有内容" dialog gate on load — saving content goes through
+  //     extra validation steps and the dialog gate breaks our automation.
+  //     Avoid that path.
+  //   - The home page "新的创作 → 文章" button uses
+  //     /cgi-bin/appmsg?...isNew=1&type=77&createType=0 (verified by
+  //     hooking window.open). Same URL we use here.
   const target =
     editorUrl ??
     `https://${HOST}/cgi-bin/appmsg?t=media/appmsg_edit_v2&action=edit&isNew=1&type=77&createType=0&lang=zh_CN`
@@ -406,13 +459,22 @@ async function setCoverFromBody(): Promise<void> {
   await tagAndClick(`document.querySelector('#js_cover_area')`)
   await waitFor(`!![...document.querySelectorAll('.pop-opr__list')].find(l => l.offsetParent !== null)`, 5_000)
 
-  // 2. Click "从图片库选择" inside the visible popover. (WeChat opens a
-  //    "select 封面 from body images" dialog under the same selector.)
+  // 2. Click "从正文选择" — this opens a dialog containing the body's
+  //    inserted images (.appmsg_content_img_item). Selector differs by
+  //    appmsg type:
+  //      type=10 (图文文章): .js_selectCoverFromContent → "从正文选择"
+  //      type=77 (商品消息): .js_imagedialog also lands here (商品消息
+  //                          "图片库" is just the body images)
+  //    We prefer js_selectCoverFromContent and fall back to js_imagedialog
+  //    so both types work.
   await tagAndClick(
-    `[...document.querySelectorAll('.js_imagedialog')].find(el => {
-      const r = el.getBoundingClientRect();
-      return r.width > 0 && r.height > 0 && el.offsetParent !== null;
-    })`,
+    `(() => {
+      const cands = [...document.querySelectorAll('.js_selectCoverFromContent, .js_imagedialog')];
+      // Prefer 从正文选择 first.
+      const fromContent = cands.find(el => el.classList.contains('js_selectCoverFromContent') && el.offsetParent !== null && el.getBoundingClientRect().width > 0);
+      if (fromContent) return fromContent;
+      return cands.find(el => el.offsetParent !== null && el.getBoundingClientRect().width > 0);
+    })()`,
   )
   await waitFor(
     `!![...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('选择图片'))`,
@@ -566,10 +628,119 @@ async function verifyDraftInList(title: string, timeoutMs: number): Promise<bool
 }
 
 async function openPreview(): Promise<void> {
-  await tagAndClick(
-    `[...document.querySelectorAll('button')].find(b => (b.innerText || '').trim() === '预览' && b.offsetParent !== null)`,
-  )
-  await waitFor(`!!document.querySelector('.appmsg_preview_container')`, 15_000)
+  // The 预览 wrapper span (id=js_preview) also uses jQuery delegation,
+  // same caveat as 保存为草稿 — go via $.trigger('click').
+  await evalJs(`(() => {
+    const sp = document.querySelector('#js_preview') ||
+      [...document.querySelectorAll('span,button,a')].find(el => (el.innerText||'').trim() === '预览' && el.offsetParent !== null);
+    if (!sp) return false;
+    const jq = window.$ || window.jQuery;
+    if (jq) jq(sp).trigger('click');
+    else sp.click();
+    return true;
+  })()`)
+  await waitFor(`!!document.querySelector('.appmsg_preview_container, .preview-mod, [class*=preview-share]')`, 15_000)
+}
+
+/**
+ * Programmatically extract a preview link for the draft.
+ *
+ * 微信 MP "预览" actually has multiple surfaces:
+ *   - "扫码预览" — shows a QR code that wraps a one-time
+ *     `https://mp.weixin.qq.com/s/PREVIEW_KEY` URL valid ~30 days
+ *   - "群发预览" / "发送预览" — push to a 微信 username; no URL returned
+ *
+ * We want the first kind. The expected DOM (subject to MP UI churn,
+ * verified empirically per release):
+ *   - `.preview_share input[value^="https://mp.weixin"]` — direct URL field
+ *   - `.qrcode_canvas` data-url attr — fallback
+ *   - Network: a POST to /cgi-bin/operate_appmsg?sub=preview returns
+ *     `{ preview_url: "..." }` — most robust, doesn't depend on DOM
+ *
+ * This function tries (3) first via fetch hook + click, falls back to
+ * (1) DOM scrape. Returns null if neither yields a URL within timeout.
+ */
+async function fetchPreviewLink(): Promise<string | null> {
+  // Set up fetch + XHR hook to capture preview API response.
+  await evalJs(`(() => {
+    window.__wxmpPreviewUrl = null;
+    if (window.__wxmpPreviewHooked) return 'already-hooked';
+    window.__wxmpPreviewHooked = true;
+    const captureUrl = (text) => {
+      try {
+        const j = JSON.parse(text);
+        const candidates = [j.preview_url, j.previewUrl, j.url, j.data?.preview_url];
+        for (const c of candidates) {
+          if (typeof c === 'string' && c.includes('mp.weixin.qq.com')) {
+            window.__wxmpPreviewUrl = c;
+            return;
+          }
+        }
+        // Some MP responses embed URL in HTML strings — last resort regex.
+        const m = text.match(/https:\\/\\/mp\\.weixin\\.qq\\.com\\/s[\\/?][^"\\s]+/);
+        if (m) window.__wxmpPreviewUrl = m[0];
+      } catch {}
+    };
+    // Hook fetch
+    const origFetch = window.fetch;
+    window.fetch = async function(...args) {
+      const url = args[0]?.toString() || '';
+      const r = await origFetch.apply(this, args);
+      if (url.includes('preview') || url.includes('operate_appmsg')) {
+        try {
+          const clone = r.clone();
+          const text = await clone.text();
+          captureUrl(text);
+        } catch {}
+      }
+      return r;
+    };
+    // Hook XHR
+    const origOpen = XMLHttpRequest.prototype.open;
+    const origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+      this.__wxmpPreviewWatched = url && url.toString().match(/preview|operate_appmsg/);
+      return origOpen.call(this, method, url, ...rest);
+    };
+    XMLHttpRequest.prototype.send = function(...args) {
+      if (this.__wxmpPreviewWatched) {
+        this.addEventListener('load', () => captureUrl(this.responseText));
+      }
+      return origSend.apply(this, args);
+    };
+    return 'hooked';
+  })()`)
+
+  // Click preview button (jQuery delegated).
+  const opened = (await evalJs(`(() => {
+    const sp = document.querySelector('#js_preview') ||
+      [...document.querySelectorAll('span,button,a')].find(el => (el.innerText||'').trim() === '预览' && el.offsetParent !== null);
+    if (!sp) return false;
+    const jq = window.$ || window.jQuery;
+    if (jq) jq(sp).trigger('click');
+    else sp.click();
+    return true;
+  })()`)) as boolean
+  if (!opened) return null
+
+  // Poll for either captured URL (network path) or DOM-scraped URL.
+  const deadline = Date.now() + 15_000
+  while (Date.now() < deadline) {
+    const url = await evalJs(`(() => {
+      // 1. Captured from network response
+      if (window.__wxmpPreviewUrl) return window.__wxmpPreviewUrl;
+      // 2. DOM scrape — share input
+      const inp = document.querySelector('.preview_share input, [class*=preview-share] input, input[value^="https://mp.weixin.qq.com/s"]');
+      if (inp && inp.value) return inp.value;
+      // 3. QR code data-url (some MP versions)
+      const qr = document.querySelector('.qrcode_canvas[data-url], .preview-qrcode[data-url], [class*=qrcode][data-url]');
+      if (qr) return qr.getAttribute('data-url');
+      return null;
+    })()`)
+    if (typeof url === 'string' && url.startsWith('http')) return url
+    await sleep(500)
+  }
+  return null
 }
 
 // ── Low-level helpers ───────────────────────────────────────────
@@ -591,11 +762,38 @@ async function evalJs(expr: string, awaitPromise = false): Promise<unknown> {
   }
 }
 
-/** Tag the element returned by `findExpr` with data-bnbot-target='1' and
- *  fire a trusted CDP click on it. Throws if findExpr returns null/no
- *  element — the orchestrator can decide whether to swallow or bail. */
+/** Find the element returned by `findExpr`, then click it the way 公众号 MP
+ *  expects.
+ *
+ *  IMPORTANT: 微信 MP editor binds nearly every action button + popover
+ *  item via jQuery 1.9.1's delegate event system. Trusted CDP MouseEvents
+ *  pass through the DOM but jQuery's delegate filter ignores them, so a
+ *  CDP click silently no-ops. Solution: run jQuery `.trigger('click')`
+ *  inside the page first; only fall back to trusted CDP click if jQuery
+ *  isn't available (defensive).
+ *
+ *  ProseMirror-internal targets (e.g. embedded image elements) use React
+ *  / native handlers, not jQuery — for those callers should dispatch a
+ *  ClipboardEvent or other native event directly, not go through here.
+ */
+/**
+ * Click the element returned by `findExpr`.
+ *
+ * Strategy: prefer jQuery `.trigger('click')` because microWeChat's MP
+ * editor binds most action handlers via jQuery 1.9.1 (.on('click') /
+ * delegated). jQuery's trigger ALSO calls `element.click()` under the
+ * hood, which dispatches a native click event — React-bound widgets
+ * (.weui-desktop-* dialog buttons, checkboxes) listen to that and react
+ * normally. So one jq.trigger handles both binding styles in a single
+ * fire, and we never get the double-fire bug we hit during v0.3.31 dev
+ * where CDP-trusted-click + jq.trigger toggled the same React state
+ * twice.
+ *
+ * Fallback to trusted CDP click only when jQuery isn't loaded on the page
+ * (defensive — shouldn't happen on mp.weixin.qq.com).
+ */
 async function tagAndClick(findExpr: string): Promise<void> {
-  const tagged = (await evalJs(`(() => {
+  const result = (await evalJs(`(() => {
     document.querySelectorAll('[data-bnbot-target]').forEach(el => el.removeAttribute('data-bnbot-target'));
     const el = ${findExpr};
     if (!el || !(el instanceof Element)) return JSON.stringify({ ok: false, reason: 'not-found' });
@@ -604,15 +802,22 @@ async function tagAndClick(findExpr: string): Promise<void> {
     if (r.width === 0 && r.height === 0) {
       el.scrollIntoView({ block: 'center' });
     }
-    return JSON.stringify({ ok: true });
-  })()`)) as { ok?: boolean; reason?: string } | string
-  const parsed = typeof tagged === 'string' ? JSON.parse(tagged) : tagged
+    const jq = window.$ || window.jQuery;
+    if (jq) {
+      jq(el).trigger('click');
+      return JSON.stringify({ ok: true, jq: true });
+    }
+    return JSON.stringify({ ok: true, jq: false });
+  })()`)) as { ok?: boolean; reason?: string; jq?: boolean } | string
+  const parsed = typeof result === 'string' ? JSON.parse(result) : result
   if (!parsed?.ok) throw new Error(`tagAndClick: target not found (${parsed?.reason})`)
 
-  await sendAction('debug_click', {
-    selector: '[data-bnbot-target="1"]',
-    targetHost: HOST,
-  })
+  if (!parsed.jq) {
+    await sendAction('debug_click', {
+      selector: '[data-bnbot-target="1"]',
+      targetHost: HOST,
+    })
+  }
 }
 
 async function waitFor(boolExpr: string, timeoutMs: number): Promise<void> {
