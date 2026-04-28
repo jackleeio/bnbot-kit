@@ -58,6 +58,7 @@ import { downloadCommand } from './commands/download.js';
 import { debugEvalCommand, debugUploadCommand, debugClickCommand, debugShowCommand, debugDragCommand, debugRecordCommand } from './commands/debug.js';
 import { xhsPostCommand, xhsStatsNoteCommand, xhsStatsAccountCommand } from './commands/xhs.js';
 import { wxmpPostCommand } from './commands/wxmp.js';
+import { tiktokPostCommand } from './commands/tiktok.js';
 import {
   tiktokSearchCommand, tiktokExploreCommand,
   youtubeSearchCommand, youtubeVideoCommand, youtubeTranscriptCommand,
@@ -767,6 +768,18 @@ function buildProgram(): Command {
   tiktok.command('explore').description('Trending TikTok videos').option('-l, --limit <n>', 'Max results', '20').action(tiktokExploreCommand);
   // tiktok.command('fetch') removed — `fetch_tiktok_video` orphan was the
   // republish flow; extension no longer hosts the handler.
+  tiktok
+    .command('post')
+    .description('Upload a video to TikTok Studio + fill caption. Never auto-clicks 发布 — review and confirm in browser.')
+    .argument('[plan-json-or-path]', 'Plan as inline JSON, file path, or "-" for stdin. Defaults to stdin.')
+    .option('--plan <path>', 'Alias for the positional arg', '-')
+    .action(
+      (arg: string | undefined, opts: { plan?: string }) => {
+        const planSource =
+          arg && arg.trim().startsWith('{') ? { inline: arg } : { plan: arg ?? opts.plan ?? '-' }
+        return tiktokPostCommand(planSource)
+      },
+    );
 
   const youtube = program.command('youtube').description('YouTube');
   youtube.command('search <query>').description('Search YouTube videos')
