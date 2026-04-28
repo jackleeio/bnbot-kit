@@ -877,7 +877,7 @@ function AppContent() {
         bottom: `${fabPosition.bottom + fabPosition.height + 12}px`,
         right: `${fabPosition.right}px`,
         width: isCollapsed ? 0 : '420px',
-        height: isCollapsed ? 0 : `min(640px, calc(100vh - ${fabPosition.bottom + fabPosition.height + 40}px))`,
+        height: isCollapsed ? 0 : `min(900px, calc(100vh - ${fabPosition.bottom + fabPosition.height + 40}px))`,
         zIndex: 9997,
         pointerEvents: isCollapsed ? 'none' : 'auto',
         display: 'flex',
