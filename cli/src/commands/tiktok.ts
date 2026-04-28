@@ -31,6 +31,12 @@ const UPLOAD_URL = 'https://www.tiktok.com/tiktokstudio/upload'
 export interface TiktokPostPlan {
   videoPath: string
   caption?: string
+  /** Search keyword for adding background music. CLI types this into
+   *  the music panel's search box, presses Enter, then clicks the +
+   *  button on the first result. The music gets layered onto the
+   *  uploaded video; the original sound stays as primary unless the
+   *  user mutes it manually. Pass empty string to skip music step. */
+  music?: string
   privacy?: 'public' | 'friends' | 'private'
   publish?: boolean
   scheduleAt?: string
@@ -96,6 +102,12 @@ async function runPost(plan: TiktokPostPlan): Promise<Record<string, unknown>> {
     log('caption:set')
   }
 
+  // 4.5. Add background music if requested.
+  if (plan.music && plan.music.trim()) {
+    const ok = await addMusic(tabId, plan.music.trim())
+    log(ok ? `music:added (${plan.music})` : 'music:not-found')
+  }
+
   // (TODO) privacy / scheduleAt — wired but not yet implemented because
   // those toggles need separate exploration of TikTok's combobox API.
   // The `publish:false` default means we never need them yet.
@@ -139,12 +151,25 @@ async function ensureUploadPage(): Promise<number> {
   if (typeof result?.tabId !== 'number') throw new Error('navigate did not return tabId')
   cachedTabId = result.tabId
 
-  // First-load: TikTok may pop "过往编辑的视频未保存。继续编辑？" —
-  // discard previous draft so the file input renders.
+  // First-load dialog handling. Two distinct dialogs may appear:
+  //   - "过往编辑的视频未保存。继续编辑？" (carry over a previous draft)
+  //     → click 放弃 to start fresh
+  //   - "放弃此次发布？" (NEVER click 放弃 here; user warned us)
+  //     → click 暂时不要 to keep current
+  // Identify by looking at the dialog's question text rather than just
+  // hitting the first button labelled 放弃.
   await sleep(2000)
   await evalJs(cachedTabId, `(() => {
-    const discard = [...document.querySelectorAll('button, div[role=button]')].find(b => (b.innerText||'').trim() === '放弃' && b.offsetParent !== null);
-    discard?.click();
+    const txt = document.body.innerText || '';
+    if (txt.includes('放弃此次发布')) {
+      // Don't trash the in-progress upload — keep it.
+      const keep = [...document.querySelectorAll('button, div[role=button]')].find(b => (b.innerText||'').trim() === '暂时不要' && b.offsetParent !== null);
+      keep?.click();
+    } else if (txt.includes('过往编辑的视频未保存') || txt.includes('继续编辑')) {
+      // Discard the carry-over so the upload page renders fresh.
+      const discard = [...document.querySelectorAll('button, div[role=button]')].find(b => (b.innerText||'').trim() === '放弃' && b.offsetParent !== null);
+      discard?.click();
+    }
     return true;
   })()`)
   // Wait for upload page DOM (file input).
@@ -158,6 +183,129 @@ async function uploadVideo(tabId: number, videoPath: string): Promise<void> {
     files: [videoPath],
     tabId,
   })
+}
+
+/**
+ * Add a background music track to the uploaded video.
+ *
+ * Flow (validated 2026-04-28):
+ *  1. Click the 音乐 card (button[data-button-name="sounds"]) — opens
+ *     the music side-panel with a search box and a Recommended list.
+ *  2. Type the search keyword into input[placeholder="搜索音乐"], dispatch
+ *     input + Enter to trigger the actual search (without Enter only
+ *     suggestions appear, not real song results).
+ *  3. Click the "+" button on the first .MusicPanelMusicItem__wrap row.
+ *     This routes through React's onClick — needs the full
+ *     pointer/mouse event chain, like other weui-desktop-style buttons.
+ *
+ * Success signal: the right-side audio panel renders the song title
+ * + a "音量 / 淡入和淡出" sub-panel, and the page no longer says only
+ * "原声 - <user>".
+ *
+ * Returns false when no song row appears within the timeout — caller
+ * can decide to bail or just log.
+ */
+async function addMusic(tabId: number, query: string): Promise<boolean> {
+  // 1. Open music panel.
+  const opened = (await evalJs(
+    tabId,
+    `(() => {
+      const btn = document.querySelector('button[data-button-name="sounds"]');
+      if (!btn) return false;
+      ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(t =>
+        btn.dispatchEvent(new MouseEvent(t, { bubbles:true, cancelable:true, view:window, button:0, buttons:1, detail:1 }))
+      );
+      return true;
+    })()`,
+  )) as boolean
+  if (!opened) return false
+
+  // Wait for the search box to mount.
+  await waitFor(
+    tabId,
+    `!![...document.querySelectorAll('input')].find(el => el.placeholder === '搜索音乐' && el.offsetParent !== null)`,
+    10_000,
+  )
+
+  // 2. Type query + press Enter.
+  await evalJs(
+    tabId,
+    `(() => {
+      const inp = [...document.querySelectorAll('input')].find(el => el.placeholder === '搜索音乐' && el.offsetParent !== null);
+      if (!inp) return false;
+      inp.focus();
+      const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(inp), 'value')?.set;
+      setter ? setter.call(inp, ${JSON.stringify(query)}) : (inp.value = ${JSON.stringify(query)});
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+      inp.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+      return true;
+    })()`,
+  )
+
+  // 3. Wait for search results, then click + on the first row.
+  const hasResult = await waitForOrFalse(
+    tabId,
+    `!!document.querySelector('.MusicPanelMusicItem__wrap .MusicPanelMusicItem__operation button')`,
+    15_000,
+  )
+  if (!hasResult) return false
+
+  await evalJs(
+    tabId,
+    `(() => {
+      const btn = document.querySelector('.MusicPanelMusicItem__wrap .MusicPanelMusicItem__operation button');
+      if (!btn) return false;
+      ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(t =>
+        btn.dispatchEvent(new MouseEvent(t, { bubbles:true, cancelable:true, view:window, button:0, buttons:1, detail:1 }))
+      );
+      return true;
+    })()`,
+  )
+
+  // 4. Confirm: the audio editor panel ("音量 / 淡入和淡出") shows up.
+  const added = await waitForOrFalse(
+    tabId,
+    `document.body.innerText.includes('音量') && document.body.innerText.includes('淡入')`,
+    8_000,
+  )
+  if (!added) return false
+
+  // 5. CRITICAL: the music is only previewed until 保存 is clicked. The
+  //    button is in the top-right of the editing chrome (button text
+  //    just "保存"). Without this step the music silently reverts when
+  //    we leave the music panel — a bug for any caller expecting the
+  //    final video to actually have the new track.
+  await evalJs(
+    tabId,
+    `(() => {
+      const btn = [...document.querySelectorAll('button')].find(b => (b.innerText||'').trim() === '保存' && b.offsetParent !== null);
+      if (!btn) return false;
+      ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(t =>
+        btn.dispatchEvent(new MouseEvent(t, { bubbles:true, cancelable:true, view:window, button:0, buttons:1, detail:1 }))
+      );
+      return true;
+    })()`,
+  )
+  // After 保存, the music side-panel closes and the main form view
+  // returns. Wait for that transition so the caller's next step (e.g.
+  // setCaption follow-ups, finalState query) sees a stable DOM.
+  await waitForOrFalse(
+    tabId,
+    `!document.querySelector('input[placeholder="搜索音乐"]')`,
+    10_000,
+  )
+  return true
+}
+
+async function waitForOrFalse(tabId: number, boolExpr: string, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const r = await evalJs(tabId, `!!(${boolExpr})`)
+    if (r === true) return true
+    await sleep(300)
+  }
+  return false
 }
 
 async function setCaption(tabId: number, caption: string): Promise<void> {
