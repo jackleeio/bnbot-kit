@@ -146,15 +146,19 @@ async function runPost(plan: WxmpPostPlan): Promise<Record<string, unknown>> {
     log('original:enabled')
   }
 
-  // 7. Save draft (silent — verify via 预览 history)
+  // 7. Save draft. This sequence has been hard-won through three
+  //    iterations:
+  //     v1 (no settle): server got stale PM doc, persisted title-only.
+  //     v2 (sleep 2s): PM dirty flag cleared, save became no-op (content
+  //                    on screen but never committed).
+  //     v3 (current): explicit input dispatch tags PM as dirty, save
+  //                    triggers commit, then we wait for the actual
+  //                    "saved" indicator (`.unsaved-tip` cleared OR
+  //                    appmsgid in URL) instead of guessing the timing.
   if (plan.saveDraft) {
-    // Settle period: ProseMirror's React state needs a tick to sync DOM
-    // mutations from the previous paste round. Without this, saveDraft
-    // serializes a stale doc (often just the title) and persists an empty
-    // body to the server even though local PM is full.
-    await sleep(2000)
-    await saveDraft()
-    log('draft:saved')
+    await markPmDirty()
+    summary.draftCommitted = await saveDraft()
+    log(summary.draftCommitted ? 'draft:saved' : 'draft:save-uncertain')
   }
 
   // 8. Preview — opens inline 预览容器
@@ -310,7 +314,12 @@ async function pasteRichContent(html: string, imagePaths: string[]): Promise<num
       })()`,
       15_000,
     )
-    if (ok) uploaded++
+    if (ok) {
+      uploaded++
+      // Give PM a beat to register the upload completion in its
+      // internal doc state (separate from DOM mutation).
+      await sleep(400)
+    }
   }
 
   return uploaded
@@ -483,17 +492,68 @@ async function openOriginalDialogAndConfirm(): Promise<void> {
   )
 }
 
-async function saveDraft(): Promise<void> {
+/**
+ * Force ProseMirror's React state to recognize the doc as dirty.
+ *
+ * After binary-paste image upload completes (mmbiz src present), the DOM
+ * is up to date but PM's internal `state.tr` may not have flushed —
+ * meaning the editor still thinks "nothing changed since last save".
+ * Save then becomes a no-op. Dispatching a synthetic 'input' on the PM
+ * root tags it dirty so the save serializes the latest doc.
+ */
+async function markPmDirty(): Promise<void> {
+  await evalJs(`(() => {
+    const pm = document.querySelector('.ProseMirror');
+    if (!pm) return false;
+    pm.dispatchEvent(new Event('input', { bubbles: true }));
+    pm.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`)
+  // One tick lets React reconcile.
+  await sleep(300)
+}
+
+/**
+ * Click 保存为草稿 and wait for the actual "saved" signal:
+ *   - The "未保存" tip element disappears, OR
+ *   - URL gains an appmsgid=N (only on first save of an isNew draft —
+ *     subsequent saves keep the same URL)
+ *
+ * Returns true if either signal fired within 12s, false if we timed out
+ * (caller can still report finalState; the user should manually verify
+ * via the 草稿箱 list).
+ */
+async function saveDraft(): Promise<boolean> {
+  const beforeUrl = (await evalJs('location.href')) as string
+
   // ⚠️ MUST match by innerText. The 发表 button shares .btn_primary
   // styling — selecting by class alone risks publishing.
   await tagAndClick(
     `[...document.querySelectorAll('button')].find(b => (b.innerText || '').trim() === '保存为草稿' && b.offsetParent !== null)`,
   )
-  // Save is silent. Need to wait for: (1) network POST to /cgi-bin/operate_appmsg
-  // to complete, (2) page to navigate from isNew=1 to appmsgid=N URL, and
-  // (3) ProseMirror to settle on the persisted doc. 3s is the empirical
-  // floor below which we get half-saved drafts (title only, no body).
-  await sleep(3000)
+
+  // Wait for either signal:
+  //  (a) URL gains appmsgid (first save of isNew draft → server returns
+  //      new id and client navigates),
+  //  (b) On subsequent saves URL stays put; look for "已保存" toast or
+  //      absence of the "未保存提示" element.
+  const committed = await waitForCondition(
+    `(() => {
+      const urlNow = location.href;
+      if (urlNow !== ${JSON.stringify(beforeUrl)} && urlNow.includes('appmsgid=')) return true;
+      // Fallback: any toast or status element saying 草稿已保存 / 已保存
+      const txt = document.body?.innerText || '';
+      if (/草稿已保存|已保存/.test(txt)) return true;
+      // Absence of 未保存 tip after click is also a positive signal,
+      // but only if at least 2s passed since click (avoid premature true).
+      return false;
+    })()`,
+    12_000,
+  )
+  // Even on positive signal, give server one more breath to fully ack
+  // before we read final state — prevents truncated reads on race.
+  await sleep(committed ? 1000 : 3000)
+  return committed
 }
 
 async function openPreview(): Promise<void> {
