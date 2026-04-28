@@ -434,6 +434,32 @@ export const ACCOUNT_ANALYTICS: ActionDefinition = {
   timeout: 30000
 };
 
+export const POST_IMPRESSIONS: ActionDefinition = {
+  id: 'post_impressions',
+  name: 'Post Impressions',
+  nameKey: 'actions.postImpressions',
+  category: 'scrape',
+  trigger: 'both',
+  parameters: [
+    { name: 'fromTime', type: 'string', required: true, description: '开始时间 (ISO格式)' },
+    { name: 'toTime', type: 'string', required: true, description: '结束时间 (ISO格式)' }
+  ],
+  timeout: 60000
+};
+
+export const REPLY_IMPRESSIONS: ActionDefinition = {
+  id: 'reply_impressions',
+  name: 'Reply Impressions',
+  nameKey: 'actions.replyImpressions',
+  category: 'scrape',
+  trigger: 'both',
+  parameters: [
+    { name: 'fromTime', type: 'string', required: true, description: '开始时间 (ISO格式)' },
+    { name: 'toTime', type: 'string', required: true, description: '结束时间 (ISO格式)' }
+  ],
+  timeout: 60000
+};
+
 // ============================================
 // 通知类 Actions
 // ============================================
@@ -814,6 +840,8 @@ class ActionRegistry {
       SCRAPE_USER_TWEETS,
       FETCH_WECHAT_ARTICLE,
       ACCOUNT_ANALYTICS,
+      POST_IMPRESSIONS,
+      REPLY_IMPRESSIONS,
       // 通知类
       PROCESS_NOTIFICATIONS,
       CLICK_NOTIFICATION,

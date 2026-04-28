@@ -375,6 +375,40 @@ export const accountAnalyticsHandler: ActionHandler = async (params, callbacks) 
 };
 
 /**
+ * 获取主推文曝光数据（排除回复）
+ */
+export const postImpressionsHandler: ActionHandler = async (params, callbacks) => {
+  const { fromTime, toTime } = params as { fromTime: string; toTime: string };
+  callbacks.onProgress?.({} as any, '正在获取主推文曝光数据...');
+  try {
+    const response = await TwitterClient.getPostImpressions({
+      from: new Date(fromTime),
+      to: new Date(toTime)
+    });
+    return { success: true, data: response };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : '获取失败' };
+  }
+};
+
+/**
+ * 获取回复推文曝光数据
+ */
+export const replyImpressionsHandler: ActionHandler = async (params, callbacks) => {
+  const { fromTime, toTime } = params as { fromTime: string; toTime: string };
+  callbacks.onProgress?.({} as any, '正在获取回复推文曝光数据...');
+  try {
+    const response = await TwitterClient.getReplyImpressions({
+      from: new Date(fromTime),
+      to: new Date(toTime)
+    });
+    return { success: true, data: response };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : '获取失败' };
+  }
+};
+
+/**
  * 抓取推文 Thread
  * 在推文详情页，向下滚动抓取同一作者的所有连续推文
  * 返回按顺序排列的 thread 推文列表 + 合并后的纯文本
@@ -541,6 +575,8 @@ export const scrapeHandlers: Record<string, ActionHandler> = {
   scrape_search_results: scrapeSearchResultsHandler,
   scrape_thread: scrapeThreadHandler,
   account_analytics: accountAnalyticsHandler,
+  post_impressions: postImpressionsHandler,
+  reply_impressions: replyImpressionsHandler,
   scrape_user_profile: scrapeUserProfileHandler,
   scrape_user_tweets: scrapeUserTweetsHandler,
 };
