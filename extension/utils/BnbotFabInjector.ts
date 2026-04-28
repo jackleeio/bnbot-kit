@@ -65,11 +65,33 @@ export class BnbotFabInjector {
   private bodyObserver: MutationObserver | null = null;
   private alignTimer: number | null = null;
   private hideClickListener: ((e: Event) => void) | null = null;
+  // Pending visible state when page hasn't finished loading yet — applied
+  // after `window.load`. Pre-load we keep the FAB hidden so it doesn't
+  // flash in over a half-rendered X UI.
+  private pageLoaded = false;
+  private pendingVisible = true;
 
   start(): void {
     this.injectStylesOnce();
     this.ensureButton();
     this.startAlignmentLoop();
+
+    // Wait for the page to fully load before fading the FAB in. X's
+    // initial paint does multiple layout passes and dropping the FAB
+    // into a half-rendered UI looks janky; the fade-in only feels
+    // intentional once the page is done settling.
+    if (document.readyState === 'complete') {
+      this.pageLoaded = true;
+      // Apply the deferred visibility on next tick so the initial
+      // .bnbot-fab-hidden class has a chance to paint first → fade in.
+      requestAnimationFrame(() => this.applyVisibility());
+    } else {
+      window.addEventListener('load', () => {
+        this.pageLoaded = true;
+        // Small extra delay so X's hydration animations finish first.
+        setTimeout(() => this.applyVisibility(), 200);
+      }, { once: true });
+    }
 
     // Re-attach if body gets replaced by SPA navigation quirks.
     this.bodyObserver = new MutationObserver(() => {
@@ -89,8 +111,7 @@ export class BnbotFabInjector {
       if (target.closest(`#${FAB_ID}`)) return;
       if (X_HIDE_TRIGGERS.some((sel) => target.closest(sel))) {
         this.broadcastGrokExpanded(true);
-        const btn = this.btn ?? (document.getElementById(FAB_ID) as HTMLButtonElement | null);
-        if (btn) btn.style.display = 'none';
+        this.setVisible(false);
       }
     };
     document.addEventListener('pointerdown', this.hideClickListener, true);
@@ -132,11 +153,21 @@ export class BnbotFabInjector {
         justify-content: center;
         padding: 0;
         z-index: 9998;
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        opacity: 1;
+        transform: scale(1);
+        transition: opacity 0.18s ease, transform 0.18s ease, box-shadow 0.15s ease;
+      }
+      #${FAB_ID}.bnbot-fab-hidden {
+        opacity: 0;
+        transform: scale(0.92);
+        pointer-events: none;
       }
       #${FAB_ID}:hover {
-        transform: translateY(-1px);
+        transform: scale(1.04);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+      }
+      #${FAB_ID}.bnbot-fab-hidden:hover {
+        transform: scale(0.92);
       }
       #${FAB_ID} img {
         width: 32px;
@@ -156,6 +187,9 @@ export class BnbotFabInjector {
     btn.type = 'button';
     btn.title = 'BNBot';
     btn.setAttribute('aria-label', 'Open BNBot');
+    // Start hidden — applyVisibility() removes the class after page load
+    // (or immediately if already loaded), giving us a smooth fade-in.
+    btn.classList.add('bnbot-fab-hidden');
 
     const logo = chrome.runtime?.getURL?.('assets/images/bnbot-rounded-logo-5.png') || '';
     btn.innerHTML = `<img src="${logo}" alt="BNBot" />`;
@@ -196,7 +230,7 @@ export class BnbotFabInjector {
       document.querySelector('[data-testid="GrokDrawer"]');
 
     if (!grok) {
-      btn.style.display = 'flex';
+      this.setVisible(true);
       btn.style.bottom = `${FALLBACK_BOTTOM}px`;
       // Match Grok's typical right edge.
       btn.style.right = '20px';
@@ -220,10 +254,10 @@ export class BnbotFabInjector {
     });
     this.broadcastGrokExpanded(drawerExpanded);
     if (drawerExpanded) {
-      btn.style.display = 'none';
+      this.setVisible(false);
       return;
     }
-    btn.style.display = 'flex';
+    this.setVisible(true);
 
     const rect = (grok as HTMLElement).getBoundingClientRect();
     // Distance from viewport bottom to Grok's top edge.
@@ -242,6 +276,19 @@ export class BnbotFabInjector {
     // Broadcast FAB position so the React popup can anchor itself above
     // the FAB (so opening the popup doesn't cover the FAB).
     this.broadcastPosition(desiredBottom, desiredRight);
+  }
+
+  private setVisible(visible: boolean): void {
+    this.pendingVisible = visible;
+    this.applyVisibility();
+  }
+
+  private applyVisibility(): void {
+    const btn = this.btn ?? (document.getElementById(FAB_ID) as HTMLButtonElement | null);
+    if (!btn) return;
+    // Pre-load: always hidden, regardless of pendingVisible.
+    const visible = this.pageLoaded && this.pendingVisible;
+    btn.classList.toggle('bnbot-fab-hidden', !visible);
   }
 
   private lastGrokExpanded: boolean | null = null;
