@@ -77,7 +77,6 @@ export enum ExecutionStatus {
 
 export enum NotificationType {
   EMAIL_ONLY = 'email_only',
-  TELEGRAM_ONLY = 'telegram_only',
   BOTH = 'both',
   NONE = 'none'
 }

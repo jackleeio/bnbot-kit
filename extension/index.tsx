@@ -11,7 +11,7 @@ import { HomeBoostChecker } from './utils/HomeBoostChecker';
 import { BnbotFabInjector } from './utils/BnbotFabInjector';
 // VideoDownloadManager removed — old "download tweet video" share-menu
 // injection was part of the abandoned cross-post / republish flow.
-// 初始化 commandService 消息监听器，确保 LOCAL_ACTION（OpenClaw MCP）在内容脚本加载时就能处理
+// 初始化 commandService 消息监听器，确保 LOCAL_ACTION（bnbot 本地桥）在内容脚本加载时就能处理
 import { commandService } from './services/commandService';
 commandService.init();
 // 导入微信抓取服务（会自动暴露到 window 对象）

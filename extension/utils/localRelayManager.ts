@@ -1,10 +1,11 @@
 /**
  * LocalRelayManager
- * WebSocket client that connects to a local MCP relay server (ws://localhost:PORT)
- * for OpenClaw integration. Runs in the background service worker.
+ * WebSocket client that connects to the bnbot daemon (ws://localhost:18900,
+ * spawned by `bnbot serve`). Runs in the background service worker.
  *
- * Unlike the remote WebSocket (which goes through the backend for Telegram control),
- * this is a purely local connection for AI assistants like OpenClaw to control the extension.
+ * Unlike the remote WebSocket (which goes through the backend), this is a
+ * purely local connection — desktop / CLI / MCP clients dispatch action
+ * requests through it, and content scripts execute them on x.com.
  */
 
 const DEFAULT_LOCAL_WS_PORT = 18900;

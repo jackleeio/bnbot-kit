@@ -605,7 +605,7 @@ function AppContent() {
       setActiveTab(Tab.CHAT);
     }
 
-    // Note: WebSocket connection is handled by Sidebar when Telegram is linked and enabled
+    // Note: WebSocket connection is owned by the background service worker.
   };
 
   const handleLogout = async () => {

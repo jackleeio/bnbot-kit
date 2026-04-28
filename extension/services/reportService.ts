@@ -1,6 +1,6 @@
 /**
  * ReportService
- * Generates and sends periodic reports to backend (for Telegram delivery)
+ * Generates and sends periodic reports to the backend.
  */
 
 import { commandService } from './commandService';
@@ -107,7 +107,7 @@ class ReportService {
   }
 
   /**
-   * Send report to backend (will be forwarded to Telegram)
+   * Send report to backend.
    */
   sendReport(): void {
     if (!commandService.isConnected()) {

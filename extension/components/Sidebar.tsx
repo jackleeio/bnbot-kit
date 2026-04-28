@@ -24,13 +24,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { t, language } = useLanguage();
   const [bridgeConnected, setBridgeConnected] = useState(false);
 
-  // Poll OpenClaw bridge status every 3s. Cheap (background no-op when
+  // Poll bnbot bridge status every 3s. Cheap (background no-op when
   // already connected) and the only signal users have that the local
   // daemon is alive.
   useEffect(() => {
     const checkStatus = () => {
       try {
-        chrome.runtime.sendMessage({ type: 'OPENCLAW_GET_STATUS' }, (response: any) => {
+        chrome.runtime.sendMessage({ type: 'BNBOT_BRIDGE_GET_STATUS' }, (response: any) => {
           if (chrome.runtime.lastError) return;
           if (response) setBridgeConnected(response.connected);
         });
@@ -43,12 +43,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const reconnectBridge = (e: React.MouseEvent) => {
     e.stopPropagation();
-    try { chrome.runtime.sendMessage({ type: 'OPENCLAW_RECONNECT' }); } catch { return; }
+    try { chrome.runtime.sendMessage({ type: 'BNBOT_BRIDGE_RECONNECT' }); } catch { return; }
     setBridgeConnected(false);
     let attempts = 0;
     const poll = setInterval(() => {
       try {
-        chrome.runtime.sendMessage({ type: 'OPENCLAW_GET_STATUS' }, (response: any) => {
+        chrome.runtime.sendMessage({ type: 'BNBOT_BRIDGE_GET_STATUS' }, (response: any) => {
           if (chrome.runtime.lastError || response?.connected || ++attempts >= 5) {
             if (response) setBridgeConnected(response.connected);
             clearInterval(poll);

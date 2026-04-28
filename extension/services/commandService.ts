@@ -1,7 +1,8 @@
 /**
  * CommandService
- * WebSocket client for receiving commands from backend (Telegram, scheduled tasks, etc.)
- * Uses Offscreen Document for single WebSocket connection across all tabs.
+ * WebSocket client for receiving commands from the backend (scheduled tasks,
+ * remote action dispatch, etc.). Uses an Offscreen Document so the WebSocket
+ * stays alive across all tabs with a single connection.
  */
 
 import { chatService } from './chatService';
@@ -17,7 +18,6 @@ export interface CommandMessage {
   actionType?: string;
   actionPayload?: any;
   threadId?: string;
-  // telegramChatId / telegramMsgId removed — Telegram integration retired.
   // Scheduled trigger fields
   trigger_id?: string;
   task_id?: string;
@@ -73,7 +73,7 @@ class CommandService {
       } else if (message.type === 'WS_MESSAGE') {
         this.handleMessage(message.message);
       } else if (message.type === 'LOCAL_ACTION') {
-        // Handle action from local relay (OpenClaw MCP)
+        // Handle action from the bnbot bridge (ws://localhost:18900)
         this.handleLocalActionFromBackground(message);
       }
       // EXECUTE_SCHEDULED_TASK / PUBLISH_SCHEDULED_DRAFT handlers removed —
@@ -508,7 +508,7 @@ class CommandService {
   }
 
   /**
-   * Handle action from local relay (OpenClaw MCP).
+   * Handle action from the bnbot bridge (ws://localhost:18900).
    * Results are returned via callback instead of being sent to the remote API.
    */
   async handleLocalAction(

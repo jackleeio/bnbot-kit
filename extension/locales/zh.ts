@@ -30,16 +30,6 @@ export const zh = {
     },
     settings: '设置',
     language: '语言',
-    telegramNotification: 'Telegram 通知',
-    telegramBind: '绑定',
-    telegramUnbind: '解绑',
-    telegramBound: '已绑定',
-    telegramNotBound: '未绑定',
-    telegramBindHint: '点击绑定你的 Telegram',
-    telegramBinding: '绑定中...',
-    openclawIntegration: 'OpenClaw',
-    openclawConnected: '已连接',
-    openclawDisconnected: '等待连接...',
   },
 
   // Sidebar

@@ -596,9 +596,9 @@ if (isFirefox) {
   }, WS_BASE_URL || undefined);
 }
 
-// ============ Local Relay (OpenClaw MCP Integration) ============
+// ============ Local Relay (bnbot bridge — ws://localhost:18900) ============
 
-// Initialize local relay manager for OpenClaw connections
+// Initialize local relay manager for the bnbot daemon (`bnbot serve`).
 localRelayManager.init({
   onAction: async (message: LocalActionRequest) => {
     console.log(`[Background] Local relay action: ${message.actionType} (${message.requestId}) payload:`, JSON.stringify(message.actionPayload));
@@ -772,11 +772,11 @@ localRelayManager.init({
 
 // Load local relay settings from storage on startup
 // Default to enabled so users can connect immediately after installing
-chrome.storage.local.get(['openclawEnabled', 'openclawPort'], (result) => {
-  const enabled = result.openclawEnabled !== false;
-  const port = result.openclawPort || 18900;
+chrome.storage.local.get(['bnbotBridgeEnabled', 'bnbotBridgePort'], (result) => {
+  const enabled = result.bnbotBridgeEnabled !== false;
+  const port = result.bnbotBridgePort || 18900;
   if (enabled) {
-    console.log('[Background] OpenClaw integration enabled on startup, port:', port);
+    console.log('[Background] bnbot bridge enabled on startup, port:', port);
     localRelayManager.setEnabled(true, port);
   }
 });
@@ -807,23 +807,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  // OpenClaw settings changes
-  if (message.type === 'OPENCLAW_SET_ENABLED') {
+  // bnbot bridge control messages
+  if (message.type === 'BNBOT_BRIDGE_SET_ENABLED') {
     const { enabled, port } = message;
-    console.log(`[Background] OpenClaw ${enabled ? 'enabling' : 'disabling'}, port: ${port}`);
+    console.log(`[Background] bnbot bridge ${enabled ? 'enabling' : 'disabling'}, port: ${port}`);
     localRelayManager.setEnabled(enabled, port);
     sendResponse({ ok: true });
     return false;
   }
 
-  if (message.type === 'OPENCLAW_RECONNECT') {
-    console.log('[Background] OpenClaw manual reconnect');
+  if (message.type === 'BNBOT_BRIDGE_RECONNECT') {
+    console.log('[Background] bnbot bridge manual reconnect');
     localRelayManager.reconnect();
     sendResponse({ ok: true });
     return false;
   }
 
-  if (message.type === 'OPENCLAW_GET_STATUS') {
+  if (message.type === 'BNBOT_BRIDGE_GET_STATUS') {
     sendResponse(localRelayManager.getConfig());
     return false;
   }
@@ -832,12 +832,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // ============ Tab Keep-Alive (Prevent Chrome from discarding X tabs) ============
 
 /**
- * Prevent Chrome from discarding/freezing X tabs when remote control is enabled
- * This is crucial for Telegram remote control to work in background
- */
-/**
- * Prevent Chrome from discarding/freezing one X tab when remote control is enabled
- * Only need to keep one tab alive for scheduled tasks to work
+ * Prevent Chrome from discarding/freezing one X tab when remote control is
+ * enabled. We only need one tab alive for scheduled tasks + bnbot bridge
+ * action dispatch to keep working when the user isn't actively viewing X.
  */
 async function setXTabsKeepAlive(enabled: boolean): Promise<void> {
   // Firefox event page doesn't support autoDiscardable
@@ -1018,7 +1015,7 @@ async function ensureOffscreenDocument(): Promise<void> {
   creatingOffscreen = chrome.offscreen.createDocument({
     url: offscreenUrl,
     reasons: [chrome.offscreen.Reason.WEB_RTC], // WEB_RTC allows persistent connections
-    justification: 'Maintain WebSocket connection for Telegram remote control'
+    justification: 'Maintain WebSocket connection for remote control + bnbot bridge'
   });
 
   await creatingOffscreen;

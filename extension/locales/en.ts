@@ -30,16 +30,6 @@ export const en = {
     },
     settings: 'Settings',
     language: 'Language',
-    telegramNotification: 'Telegram Notification',
-    telegramBind: 'Bind',
-    telegramUnbind: 'Unbind',
-    telegramBound: 'Bound',
-    telegramNotBound: 'Not bound',
-    telegramBindHint: 'Click to bind your Telegram',
-    telegramBinding: 'Binding...',
-    openclawIntegration: 'OpenClaw',
-    openclawConnected: 'Connected',
-    openclawDisconnected: 'Waiting...',
   },
 
   // Sidebar
