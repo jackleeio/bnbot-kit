@@ -19,6 +19,10 @@ const FAB_ID = 'bnbot-fab-trigger';
 const FAB_CSS_ID = 'bnbot-fab-styles';
 const GAP_ABOVE_GROK = 8;
 const FALLBACK_BOTTOM = 90;
+// Grok drawer height threshold — collapsed (button only) is ~50px;
+// expanded panel is hundreds of px. Above this we treat the drawer
+// as expanded and hide the FAB so it doesn't block the Grok content.
+const GROK_EXPANDED_HEIGHT_PX = 120;
 
 export class BnbotFabInjector {
   private btn: HTMLButtonElement | null = null;
@@ -141,11 +145,24 @@ export class BnbotFabInjector {
       document.querySelector('[data-testid="GrokDrawer"]');
 
     if (!grok) {
+      btn.style.display = 'flex';
       btn.style.bottom = `${FALLBACK_BOTTOM}px`;
       // Match Grok's typical right edge.
       btn.style.right = '20px';
       return;
     }
+
+    // If the Grok drawer is expanded into a full panel, hide our FAB
+    // entirely — it would otherwise float above Grok's expanded view
+    // and block content. Re-show automatically when Grok collapses.
+    const drawerRoot =
+      document.querySelector('[data-testid="GrokDrawer"]') as HTMLElement | null;
+    const drawerHeight = drawerRoot?.getBoundingClientRect().height ?? 0;
+    if (drawerHeight > GROK_EXPANDED_HEIGHT_PX) {
+      btn.style.display = 'none';
+      return;
+    }
+    btn.style.display = 'flex';
 
     const rect = (grok as HTMLElement).getBoundingClientRect();
     // Distance from viewport bottom to Grok's top edge.
