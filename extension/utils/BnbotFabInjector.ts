@@ -76,22 +76,19 @@ export class BnbotFabInjector {
     this.ensureButton();
     this.startAlignmentLoop();
 
-    // Wait for the page to fully load before fading the FAB in. X's
-    // initial paint does multiple layout passes and dropping the FAB
-    // into a half-rendered UI looks janky; the fade-in only feels
-    // intentional once the page is done settling.
-    if (document.readyState === 'complete') {
-      this.pageLoaded = true;
-      // Apply the deferred visibility on next tick so the initial
-      // .bnbot-fab-hidden class has a chance to paint first → fade in.
-      requestAnimationFrame(() => this.applyVisibility());
-    } else {
-      window.addEventListener('load', () => {
+    // Wait until X's primary column actually renders before fading
+    // the FAB in. window.load fires too early — X is a SPA and the
+    // HTML is "loaded" while only the splash X logo is visible;
+    // hydration + first data fetch take another 1-3s. Watching for
+    // [data-testid="primaryColumn"] (or role=main as a fallback) is a
+    // reliable "page is real now" signal.
+    this.waitForXReady(() => {
+      // 500ms extra for X's own hydration animations to settle.
+      setTimeout(() => {
         this.pageLoaded = true;
-        // Small extra delay so X's hydration animations finish first.
-        setTimeout(() => this.applyVisibility(), 200);
-      }, { once: true });
-    }
+        this.applyVisibility();
+      }, 500);
+    });
 
     // Re-attach if body gets replaced by SPA navigation quirks.
     this.bodyObserver = new MutationObserver(() => {
@@ -276,6 +273,39 @@ export class BnbotFabInjector {
     // Broadcast FAB position so the React popup can anchor itself above
     // the FAB (so opening the popup doesn't cover the FAB).
     this.broadcastPosition(desiredBottom, desiredRight);
+  }
+
+  private waitForXReady(cb: () => void): void {
+    const READY_SELECTOR = '[data-testid="primaryColumn"], main[role="main"]';
+    const check = () => !!document.querySelector(READY_SELECTOR);
+    if (check()) {
+      cb();
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      if (check()) {
+        observer.disconnect();
+        cb();
+      }
+    });
+    if (document.body) {
+      observer.observe(document.body, { childList: true, subtree: true });
+    } else {
+      // body not ready yet — defer setup; rare on x.com but cheap to handle.
+      document.addEventListener(
+        'DOMContentLoaded',
+        () => observer.observe(document.body, { childList: true, subtree: true }),
+        { once: true },
+      );
+    }
+    // Hard timeout fallback — if X hangs / route blocks, still fade in
+    // after 8s so the FAB isn't permanently invisible.
+    setTimeout(() => {
+      if (!this.pageLoaded) {
+        observer.disconnect();
+        cb();
+      }
+    }, 8000);
   }
 
   private setVisible(visible: boolean): void {
