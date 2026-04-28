@@ -24,10 +24,22 @@ const FALLBACK_BOTTOM = 90;
 // as expanded and hide the FAB so it doesn't block the Grok content.
 const GROK_EXPANDED_HEIGHT_PX = 120;
 
+// X selectors that should immediately collapse the BNBot popup when
+// clicked. Polling alone has 500ms lag — by listening on capture phase
+// we react before the drawer has even started its open animation.
+const X_HIDE_TRIGGERS = [
+  '[data-testid^="GrokDrawer"]',
+  '[aria-label*="Grok" i]',
+  '[data-testid*="DMDrawer" i]',
+  '[aria-label*="Direct messages" i]',
+  '[aria-label*="消息"]',
+];
+
 export class BnbotFabInjector {
   private btn: HTMLButtonElement | null = null;
   private bodyObserver: MutationObserver | null = null;
   private alignTimer: number | null = null;
+  private hideClickListener: ((e: Event) => void) | null = null;
 
   start(): void {
     this.injectStylesOnce();
@@ -41,6 +53,22 @@ export class BnbotFabInjector {
     if (document.body) {
       this.bodyObserver.observe(document.body, { childList: true });
     }
+
+    // Capture-phase pointer listener — collapse BNBot the moment a
+    // Grok / DM trigger is touched, not 500ms later when polling sees
+    // the drawer height change.
+    this.hideClickListener = (e: Event) => {
+      const target = e.target as Element | null;
+      if (!target || typeof target.closest !== 'function') return;
+      // Don't react to clicks inside our own FAB / popup.
+      if (target.closest(`#${FAB_ID}`)) return;
+      if (X_HIDE_TRIGGERS.some((sel) => target.closest(sel))) {
+        this.broadcastGrokExpanded(true);
+        const btn = this.btn ?? (document.getElementById(FAB_ID) as HTMLButtonElement | null);
+        if (btn) btn.style.display = 'none';
+      }
+    };
+    document.addEventListener('pointerdown', this.hideClickListener, true);
   }
 
   stop(): void {
@@ -49,6 +77,10 @@ export class BnbotFabInjector {
     if (this.alignTimer !== null) {
       window.clearInterval(this.alignTimer);
       this.alignTimer = null;
+    }
+    if (this.hideClickListener) {
+      document.removeEventListener('pointerdown', this.hideClickListener, true);
+      this.hideClickListener = null;
     }
     this.btn?.remove();
     this.btn = null;
