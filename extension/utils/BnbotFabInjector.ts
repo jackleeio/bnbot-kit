@@ -109,6 +109,13 @@ export class BnbotFabInjector {
       if (X_HIDE_TRIGGERS.some((sel) => target.closest(sel))) {
         this.broadcastGrokExpanded(true);
         this.setVisible(false);
+        // Same reset as alignToGrok's expanded branch — re-anchor at
+        // fallback so re-showing later doesn't fade in at a stale high spot.
+        const btn = this.btn ?? (document.getElementById(FAB_ID) as HTMLButtonElement | null);
+        if (btn) {
+          btn.style.bottom = `${FALLBACK_BOTTOM}px`;
+          btn.style.right = '20px';
+        }
       }
     };
     document.addEventListener('pointerdown', this.hideClickListener, true);
@@ -152,7 +159,12 @@ export class BnbotFabInjector {
         z-index: 9998;
         opacity: 1;
         transform: scale(1);
-        transition: opacity 0.18s ease, transform 0.18s ease, box-shadow 0.15s ease;
+        transition:
+          opacity 0.22s ease,
+          transform 0.18s ease,
+          box-shadow 0.15s ease,
+          bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+          right 0.28s cubic-bezier(0.22, 1, 0.36, 1);
       }
       #${FAB_ID}.bnbot-fab-hidden {
         opacity: 0;
@@ -252,6 +264,12 @@ export class BnbotFabInjector {
     this.broadcastGrokExpanded(drawerExpanded);
     if (drawerExpanded) {
       this.setVisible(false);
+      // Reset to fallback position while hidden so the next reveal
+      // doesn't briefly fade in at the old "stuck-high" coords from
+      // when Grok was still expanding. Position transitions during
+      // hidden state are invisible to the user.
+      btn.style.bottom = `${FALLBACK_BOTTOM}px`;
+      btn.style.right = '20px';
       return;
     }
     this.setVisible(true);
