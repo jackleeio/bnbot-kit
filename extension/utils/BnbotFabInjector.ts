@@ -88,13 +88,19 @@ export class BnbotFabInjector {
     // finishes hydrating + first data fetch, so it's a reliable "page
     // is real now" signal *and* it means our anchor target exists.
     this.waitForXReady(() => {
-      // Align FIRST, then fade in. If we flipped pageLoaded before
-      // alignToGrok, the FAB would briefly appear at the fallback
-      // bottom:90px (between Grok and chat), then snap up to its real
-      // spot — looking like a slide-up animation.
-      this.alignToGrok();
-      this.pageLoaded = true;
-      this.applyVisibility();
+      // 500ms grace period after Grok mounts so X has time to fully
+      // settle the dock layout (Grok's own fade-in / final position).
+      // Without this, alignToGrok occasionally measures Grok's rect
+      // mid-animation and anchors a few pixels off.
+      setTimeout(() => {
+        // Align FIRST, then fade in. If we flipped pageLoaded before
+        // alignToGrok, the FAB would briefly appear at the fallback
+        // bottom:90px (between Grok and chat), then snap up to its
+        // real spot — looking like a slide-up animation.
+        this.alignToGrok();
+        this.pageLoaded = true;
+        this.applyVisibility();
+      }, 500);
     });
 
     // Re-attach if body gets replaced by SPA navigation quirks.
