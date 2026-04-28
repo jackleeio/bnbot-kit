@@ -148,6 +148,11 @@ async function runPost(plan: WxmpPostPlan): Promise<Record<string, unknown>> {
 
   // 7. Save draft (silent — verify via 预览 history)
   if (plan.saveDraft) {
+    // Settle period: ProseMirror's React state needs a tick to sync DOM
+    // mutations from the previous paste round. Without this, saveDraft
+    // serializes a stale doc (often just the title) and persists an empty
+    // body to the server even though local PM is full.
+    await sleep(2000)
     await saveDraft()
     log('draft:saved')
   }
@@ -159,15 +164,18 @@ async function runPost(plan: WxmpPostPlan): Promise<Record<string, unknown>> {
   }
 
   // Final state snapshot — evalJs auto-parses JSON-stringified return
-  // values, so we don't double-parse here.
+  // values, so we don't double-parse here. Note: TS template literal needs
+  // 2 backslashes so the runtime regex literal has \d (not \\d which is
+  // literal backslash + d).
   summary.finalState = await evalJs(`JSON.stringify({
-    appmsgid: location.href.match(/appmsgid=(\\\\d+)/)?.[1] ?? null,
+    appmsgid: location.href.match(/appmsgid=(\\d+)/)?.[1] ?? null,
     title:    document.querySelector('#title')?.value ?? null,
     author:   document.querySelector('#author')?.value ?? null,
     digest:   document.querySelector('#js_description')?.value ?? null,
     bodyChars: document.querySelector('.ProseMirror')?.innerText?.length ?? 0,
-    bodyImgs:  document.querySelectorAll('.ProseMirror img').length,
-    coverSet:  !!document.querySelector('.js_cover_preview_new')
+    bodyImgs:  document.querySelectorAll('.ProseMirror img:not(.ProseMirror-separator)').length,
+    coverSet:  !!document.querySelector('.js_cover_preview_new'),
+    persistedImgsAreMmbiz: [...document.querySelectorAll('.ProseMirror img:not(.ProseMirror-separator)')].every(i => i.src.includes('mmbiz'))
   })`)
   return summary
 }
@@ -481,8 +489,11 @@ async function saveDraft(): Promise<void> {
   await tagAndClick(
     `[...document.querySelectorAll('button')].find(b => (b.innerText || '').trim() === '保存为草稿' && b.offsetParent !== null)`,
   )
-  // Save is silent; give server a moment to ack.
-  await sleep(1500)
+  // Save is silent. Need to wait for: (1) network POST to /cgi-bin/operate_appmsg
+  // to complete, (2) page to navigate from isNew=1 to appmsgid=N URL, and
+  // (3) ProseMirror to settle on the persisted doc. 3s is the empirical
+  // floor below which we get half-saved drafts (title only, no body).
+  await sleep(3000)
 }
 
 async function openPreview(): Promise<void> {
