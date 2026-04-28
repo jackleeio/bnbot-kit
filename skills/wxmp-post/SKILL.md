@@ -174,8 +174,8 @@ CLI 输出包含 `finalState.appmsgid`. Tell the user:
 | `bodyHtml` | string | (legacy) 直接 innerHTML 写入 — 服务端会 strip 图片 + 部分样式,**不推荐** |
 | `original` | boolean | 是否开原创声明(文字原创 + 已开启快捷转载) |
 | `saveDraft` | boolean | 默认 true。⚠️ 永远不会触发"发表",只到草稿箱 |
-| `previewLink` | boolean | 保存后捕获预览链接(`https://mp.weixin.qq.com/s/...`),返回到 `finalState.previewUrl`。可分享到微信群/朋友手机预览 |
-| `preview` | boolean | 仅打开预览 UI(用于 dev 调试),不提取链接;若同时给 `previewLink` 优先后者 |
+| `previewLink` | boolean | ⚠️ 微信公众号**不提供**可分享的草稿预览 URL。`/s/...` 链接只在文章发表后才存在。本字段保留 schema 兼容,但 `finalState.previewUrl` 实测在 mp.weixin.qq.com 上一直是 null。要让用户在手机上预览,只能在草稿箱手动点"预览 → 扫码"或"群发预览到指定微信号" |
+| `preview` | boolean | 仅打开预览 UI 侧栏(显示文章卡片样式 + 历史版本),用于 dev 调试 |
 | `editorUrl` | string | (override) 复用已有草稿 URL |
 
 完整 plan 示例:

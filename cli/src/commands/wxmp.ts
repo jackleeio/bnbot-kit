@@ -82,8 +82,22 @@ export interface WxmpPostPlan {
   /** Open the preview dialog after save. Useful for visual debug; for
    *  programmatic preview-link extraction use `previewLink` instead. */
   preview?: boolean
-  /** After save, fetch a preview link for the draft (microWeChat phone
-   *  preview). Returned in `finalState.previewUrl` if successful. */
+  /** [LIMITED] After save, attempt to capture a preview share URL.
+   *
+   *  ⚠️ 微信公众号 does NOT expose a public-shareable preview URL for
+   *  drafts (verified via network capture 2026-04-28). The 预览 button
+   *  only opens the side-panel article card preview + history version
+   *  list. Phone preview goes through "群发预览 → 推送给指定微信号",
+   *  which doesn't return a URL we can capture.
+   *
+   *  This flag opens the preview side-panel and tries best-effort
+   *  scraping for any URL field (currently always returns null on
+   *  mp.weixin.qq.com). Kept in the schema so callers don't break, but
+   *  for actually previewing on phone the user must:
+   *    1. Open the draft in 草稿箱 manually
+   *    2. Click 预览 → 扫码 to send to their own WeChat
+   *  Or: have the CLI run a 群发预览 push to a known WeChat ID
+   *  (separate flow, not implemented yet). */
   previewLink?: boolean
   /** Optional override editor URL (e.g. when resuming an existing draft).
    *  Default: open a fresh editor via &isNew=1. */
