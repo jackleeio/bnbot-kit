@@ -786,18 +786,19 @@ function AppContent() {
     };
     window.addEventListener('bnbot-grok-expanded', handleGrokExpanded);
 
-    // Generic click-outside-to-close — pointerdown anywhere outside the
-    // popup or the FAB collapses it. Lets users dismiss BNBot by tapping
-    // X's right rail / sidebar / timeline without hunting for the FAB.
-    // Capture phase so we run before X's own click handlers.
+    // Click-on-right-sidebar-to-close — pointerdown inside X's right
+    // rail (sidebarColumn) collapses the popup. Center timeline and
+    // left nav clicks don't trigger close — users may be reading /
+    // composing while glancing at BNBot. Only the right rail area
+    // (where the popup overlaps) auto-closes when interacted with.
     const handleOutsideClick = (e: Event) => {
       const target = e.target as Element | null;
       if (!target?.closest) return;
-      // Inside the popup itself — keep open.
       if (target.closest('[data-bnbot-popup="true"]')) return;
-      // Inside the FAB — its own onClick toggles, don't double-handle.
       if (target.closest('#bnbot-fab-trigger')) return;
-      setIsCollapsed(true);
+      if (target.closest('[data-testid="sidebarColumn"]')) {
+        setIsCollapsed(true);
+      }
     };
     document.addEventListener('pointerdown', handleOutsideClick, true);
 
