@@ -44,14 +44,18 @@ const X_HIDE_TRIGGERS = [
   '[data-testid*="chat" i]',
 ];
 
-// Selectors for floating drawer containers we actively poll. If any
-// of them grow beyond GROK_EXPANDED_HEIGHT_PX, hide the FAB + popup.
-const X_DRAWER_CONTAINERS = [
-  '[data-testid="GrokDrawer"]',
-  '[data-testid^="GrokDrawer"]',
-  '[data-testid^="DMDrawer"]',
-  '[data-testid^="dmDrawer"]',
-];
+// Generic selectors for X floating drawers / modals. We scan all of
+// these and consider the drawer "expanded" if any element matching
+// any of them has height > threshold AND lives in the right half of
+// the viewport (where X's floating drawers always anchor). Looser
+// than per-testid checks because X renames testids often (e.g.
+// passcode prompt inside DMDrawer doesn't carry the DMDrawer testid).
+const X_DRAWER_SELECTOR = [
+  'aside',
+  '[role="dialog"]',
+  '[data-testid*="Drawer" i]',
+  '[data-testid*="drawer" i]',
+].join(',');
 
 export class BnbotFabInjector {
   private btn: HTMLButtonElement | null = null;
@@ -196,19 +200,21 @@ export class BnbotFabInjector {
       return;
     }
 
-    // If any X floating drawer (Grok / DM) is expanded, hide our FAB
-    // entirely — it would otherwise float above the drawer and block
-    // content. Also signal the React popup to collapse. Re-show
-    // automatically when all drawers are collapsed (FAB only — popup
-    // stays closed; user re-opens it via the FAB).
-    let maxDrawerHeight = 0;
-    for (const sel of X_DRAWER_CONTAINERS) {
-      document.querySelectorAll(sel).forEach((el) => {
-        const h = (el as HTMLElement).getBoundingClientRect().height;
-        if (h > maxDrawerHeight) maxDrawerHeight = h;
-      });
-    }
-    const drawerExpanded = maxDrawerHeight > GROK_EXPANDED_HEIGHT_PX;
+    // If any X floating drawer / modal is expanded in the viewport's
+    // right half (where X anchors its drawers), hide our FAB entirely
+    // — it would otherwise float above the drawer and block content.
+    // Also signal the React popup to collapse. Re-show automatically
+    // when all drawers are collapsed (FAB only — popup stays closed;
+    // user re-opens it via the FAB).
+    const halfW = window.innerWidth / 2;
+    let drawerExpanded = false;
+    document.querySelectorAll(X_DRAWER_SELECTOR).forEach((el) => {
+      if (drawerExpanded) return;
+      const r = (el as HTMLElement).getBoundingClientRect();
+      if (r.height > GROK_EXPANDED_HEIGHT_PX && r.right > halfW) {
+        drawerExpanded = true;
+      }
+    });
     this.broadcastGrokExpanded(drawerExpanded);
     if (drawerExpanded) {
       btn.style.display = 'none';
