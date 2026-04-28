@@ -7,6 +7,7 @@ import { ActionHandler, ScrapedBookmark } from '../../types/action';
 import { HumanBehaviorSimulator } from '../../utils/HumanBehaviorSimulator';
 import { bookmarkScraper } from '../../utils/BookmarkScraper';
 import { TwitterClient } from '../../utils/TwitterClient';
+import { analysisService } from '../analysisService';
 
 // Twitter DOM 选择器
 const SELECTORS = {
@@ -401,7 +402,6 @@ export const kolPulseHandler: ActionHandler = async (params, callbacks) => {
   };
   callbacks.onProgress?.({} as any, `正在获取 ${kol_type} KOL 推文...`);
   try {
-    const { analysisService } = await import('../analysisService');
     const response = await analysisService.getKolRecentData({ kol_type, page_size });
     return { success: true, data: response };
   } catch (e) {

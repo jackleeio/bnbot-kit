@@ -26,6 +26,15 @@
     "service_worker": "background.ts",
     "type": "module"
   },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "BNBot",
+    "default_icon": {
+      "16": "assets/images/icon-16.png",
+      "48": "assets/images/icon-48.png",
+      "128": "assets/images/icon-128.png"
+    }
+  },
   "content_scripts": [
     {
       "matches": [

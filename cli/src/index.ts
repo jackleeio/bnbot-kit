@@ -58,7 +58,6 @@ import { downloadCommand } from './commands/download.js';
 import { debugEvalCommand, debugUploadCommand, debugClickCommand, debugShowCommand, debugDragCommand, debugRecordCommand } from './commands/debug.js';
 import { xhsPostCommand, xhsStatsNoteCommand, xhsStatsAccountCommand } from './commands/xhs.js';
 import { wxmpPostCommand } from './commands/wxmp.js';
-import { kolPulseCommand } from './commands/kol.js';
 import {
   tiktokSearchCommand, tiktokExploreCommand,
   youtubeSearchCommand, youtubeVideoCommand, youtubeTranscriptCommand,
@@ -870,15 +869,6 @@ function buildProgram(): Command {
         return wxmpPostCommand(planSource)
       },
     );
-
-  // ── KOL pulse — recent crypto / AI KOL tweets from bnbot-api ──
-  const kol = program.command('kol').description('KOL discussion pulse — recent tweets from curated KOL lists');
-  kol
-    .command('pulse [type]')
-    .description('Fetch recent tweets from crypto or ai KOLs (default: crypto). JSON to stdout.')
-    .option('--page-size <n>', 'Number of tweets to fetch', '100')
-    .option('--port <n>', 'WebSocket port', String(DEFAULT_PORT))
-    .action(kolPulseCommand);
 
   return program;
 }

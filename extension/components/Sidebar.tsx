@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { Zap, Wallet, RefreshCw } from 'lucide-react';
+import React from 'react';
+import { Zap, Wallet } from 'lucide-react';
 import { Tab } from '../types';
 import { useLanguage } from './LanguageContext';
-declare const chrome: any;
 
 interface SidebarProps {
   activeTab: Tab;
@@ -17,62 +16,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onTabChange,
 }) => {
-  // Settings popover removed — language + theme now mirror the X page
-  // automatically (see LanguageContext / ThemeContext). What's left here
-  // is just a passive Local Bridge status indicator on the bottom-right.
+  // Local Bridge status indicator removed from here — moved to the Chrome
+  // toolbar popup (popup.html / popup.tsx) so it's a one-click peek without
+  // taking up space in the X overlay sidebar.
+  // ANALYSIS tab removed — KOL pulse moved to /kol-pulse skill.
   const showingLogin = false;
-  const { t, language } = useLanguage();
-  const [bridgeConnected, setBridgeConnected] = useState(false);
-
-  // Poll bnbot bridge status every 3s. Cheap (background no-op when
-  // already connected) and the only signal users have that the local
-  // daemon is alive.
-  useEffect(() => {
-    const checkStatus = () => {
-      try {
-        chrome.runtime.sendMessage({ type: 'BNBOT_BRIDGE_GET_STATUS' }, (response: any) => {
-          if (chrome.runtime.lastError) return;
-          if (response) setBridgeConnected(response.connected);
-        });
-      } catch { /* extension context invalidated */ }
-    };
-    checkStatus();
-    const interval = setInterval(checkStatus, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const reconnectBridge = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try { chrome.runtime.sendMessage({ type: 'BNBOT_BRIDGE_RECONNECT' }); } catch { return; }
-    setBridgeConnected(false);
-    let attempts = 0;
-    const poll = setInterval(() => {
-      try {
-        chrome.runtime.sendMessage({ type: 'BNBOT_BRIDGE_GET_STATUS' }, (response: any) => {
-          if (chrome.runtime.lastError || response?.connected || ++attempts >= 5) {
-            if (response) setBridgeConnected(response.connected);
-            clearInterval(poll);
-          }
-        });
-      } catch { clearInterval(poll); }
-    }, 1000);
-  };
+  const { t } = useLanguage();
 
   const navItems = [
     // Chat tab removed — chat lives in the bnbot desktop app now;
     // extension is pure browser executor.
-    // ANALYSIS tab removed — KOL pulse moved to /kol-pulse skill.
     // Auto Reply tab removed — see /auto-reply, /inbox-watch skills.
     { id: Tab.BOOST, icon: Zap, label: t.sidebar.boost },
     // Drafts/Schedule tab removed — scheduling moved to `bnbot calendar` + launchd.
     // X_ANALYTICS tab removed — Analytics moved to bnbot desktop app.
     { id: Tab.X_BALANCE, icon: Wallet, label: t.common.xBalance },
   ];
-
-  const bridgeLabel = language === 'zh' ? '本地桥' : 'Local Bridge';
-  const bridgeStatus = bridgeConnected
-    ? language === 'zh' ? '已连接' : 'connected'
-    : language === 'zh' ? '未连接 — 点击重连' : 'disconnected — click to reconnect';
 
   return (
     <div
@@ -83,7 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-start',
         backgroundColor: 'transparent',
         borderTop: '1px solid var(--border-color)',
         flexShrink: 0,
@@ -116,22 +75,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         ))}
       </div>
-
-      <button
-        onClick={reconnectBridge}
-        title={`${bridgeLabel} · ${bridgeStatus}`}
-        className="group flex items-center gap-1.5 px-2 py-1 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-bg)] transition-colors cursor-pointer"
-      >
-        <span className="text-[11px] font-medium tracking-wide">{bridgeLabel}</span>
-        <span
-          className="w-2 h-2 rounded-full"
-          style={bridgeConnected
-            ? { backgroundColor: '#22c55e' }
-            : { backgroundColor: '#9ca3af', animation: 'bnbot-breathe 2s ease-in-out infinite' }
-          }
-        />
-        <RefreshCw size={11} />
-      </button>
     </div>
   );
 };
