@@ -170,6 +170,12 @@ export class BnbotFabInjector {
         opacity: 0;
         transform: scale(0.92);
         pointer-events: none;
+        /* No bottom/right transition while hidden — Grok header
+         * positions wildly during its open animation; if we let the
+         * FAB animate-follow that, you see a ghost icon flying across
+         * the screen as it fades out. Snap to whatever the next align
+         * tick decides, invisibly. */
+        transition: opacity 0.22s ease, transform 0.18s ease;
       }
       #${FAB_ID}:hover {
         transform: scale(1.04);
@@ -272,6 +278,16 @@ export class BnbotFabInjector {
       btn.style.right = '20px';
       return;
     }
+
+    // While the FAB is hidden (e.g. user just clicked Grok and we're
+    // still in the fade-out frame), don't follow Grok's header
+    // position. Grok header coordinates fly all over the screen during
+    // its own open animation; chasing them would briefly flash the
+    // FAB at center / left of the viewport before it finishes fading.
+    // Wait until the user re-summons the FAB (drawer fully collapsed
+    // → setVisible(true) reached on next tick).
+    if (!this.pendingVisible) return;
+
     this.setVisible(true);
 
     const rect = (grok as HTMLElement).getBoundingClientRect();
