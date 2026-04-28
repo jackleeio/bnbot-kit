@@ -8,7 +8,6 @@ export enum Tab {
   AUTO_REPLY = 'AUTO_REPLY',
   SETTINGS = 'SETTINGS',
   X_BALANCE = 'X_BALANCE',
-  X_ANALYTICS = 'X_ANALYTICS'
 }
 
 export interface ToolCall {

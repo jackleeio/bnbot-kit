@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Zap, TrendingUp, UserCircle, Sparkles, LogOut, Languages, AtSign, Crown, ScanEye, MessageSquare, Settings, Wallet, Send, Check, X, ExternalLink, BarChart3, RefreshCw } from 'lucide-react';
+import { Zap, TrendingUp, UserCircle, Sparkles, LogOut, Languages, AtSign, Crown, ScanEye, MessageSquare, Settings, Wallet, Send, Check, X, ExternalLink, RefreshCw } from 'lucide-react';
 import { commandService } from '../services/commandService';
 // telegramService removed — Telegram integration retired (was hidden UI).
 import { SteeringWheel } from './icons/SteeringWheel';
@@ -49,7 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     // Auto Reply tab removed — see /auto-reply, /inbox-watch skills.
     { id: Tab.BOOST, icon: Zap, label: t.sidebar.boost },
     // Drafts/Schedule tab removed — scheduling moved to `bnbot calendar` + launchd.
-    { id: Tab.X_ANALYTICS, icon: BarChart3, label: t.common.xAnalytics },
+    // X_ANALYTICS tab removed — Analytics moved to bnbot desktop app.
     { id: Tab.X_BALANCE, icon: Wallet, label: t.common.xBalance },
   ];
 

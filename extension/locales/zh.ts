@@ -9,7 +9,6 @@ export const zh = {
     signOut: '退出登录',
     credits: '积分',
     xBalance: 'X Balance',
-    xAnalytics: 'X 数据分析',
     subscription: '计划',
     profileMenu: '个人菜单',
     copy: '复制',

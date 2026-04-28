@@ -12,7 +12,8 @@ import { AnalysisPanel } from './components/panels/AnalysisPanel';
 // (skill: /schedule). Extension no longer hosts the calendar UI.
 // AutoPilotPanel removed — autopilot lives in bnbot CLI /auto-reply + /inbox-watch skills.
 import { XBalancePanel } from './components/panels/XBalancePanel';
-import { XAnalyticsPanel } from './components/panels/XAnalyticsPanel';
+// XAnalyticsPanel removed — Analytics moved to bnbot desktop app
+// (packages/desktop/src/components/AnalyticsPane.tsx).
 import { Tab } from './types';
 // twitterUtils sidebar mutators removed — popup is a floating card now,
 // no need to mutate X's right column / left nav layout.
@@ -846,10 +847,6 @@ function AppContent() {
       case Tab.X_BALANCE:
         return (
           <XBalancePanel />
-        );
-      case Tab.X_ANALYTICS:
-        return (
-          <XAnalyticsPanel onBack={() => setActiveTab(Tab.CHAT)} />
         );
       case Tab.ANALYSIS:
         // AnalysisPanel is rendered separately to persist state

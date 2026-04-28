@@ -9,7 +9,6 @@ export const en = {
     signOut: 'Sign out',
     credits: 'Credits',
     xBalance: 'X Balance',
-    xAnalytics: 'X Analytics',
     subscription: 'Plan',
     profileMenu: 'Profile Menu',
     copy: 'Copy',
