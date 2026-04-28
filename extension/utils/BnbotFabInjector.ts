@@ -44,17 +44,20 @@ const X_HIDE_TRIGGERS = [
   '[data-testid*="chat" i]',
 ];
 
-// Generic selectors for X floating drawers / modals. We scan all of
-// these and consider the drawer "expanded" if any element matching
-// any of them has height > threshold AND lives in the right half of
-// the viewport (where X's floating drawers always anchor). Looser
-// than per-testid checks because X renames testids often (e.g.
-// passcode prompt inside DMDrawer doesn't carry the DMDrawer testid).
+// Selectors for X floating drawers / modals. Bare `aside` is too
+// loose — X's right-rail trends column is also an aside and would
+// always match. Restrict to asides with chat/DM/Grok aria-labels.
+// `[role="dialog"]` covers inner modals (Passcode, image viewer),
+// and `*Drawer*` testid covers the Grok / DM container itself.
 const X_DRAWER_SELECTOR = [
-  'aside',
-  '[role="dialog"]',
+  'aside[aria-label*="Direct" i]',
+  'aside[aria-label*="Messages" i]',
+  'aside[aria-label*="Grok" i]',
+  'aside[aria-label*="chat" i]',
+  'aside[aria-label*="消息"]',
+  'aside[aria-label*="私信"]',
+  '[role="dialog"][aria-modal="true"]',
   '[data-testid*="Drawer" i]',
-  '[data-testid*="drawer" i]',
 ].join(',');
 
 export class BnbotFabInjector {
