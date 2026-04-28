@@ -336,6 +336,218 @@ export async function setFileInputFiles(
   })
 }
 
+/**
+ * Last-resort file upload: reconstruct a File in page context from
+ * base64 data, install it on the target input via DataTransfer +
+ * Object.defineProperty, then dispatch a synthetic change event.
+ *
+ * Use when neither plain `setFileInputFiles` nor the chooser-intercept
+ * path produces a non-zero `input.files.length` — e.g. Kuaishou's
+ * React component appears to ignore CDP file injection entirely. By
+ * sending the file payload through DataTransfer (the same shape the
+ * browser would build from a real OS dialog), React's onChange handler
+ * picks up the FileList from `event.target.files` directly without
+ * relying on the input's controlled state.
+ *
+ * Caveat: file is base64-encoded into the CDP eval payload, so this is
+ * O(file_size) memory + transit. Fine for typical short videos (<50MB)
+ * but unsuitable for multi-GB uploads.
+ */
+export async function setFilesViaBlob(
+  targetId: string,
+  selector: string,
+  fileName: string,
+  mimeType: string,
+  base64: string,
+): Promise<{ filesAfter: number }> {
+  // Use Runtime.evaluate with the base64 string passed in via a globally
+  // declared variable to avoid blowing up the expression length limit.
+  // We assign to window first, then read it inside the function to keep
+  // the inline script short.
+  await debuggerSend(targetId, 'Runtime.evaluate', {
+    expression: `window.__bnbotFileBlob = ${JSON.stringify(base64)}; 'set'`,
+    awaitPromise: false,
+  })
+  const result = await debuggerSend<{
+    result?: { value?: number }
+  }>(targetId, 'Runtime.evaluate', {
+    expression: `(() => {
+      const b64 = window.__bnbotFileBlob || '';
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const file = new File([arr], ${JSON.stringify(fileName)}, { type: ${JSON.stringify(mimeType)} });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      const inp = document.querySelector(${JSON.stringify(selector)});
+      if (!inp) throw new Error('input not found: ' + ${JSON.stringify(selector)});
+      // Override files getter to return our DataTransfer's FileList.
+      // Some sites use Object.getOwnPropertyDescriptor(input, 'files'),
+      // so we set on the instance with configurable:true.
+      Object.defineProperty(inp, 'files', { value: dt.files, writable: false, configurable: true });
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+      // Also dispatch input event some frameworks need.
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      delete window.__bnbotFileBlob;
+      return inp.files.length;
+    })()`,
+    returnByValue: true,
+  })
+  const filesAfter =
+    typeof result?.result?.value === 'number' ? result.result.value : -1
+  return { filesAfter }
+}
+
+/**
+ * Attach files via the OS file-chooser dialog interception path.
+ *
+ * Some sites (Kuaishou / Douyin / Channels-the-Wechat-Video kind) hide
+ * the <input type=file> behind a wrapper button. The React onChange
+ * handler is wired to a fresh File built from the OS dialog event, not
+ * to direct mutations of `input.files`. So plain `setFileInputFiles`
+ * silently no-ops — the input.files length stays 0 and the page never
+ * starts uploading.
+ *
+ * Standard fix (same as Puppeteer/Playwright `setInputFiles`):
+ *   1. Tell the browser to NOT show the OS dialog when an input
+ *      requests one (Page.setInterceptFileChooserDialog).
+ *   2. Listen for Page.fileChooserOpened — fired when something (a
+ *      programmatic click, a real user click, anything) triggers the
+ *      file picker. The event tells us the backendNodeId of the input.
+ *   3. Click the trigger element (a wrapper button, usually).
+ *   4. When fileChooserOpened fires, call DOM.setFileInputFiles with
+ *      the backendNodeId from the event — that input is the one React
+ *      is listening on, so onChange fires, the upload starts.
+ *   5. Disable the intercept again so subsequent dialogs (e.g. user
+ *      manually replacing the file) work normally.
+ */
+export async function setFileInputFilesViaChooser(
+  targetId: string,
+  triggerSelector: string,
+  filePaths: string[],
+  timeoutMs = 10_000,
+): Promise<{ backendNodeId: number; clicked: boolean; nodeInfo?: unknown }> {
+  // 1. Find the trigger element (the wrapper button users click).
+  const doc = await debuggerSend<{ root: { nodeId: number } }>(
+    targetId,
+    'DOM.getDocument',
+    { depth: -1, pierce: true },
+  )
+  const trigger = await debuggerSend<{ nodeId: number }>(
+    targetId,
+    'DOM.querySelector',
+    { nodeId: doc.root.nodeId, selector: triggerSelector },
+  )
+  if (!trigger?.nodeId) {
+    throw new Error(`trigger element not found: ${triggerSelector}`)
+  }
+
+  // 2. Register event listener FIRST so we don't miss the event if the
+  //    chooser opens immediately on click.
+  let resolveOpened: ((backendNodeId: number) => void) | null = null
+  let rejectOpened: ((err: Error) => void) | null = null
+  const unregister = registerEventListener(targetId, (method, params) => {
+    if (method !== 'Page.fileChooserOpened') return
+    const p = params as { backendNodeId?: number }
+    if (typeof p.backendNodeId === 'number') resolveOpened?.(p.backendNodeId)
+  })
+  const opened = new Promise<number>((resolve, reject) => {
+    resolveOpened = (backendNodeId: number) => {
+      clearTimeout(timer)
+      unregister()
+      resolve(backendNodeId)
+    }
+    rejectOpened = (err: Error) => {
+      clearTimeout(timer)
+      unregister()
+      reject(err)
+    }
+    const timer = setTimeout(
+      () => rejectOpened?.(new Error(`fileChooser did not open within ${timeoutMs}ms`)),
+      timeoutMs,
+    )
+  })
+
+  try {
+    // 3. Enable intercept + click the trigger to summon the chooser.
+    await debuggerSend(targetId, 'Page.setInterceptFileChooserDialog', {
+      enabled: true,
+    })
+    await debuggerSend(targetId, 'Page.enable', {})
+    await debuggerSend(targetId, 'DOM.scrollIntoViewIfNeeded', {
+      nodeId: trigger.nodeId,
+    })
+    // Trusted click — we need the OS dialog to "open", which only happens
+    // for trusted clicks via Input.dispatchMouseEvent.
+    const box = await debuggerSend<{
+      model?: {
+        content: number[]
+      }
+    }>(targetId, 'DOM.getBoxModel', { nodeId: trigger.nodeId }).catch(() => null)
+    if (!box?.model?.content) {
+      throw new Error('could not compute trigger element box')
+    }
+    const [x1, y1, x2, , , y3] = box.model.content
+    const cx = (x1 + x2) / 2
+    const cy = (y1 + y3) / 2
+    await debuggerSend(targetId, 'Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: cx,
+      y: cy,
+      button: 'left',
+      clickCount: 1,
+    })
+    await debuggerSend(targetId, 'Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: cx,
+      y: cy,
+      button: 'left',
+      clickCount: 1,
+    })
+
+    // 4. Wait for fileChooserOpened, then attach files.
+    const backendNodeId = await opened
+    // Diagnostic: confirm backendNodeId actually points to the file
+    // input — if Kuaishou is unmounting & remounting the input, this
+    // will show what we got.
+    let nodeInfo: unknown = null
+    try {
+      nodeInfo = await debuggerSend(targetId, 'DOM.describeNode', {
+        backendNodeId,
+        depth: 0,
+      })
+    } catch {}
+    await debuggerSend(targetId, 'DOM.setFileInputFiles', {
+      backendNodeId,
+      files: filePaths,
+    })
+    // Diagnostic: confirm files actually attached after setFiles call.
+    let postSetFilesCount: unknown = null
+    try {
+      // Resolve backendNodeId → JS object so we can read .files.length
+      const resolved = await debuggerSend<{
+        object?: { objectId?: string }
+      }>(targetId, 'DOM.resolveNode', { backendNodeId })
+      if (resolved?.object?.objectId) {
+        const eval2 = await debuggerSend<{
+          result?: { value?: unknown }
+        }>(targetId, 'Runtime.callFunctionOn', {
+          objectId: resolved.object.objectId,
+          functionDeclaration: 'function() { return this.files ? this.files.length : -1; }',
+          returnByValue: true,
+        })
+        postSetFilesCount = eval2?.result?.value
+      }
+    } catch {}
+    return { backendNodeId, clicked: true, nodeInfo, postSetFilesCount }
+  } finally {
+    // 5. Always disable intercept so user can interact normally.
+    await debuggerSend(targetId, 'Page.setInterceptFileChooserDialog', {
+      enabled: false,
+    }).catch(() => null)
+  }
+}
+
 // ============ Network sniffing ============
 
 interface NetworkResponseEvent {

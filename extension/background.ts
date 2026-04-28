@@ -9,6 +9,7 @@ import { localRelayManager, LocalActionRequest } from './utils/localRelayManager
 // and the server-side draft product line was retired.
 import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, IDLE_BONUS_EXPLORE, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok, ensureDebuggerAttached, debuggerSend, getPoolTabs, openTabInScraperWindow, getTab } from './services/scraperService';
 import { debuggerWriteHandlers } from './services/debugger';
+import { setFileInputFilesViaChooser, setFilesViaBlob } from './services/debugger/debuggerOps';
 
 /**
  * Capture a PNG screenshot of an arbitrary Chrome tab via CDP.
@@ -219,6 +220,87 @@ async function debugSetFileInputFiles(args: {
 
   const tab = await chrome.tabs.get(tabId);
   return { tabId, url: tab.url || '', nodeId: q.nodeId, files: args.files };
+}
+
+/**
+ * Attach files via the OS file-chooser dialog interception path.
+ *
+ * Use this when `debug_set_files` doesn't trigger the page's upload
+ * flow — e.g. Kuaishou / Douyin / 微信视频号 wrap the <input type=file>
+ * behind a wrapper button and only react to fresh File objects from the
+ * native dialog event, not direct mutations of `input.files`.
+ *
+ * Mechanics: enable Page.setInterceptFileChooserDialog, click the
+ * trigger button (a wrapper, not the hidden input), capture the
+ * Page.fileChooserOpened event, and feed it the file paths via
+ * setFileInputFiles({backendNodeId}).
+ *
+ * `selector` here is the WRAPPER element the user would click (e.g.
+ * `.upload-btn`), NOT the hidden input.
+ */
+async function debugSetFileInputFilesViaChooser(args: {
+  selector: string;
+  files: string[];
+  tabId?: number;
+  targetHost?: string;
+  timeoutMs?: number;
+}): Promise<{ tabId: number; url: string; via: 'chooser'; files: string[] }> {
+  if (!args.selector) throw new Error('debug_set_files_via_chooser: missing selector');
+  if (!args.files || args.files.length === 0) throw new Error('debug_set_files_via_chooser: missing files');
+
+  let tabId = args.tabId;
+  if (!tabId) {
+    const pool = getPoolTabs();
+    if (pool.length === 0) throw new Error('debug_set_files_via_chooser: no pool tabs');
+    const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    tabId = (hostMatch ?? pool[0]).tabId;
+  }
+
+  const targetId = await ensureDebuggerAttached(tabId, ['Page', 'DOM', 'Input']);
+  const debug = await setFileInputFilesViaChooser(targetId, args.selector, args.files, args.timeoutMs ?? 10_000);
+
+  const tab = await chrome.tabs.get(tabId);
+  return { tabId, url: tab.url || '', via: 'chooser', files: args.files, ...debug };
+}
+
+/** Inject a file via base64 → page-side File reconstruction. See
+ *  setFilesViaBlob in debuggerOps for rationale.
+ *
+ *  args:
+ *    selector — the file input element CSS selector (NOT the wrapper button).
+ *    fileName — display name for the File.
+ *    mimeType — mime; e.g. 'video/mp4'.
+ *    base64   — base64-encoded file body (CLI reads the file and encodes).
+ */
+async function debugSetFilesViaBlob(args: {
+  selector: string;
+  fileName: string;
+  mimeType: string;
+  base64: string;
+  tabId?: number;
+  targetHost?: string;
+}): Promise<{ tabId: number; url: string; via: 'blob'; filesAfter: number }> {
+  if (!args.selector) throw new Error('debug_set_files_via_blob: missing selector');
+  if (!args.base64) throw new Error('debug_set_files_via_blob: missing base64');
+  if (!args.fileName) throw new Error('debug_set_files_via_blob: missing fileName');
+
+  let tabId = args.tabId;
+  if (!tabId) {
+    const pool = getPoolTabs();
+    if (pool.length === 0) throw new Error('debug_set_files_via_blob: no pool tabs');
+    const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    tabId = (hostMatch ?? pool[0]).tabId;
+  }
+  const targetId = await ensureDebuggerAttached(tabId, ['Page', 'DOM']);
+  const result = await setFilesViaBlob(
+    targetId,
+    args.selector,
+    args.fileName,
+    args.mimeType || 'application/octet-stream',
+    args.base64,
+  );
+  const tab = await chrome.tabs.get(tabId);
+  return { tabId, url: tab.url || '', via: 'blob', filesAfter: result.filesAfter };
 }
 
 /**
@@ -717,7 +799,7 @@ localRelayManager.init({
       // Exploration-style actions (human probing a new platform's DOM) need
       // a bigger idle bonus than the default — think time between eval
       // calls routinely exceeds a couple minutes.
-      const EXPLORE_ACTIONS = new Set(['debug_eval', 'debug_set_files', 'debug_click', 'debug_show_window', 'debug_drag', 'debug_record_start', 'debug_record_dump', 'debug_record_stop', 'navigate_to_url', 'screenshot']);
+      const EXPLORE_ACTIONS = new Set(['debug_eval', 'debug_set_files', 'debug_set_files_via_chooser', 'debug_set_files_via_blob', 'debug_click', 'debug_show_window', 'debug_drag', 'debug_record_start', 'debug_record_dump', 'debug_record_stop', 'navigate_to_url', 'screenshot']);
       const bonusMs = EXPLORE_ACTIONS.has(scraperKey) ? IDLE_BONUS_EXPLORE : undefined;
       try {
         const data = await scraperHandlers[scraperKey](message.actionPayload as any);
@@ -1598,6 +1680,21 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   debug_set_files: (m) => debugSetFileInputFiles({
     selector: m.selector,
     files: m.files,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
+  debug_set_files_via_chooser: (m) => debugSetFileInputFilesViaChooser({
+    selector: m.selector,
+    files: m.files,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+    timeoutMs: m.timeoutMs,
+  }),
+  debug_set_files_via_blob: (m) => debugSetFilesViaBlob({
+    selector: m.selector,
+    fileName: m.fileName,
+    mimeType: m.mimeType,
+    base64: m.base64,
     tabId: m.tabId,
     targetHost: m.targetHost,
   }),

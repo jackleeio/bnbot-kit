@@ -59,6 +59,7 @@ import { debugEvalCommand, debugUploadCommand, debugClickCommand, debugShowComma
 import { xhsPostCommand, xhsStatsNoteCommand, xhsStatsAccountCommand } from './commands/xhs.js';
 import { wxmpPostCommand } from './commands/wxmp.js';
 import { tiktokPostCommand } from './commands/tiktok.js';
+import { kuaishouPostCommand } from './commands/kuaishou.js';
 import {
   tiktokSearchCommand, tiktokExploreCommand,
   youtubeSearchCommand, youtubeVideoCommand, youtubeTranscriptCommand,
@@ -778,6 +779,21 @@ function buildProgram(): Command {
         const planSource =
           arg && arg.trim().startsWith('{') ? { inline: arg } : { plan: arg ?? opts.plan ?? '-' }
         return tiktokPostCommand(planSource)
+      },
+    );
+
+  // 快手创作者中心
+  const kuaishou = program.command('kuaishou').description('Kuaishou (cp.kuaishou.com)');
+  kuaishou
+    .command('post')
+    .description('Upload a video to Kuaishou Creator + fill caption. Uses file-chooser intercept (debug_set_files_via_chooser) since direct setFiles no-ops on Kuaishou. Never auto-publishes.')
+    .argument('[plan-json-or-path]', 'Plan as inline JSON, file path, or "-" for stdin. Defaults to stdin.')
+    .option('--plan <path>', 'Alias for the positional arg', '-')
+    .action(
+      (arg: string | undefined, opts: { plan?: string }) => {
+        const planSource =
+          arg && arg.trim().startsWith('{') ? { inline: arg } : { plan: arg ?? opts.plan ?? '-' }
+        return kuaishouPostCommand(planSource)
       },
     );
 
