@@ -1,7 +1,7 @@
 ---
 name: kol-pulse
 version: "0.1.0"
-description: "What crypto / AI KOLs are talking about right now. Fetches the most recent ~100 tweets from a curated bnbot-api KOL list (crypto and/or AI) and produces a tight thematic briefing — top themes + emerging topics, each grounded in real tweets. Replaces the extension's 趋势 panel."
+description: "What crypto / AI KOLs are talking about right now. Pulls recent tweets from curated bnbot-api KOL lists (crypto, AI) and produces a thematic briefing — top themes + emerging topics, each grounded in verbatim KOL quotes. PROACTIVELY use when the user asks 'what are KOLs discussing', 'crypto KOL 在聊什么', 'AI 圈最近什么趋势', '今天 KOL 在讨论什么', '看看 crypto/AI 趋势', 'crypto trends today', 'AI trends today', 'KOL pulse', or any variation. Argument: 'crypto' / 'ai' / omit for both. Replaces the extension's 趋势 panel."
 argument-hint: 'kol-pulse, kol-pulse crypto, kol-pulse ai'
 allowed-tools: Bash, Read, Write
 user-invocable: true
