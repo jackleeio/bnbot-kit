@@ -449,39 +449,41 @@ async function waitForCondition(boolExpr: string, timeoutMs: number): Promise<bo
 }
 
 async function insertBodyImageFromLibrary(): Promise<void> {
-  // 1. Click 图片 button in toolbar — opens dropdown.
+  // toolbar 图片 button + jQuery-delegated.
   await tagAndClick(
     `[...document.querySelectorAll('.tpl_item.jsInsertIcon.img')].find(el => el.offsetParent !== null)`,
+    { viaJq: true },
   )
-  // 2. Click "从图片库选择" inside the dropdown.
+  // dropdown "从图片库选择" — jQuery-delegated.
   await tagAndClick(
     `[...document.querySelectorAll('.js_img_dropdown_menu .js_img_from_local')].find(el => el.offsetParent !== null)`,
+    { viaJq: true },
   )
   await waitFor(
     `!![...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-img-picker__item'))`,
     20_000,
   )
-  // 3. Click the first thumbnail in the picker.
+  // Image picker thumbnail — React widget, trusted CDP click.
   await tagAndClick(
     `(() => {
       const dlg = [...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-img-picker__item'));
       return dlg?.querySelector('.weui-desktop-img-picker__item') ?? null;
     })()`,
   )
-  // 4. Click 确定 to commit selection.
+  // Dialog 确定 button — empirically jQuery-bound on MP dialogs.
   await tagAndClick(
     `(() => {
       const dlg = [...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-img-picker__item'));
       return [...(dlg?.querySelectorAll('button') ?? [])].find(b => (b.innerText || '').trim() === '确定' && !b.disabled) ?? null;
     })()`,
+    { viaJq: true },
   )
-  // Wait for dialog to close (image inserted into ProseMirror).
   await waitFor(`!document.querySelector('.weui-desktop-dialog .weui-desktop-img-picker__item')`, 15_000)
 }
 
 async function setCoverFromBody(): Promise<void> {
-  // 1. Open cover popover.
-  await tagAndClick(`document.querySelector('#js_cover_area')`)
+  // 1. Open cover popover. #js_cover_area is jQuery-delegated.
+  await tagAndClick(`document.querySelector('#js_cover_area')`, { viaJq: true })
   await waitFor(`!![...document.querySelectorAll('.pop-opr__list')].find(l => l.offsetParent !== null)`, 5_000)
 
   // 2. Click "从正文选择" — this opens a dialog containing the body's
@@ -491,7 +493,7 @@ async function setCoverFromBody(): Promise<void> {
   //      type=77 (商品消息): .js_imagedialog also lands here (商品消息
   //                          "图片库" is just the body images)
   //    We prefer js_selectCoverFromContent and fall back to js_imagedialog
-  //    so both types work.
+  //    so both types work. Both selectors are jQuery-delegated <a> tags.
   await tagAndClick(
     `(() => {
       const cands = [...document.querySelectorAll('.js_selectCoverFromContent, .js_imagedialog')];
@@ -500,6 +502,7 @@ async function setCoverFromBody(): Promise<void> {
       if (fromContent) return fromContent;
       return cands.find(el => el.offsetParent !== null && el.getBoundingClientRect().width > 0);
     })()`,
+    { viaJq: true },
   )
   await waitFor(
     `!![...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('选择图片'))`,
@@ -514,7 +517,7 @@ async function setCoverFromBody(): Promise<void> {
     20_000,
   )
 
-  // 3. Click first body image in the dialog.
+  // 3. Click first body image — React widget, trusted CDP click.
   await tagAndClick(
     `(() => {
       const dlg = [...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('选择图片'));
@@ -522,15 +525,16 @@ async function setCoverFromBody(): Promise<void> {
     })()`,
   )
 
-  // 4. Click 下一步.
+  // 4. Click 下一步 — dialog button, jQuery-bound.
   await tagAndClick(
     `(() => {
       const dlg = [...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('选择图片'));
       return [...(dlg?.querySelectorAll('button') ?? [])].find(b => (b.innerText || '').trim() === '下一步' && !b.disabled) ?? null;
     })()`,
+    { viaJq: true },
   )
 
-  // 5. Wait for 编辑封面 step, then click 确认.
+  // 5. Wait for 编辑封面 step, then click 确认 — also jQuery-bound.
   await waitFor(
     `!![...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('编辑封面'))`,
     15_000,
@@ -540,19 +544,22 @@ async function setCoverFromBody(): Promise<void> {
       const dlg = [...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.includes('编辑封面'));
       return [...(dlg?.querySelectorAll('button') ?? [])].find(b => (b.innerText || '').trim() === '确认' && !b.disabled) ?? null;
     })()`,
+    { viaJq: true },
   )
   // Cover renders as background-image — wait for it.
   await waitFor(`!!document.querySelector('.js_cover_preview_new')`, 10_000)
 }
 
 async function openOriginalDialogAndConfirm(): Promise<void> {
-  // 1. Click the 原创 cell — opens the "原创" dialog.
+  // 1. Click the 原创 cell — opens the "原创" dialog. The cell is
+  //    jQuery-delegated; trusted CDP click silently no-ops.
   await tagAndClick(
     `(() => {
       const el = document.querySelector('.setting-group__switch.js_original_apply.js_edit_ori');
       el?.scrollIntoView({ block: 'center' });
       return el;
     })()`,
+    { viaJq: true },
   )
   await waitFor(
     `!![...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.trim() === '原创')`,
@@ -569,12 +576,14 @@ async function openOriginalDialogAndConfirm(): Promise<void> {
   )
 
   // 3. Click 确定. ⚠️ scope to the 原创 dialog so we don't hit the
-  //    page-level 发表确认 dialog by accident.
+  //    page-level 发表确认 dialog by accident. Dialog button is
+  //    jQuery-bound.
   await tagAndClick(
     `(() => {
       const dlg = [...document.querySelectorAll('.weui-desktop-dialog')].find(d => d.offsetParent !== null && d.querySelector('.weui-desktop-dialog__title')?.innerText?.trim() === '原创');
       return [...(dlg?.querySelectorAll('button') ?? [])].find(b => (b.innerText || '').trim() === '确定' && !b.disabled) ?? null;
     })()`,
+    { viaJq: true },
   )
   // Wait for 原创 dialog to close.
   await waitFor(
@@ -807,17 +816,25 @@ async function evalJs(expr: string, awaitPromise = false): Promise<unknown> {
  */
 /**
  * Tag the element returned by `findExpr` with data-bnbot-target='1' and
- * fire a TRUSTED CDP click. This works for both jQuery-delegated handlers
- * (because they listen on document-level click events) and React-bound
- * widgets that explicitly check isTrusted.
+ * fire a click. The trick is picking the right click path:
  *
- * Exception: a few elements (#js_submit, #js_preview) have a custom click
- * handler that blocks non-jQuery-synthesized events. For those, callers
- * use `jqTriggerClick(selector)` directly via evalJs — see saveDraft and
- * openPreview implementations.
+ *   - jQuery delegate-bound elements (#js_submit, #js_preview,
+ *     #js_cover_area, .js_imagedialog, .js_selectCoverFromContent,
+ *     .setting-group__switch.js_edit_ori, popover items): jQuery's
+ *     delegate filter discards trusted CDP clicks, so CDP no-ops.
+ *     MUST go via $.trigger('click').
+ *
+ *   - React-bound weui-desktop widgets (.weui-desktop-icon-checkbox,
+ *     dialog buttons): jQuery's .trigger() also calls element.click()
+ *     which fires a native click — but for some widgets calling click
+ *     twice (jQuery synthesized + element.click chain) toggles state
+ *     back. Use trusted CDP click only.
+ *
+ * Caller passes `viaJq: true` for known-jQuery elements. Default false
+ * (trusted CDP click) covers React widgets safely.
  */
-async function tagAndClick(findExpr: string): Promise<void> {
-  const tagged = (await evalJs(`(() => {
+async function tagAndClick(findExpr: string, opts: { viaJq?: boolean } = {}): Promise<void> {
+  const result = (await evalJs(`(() => {
     document.querySelectorAll('[data-bnbot-target]').forEach(el => el.removeAttribute('data-bnbot-target'));
     const el = ${findExpr};
     if (!el || !(el instanceof Element)) return JSON.stringify({ ok: false, reason: 'not-found' });
@@ -826,15 +843,24 @@ async function tagAndClick(findExpr: string): Promise<void> {
     if (r.width === 0 && r.height === 0) {
       el.scrollIntoView({ block: 'center' });
     }
-    return JSON.stringify({ ok: true });
-  })()`)) as { ok?: boolean; reason?: string } | string
-  const parsed = typeof tagged === 'string' ? JSON.parse(tagged) : tagged
+    if (${JSON.stringify(opts.viaJq === true)}) {
+      const jq = window.$ || window.jQuery;
+      if (jq) {
+        jq(el).trigger('click');
+        return JSON.stringify({ ok: true, fired: 'jq' });
+      }
+    }
+    return JSON.stringify({ ok: true, fired: 'pending-cdp' });
+  })()`)) as { ok?: boolean; reason?: string; fired?: string } | string
+  const parsed = typeof result === 'string' ? JSON.parse(result) : result
   if (!parsed?.ok) throw new Error(`tagAndClick: target not found (${parsed?.reason})`)
 
-  await sendAction('debug_click', {
-    selector: '[data-bnbot-target="1"]',
-    targetHost: HOST,
-  })
+  if (parsed.fired !== 'jq') {
+    await sendAction('debug_click', {
+      selector: '[data-bnbot-target="1"]',
+      targetHost: HOST,
+    })
+  }
 }
 
 /** Fire jQuery `.trigger('click')` on the given selector inside the page.
