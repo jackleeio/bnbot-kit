@@ -88,6 +88,11 @@ export class BnbotFabInjector {
     // finishes hydrating + first data fetch, so it's a reliable "page
     // is real now" signal *and* it means our anchor target exists.
     this.waitForXReady(() => {
+      // Align FIRST, then fade in. If we flipped pageLoaded before
+      // alignToGrok, the FAB would briefly appear at the fallback
+      // bottom:90px (between Grok and chat), then snap up to its real
+      // spot — looking like a slide-up animation.
+      this.alignToGrok();
       this.pageLoaded = true;
       this.applyVisibility();
     });
