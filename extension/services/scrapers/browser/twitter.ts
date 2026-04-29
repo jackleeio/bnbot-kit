@@ -34,12 +34,20 @@ export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-yo
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
 
-      // Bundle scrape inlined into resolveQueryId rather than extracted
-      // as a named inner function. terser was DCE-ing / mangling the
-      // separate `scrapeBundleQueryIds` declaration when called via name
-      // through resolveQueryId, leading to a "is not defined" runtime
-      // error and silent fallback to CLI hardcoded values. Inlining
-      // keeps everything in one closure scope the minifier can't break.
+      // Bundle scrape inlined into resolveQueryId. terser DCE'd / mangled
+      // the previous `scrapeBundleQueryIds` named inner function when it
+      // appeared in an executeInPage callback (function gets toString'd
+      // and the named declaration's reference broke). Keeping everything
+      // in one closure scope avoids that.
+      //
+      // Dual-pass scrape:
+      //   (a) stringify modules in webpack's in-memory chunk array
+      //       (`window.webpackChunk_twitter_responsive_web`). Catches
+      //       BOTH eagerly-loaded ops (Home/User/Search/Tweet) AND
+      //       dynamically-imported ones whose chunk has finished loading
+      //       on the current route — e.g. Bookmarks on /i/bookmarks.
+      //   (b) fall through to fetching <script src> bundles by HTTP. Only
+      //       needed if (a) is unavailable (rare; pre-hydration race).
       const resolveQueryId = async (operationName: string): Promise<string> => {
         // L1: live x.com bundle scrape (cached in sessionStorage, 1h TTL)
         try {
@@ -50,33 +58,61 @@ export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-yo
         } catch {}
         const ops = ['HomeTimeline','HomeLatestTimeline','SearchTimeline','UserByScreenName','UserTweets','TweetDetail','Bookmarks'];
         const ids: Record<string, string> = {};
-        // Wait up to 6s for client-web bundle scripts to appear in DOM
-        // (freshly opened tab might still be hydrating).
-        const _startedAt = Date.now();
-        let scriptUrls: string[] = [];
-        while (Date.now() - _startedAt < 6000) {
-          scriptUrls = (Array.from(document.querySelectorAll('script[src]')) as HTMLScriptElement[])
-            .map(s => s.src)
-            .filter(src => src.endsWith('.js') && (src.includes('abs.twimg.com') || src.includes('client-web') || src.startsWith('/')));
-          if (scriptUrls.length > 0) break;
-          await new Promise(r => setTimeout(r, 300));
-        }
-        for (const url of scriptUrls.slice(0, 20)) {
-          try {
-            const code = await (await fetch(url)).text();
-            for (const op of ops) {
-              if (ids[op]) continue;
-              const m = code.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + op + '"'));
-              if (m) ids[op] = m[1];
+        // (a) iterate webpack's in-memory chunk array. Format:
+        //   window.webpackChunk_twitter_responsive_web = [
+        //     [[chunkIds...], { moduleId: fn(...) { ... } }, ...],
+        //     ...
+        //   ]
+        try {
+          const wpChunks: any = (window as any).webpackChunk_twitter_responsive_web;
+          if (Array.isArray(wpChunks)) {
+            for (const entry of wpChunks) {
+              if (!Array.isArray(entry) || entry.length < 2) continue;
+              const modules = entry[1];
+              if (!modules || typeof modules !== 'object') continue;
+              for (const fn of Object.values(modules) as Function[]) {
+                try {
+                  const src = fn.toString();
+                  for (const op of ops) {
+                    if (ids[op]) continue;
+                    const m = src.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + op + '"'));
+                    if (m) ids[op] = m[1];
+                  }
+                } catch {}
+              }
+              if (Object.keys(ids).length === ops.length) break;
             }
-            if (Object.keys(ids).length === ops.length) break;
-          } catch {}
+          }
+        } catch {}
+        // (b) HTTP-fetch fallback for ops still missing — useful before
+        // SPA hydrates webpack runtime, or if X changes the global name.
+        if (Object.keys(ids).length < ops.length) {
+          const _startedAt = Date.now();
+          let scriptUrls: string[] = [];
+          while (Date.now() - _startedAt < 6000) {
+            scriptUrls = (Array.from(document.querySelectorAll('script[src]')) as HTMLScriptElement[])
+              .map(s => s.src)
+              .filter(src => src.endsWith('.js') && (src.includes('abs.twimg.com') || src.includes('client-web') || src.startsWith('/')));
+            if (scriptUrls.length > 0) break;
+            await new Promise(r => setTimeout(r, 300));
+          }
+          for (const url of scriptUrls.slice(0, 20)) {
+            try {
+              const code = await (await fetch(url)).text();
+              for (const op of ops) {
+                if (ids[op]) continue;
+                const m = code.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + op + '"'));
+                if (m) ids[op] = m[1];
+              }
+              if (Object.keys(ids).length === ops.length) break;
+            } catch {}
+          }
         }
         if (Object.keys(ids).length) {
           try { sessionStorage.setItem('__bnbot_x_qids', JSON.stringify({ ts: Date.now(), ids })); } catch {}
           if (ids[operationName]) return ids[operationName];
         }
-        // L2: caller-supplied fallback (CLI hardcoded, bumped via npm publish)
+        // L2: caller-supplied fallback (CLI fa0311 map)
         const fb = fallbacks[operationName];
         if (fb) return fb;
         throw new Error('queryId for ' + operationName + ' missing — bundle scrape failed and no caller fallback supplied');
@@ -420,7 +456,24 @@ export async function getTwitterProfile(username: string, queryIds: QueryIds = {
 
 export async function getTwitterBookmarks(limit = 20, queryIds: QueryIds = {}): Promise<any[]> {
   const tabId = await getTab('https://x.com/i/bookmarks');
-  await new Promise(r => setTimeout(r, 3000));
+  // getTab matches by hostname only — the pooled x.com tab might be on
+  // /home, /elonmusk, etc. Bookmarks's queryId lives in a webpack chunk
+  // that's only dynamically imported when the bookmarks route mounts,
+  // so force-navigate the tab there before scraping. Without this, the
+  // bundle-scrape layer can't find Bookmarks and we'd lean entirely on
+  // the fa0311 fallback.
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!(tab.url || '').includes('/i/bookmarks')) {
+      await chrome.tabs.update(tabId, { url: 'https://x.com/i/bookmarks' });
+      // Wait for the bookmarks chunk to load + push into webpackChunk array.
+      await new Promise(r => setTimeout(r, 4000));
+    } else {
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  } catch {
+    await new Promise(r => setTimeout(r, 3000));
+  }
   await checkLoginRedirect(tabId, 'Twitter');
 
   const data = await executeInPage(tabId, async (bearer: string, fallbacks: QueryIds, lim: number) => {
@@ -468,7 +521,29 @@ export async function getTwitterBookmarks(limit = 20, queryIds: QueryIds = {}): 
         throw new Error('queryId for ' + operationName + ' missing — bundle scrape failed and no caller fallback supplied');
       };
 
-      const queryId = await resolveQueryId('Bookmarks');
+      // Bookmarks queryId lives in a webpack-imported chunk that doesn't
+      // appear in <script src> tags. Scrape directly from the webpack
+      // in-memory chunk array; if that misses (chunk not yet pushed),
+      // fall through to resolveQueryId (which will hit caller fallback).
+      let queryId: string | undefined;
+      try {
+        const wpChunks = (window as any).webpackChunk_twitter_responsive_web;
+        if (Array.isArray(wpChunks)) {
+          outer: for (const entry of wpChunks) {
+            if (!Array.isArray(entry) || entry.length < 2) continue;
+            const modules = entry[1];
+            if (!modules || typeof modules !== 'object') continue;
+            for (const fn of Object.values(modules) as Function[]) {
+              try {
+                const src = fn.toString();
+                const m = src.match(/queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"Bookmarks"/);
+                if (m) { queryId = m[1]; break outer; }
+              } catch {}
+            }
+          }
+        }
+      } catch {}
+      if (!queryId) queryId = await resolveQueryId('Bookmarks');
 
       const FEATURES = { rweb_video_screen_enabled: false, profile_label_improvements_pcf_label_in_post_enabled: true, responsive_web_profile_redirect_enabled: false, rweb_tipjar_consumption_enabled: false, verified_phone_label_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true, responsive_web_graphql_timeline_navigation_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, premium_content_api_read_enabled: false, communities_web_enable_tweet_community_results_fetch: true, c9s_tweet_anatomy_moderator_badge_enabled: true, articles_preview_enabled: true, responsive_web_edit_tweet_api_enabled: true, graphql_is_translatable_rweb_tweet_is_translatable_enabled: true, view_counts_everywhere_api_enabled: true, longform_notetweets_consumption_enabled: true, responsive_web_twitter_article_tweet_consumption_enabled: true, tweet_awards_web_tipping_enabled: false, freedom_of_speech_not_reach_fetch_enabled: true, standardized_nudges_misinfo: true, tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true, longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: false, responsive_web_enhance_cards_enabled: false };
 
@@ -511,7 +586,7 @@ export async function getTwitterBookmarks(limit = 20, queryIds: QueryIds = {}): 
         if (cursor) vars.cursor = cursor;
         const url = `/i/api/graphql/${queryId}/Bookmarks?variables=${encodeURIComponent(JSON.stringify(vars))}&features=${encodeURIComponent(JSON.stringify(FEATURES))}`;
         const res = await fetch(url, { credentials: 'include', headers: { 'Authorization': 'Bearer ' + decodeURIComponent(bearer), 'X-Csrf-Token': ct0, 'X-Twitter-Auth-Type': 'OAuth2Session', 'X-Twitter-Active-User': 'yes' } });
-        if (!res.ok) return { error: 'Twitter bookmarks HTTP ' + res.status };
+        if (!res.ok) throw new Error('Twitter bookmarks HTTP ' + res.status + ' qid=' + queryId);
         const d = await res.json();
         const instructions = d?.data?.bookmark_timeline_v2?.timeline?.instructions || [];
         let nextCursor: string | null = null;
@@ -527,7 +602,28 @@ export async function getTwitterBookmarks(limit = 20, queryIds: QueryIds = {}): 
         cursor = nextCursor;
       }
       return tweets.slice(0, lim);
-    } catch (e: any) { return { error: e.message || 'Twitter bookmarks scraper failed' }; }
+    } catch (e: any) {
+      // [DIAG] include webpackChunk state in error for debugging
+      let wpInfo = 'no-wp';
+      try {
+        const wp = (window as any).webpackChunk_twitter_responsive_web;
+        if (Array.isArray(wp)) {
+          let bk = null;
+          for (let i = 0; i < wp.length && !bk; i++) {
+            const en = wp[i];
+            if (!Array.isArray(en) || !en[1]) continue;
+            for (const fn of Object.values(en[1]) as Function[]) {
+              try {
+                const m = fn.toString().match(/queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"Bookmarks"/);
+                if (m) { bk = { idx: i, qid: m[1] }; break; }
+              } catch {}
+            }
+          }
+          wpInfo = `wp=${wp.length},bookmarks=${JSON.stringify(bk)}`;
+        }
+      } catch {}
+      return { error: (e.message || 'Twitter bookmarks scraper failed') + ' [' + wpInfo + ' url=' + location.href + ']' };
+    }
   }, [BEARER, queryIds, limit]);
 
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
