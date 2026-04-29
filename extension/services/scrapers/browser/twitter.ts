@@ -34,7 +34,46 @@ export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-yo
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
 
+      async function scrapeBundleQueryIds(): Promise<Record<string, string>> {
+        // Cache live-bundle scrape in sessionStorage with 1h TTL — saves
+        // re-fetching dozens of JS files per scrape call.
+        try {
+          const cached = JSON.parse(sessionStorage.getItem('__bnbot_x_qids') || 'null');
+          if (cached?.ts && Date.now() - cached.ts < 3600_000 && cached.ids && Object.keys(cached.ids).length) {
+            return cached.ids;
+          }
+        } catch {}
+        const ops = ['HomeTimeline','HomeLatestTimeline','SearchTimeline','UserByScreenName','UserTweets','TweetDetail','Bookmarks'];
+        const ids: Record<string, string> = {};
+        const scripts = Array.from(document.querySelectorAll('script[src]')) as HTMLScriptElement[];
+        for (const s of scripts) {
+          if (!s.src.endsWith('.js')) continue;
+          if (!s.src.includes('abs.twimg.com') && !s.src.includes('x.com') && !s.src.startsWith('/')) continue;
+          try {
+            const code = await (await fetch(s.src)).text();
+            for (const op of ops) {
+              if (ids[op]) continue;
+              const m = code.match(new RegExp('queryId:"([^"]+)",operationName:"' + op + '"'));
+              if (m) ids[op] = m[1];
+            }
+            if (Object.keys(ids).length === ops.length) break;
+          } catch {}
+        }
+        if (Object.keys(ids).length) {
+          try { sessionStorage.setItem('__bnbot_x_qids', JSON.stringify({ ts: Date.now(), ids })); } catch {}
+        }
+        return ids;
+      }
       async function resolveQueryId(operationName: string): Promise<string> {
+        // Priority: live x.com bundle scrape (always X's current value
+        // by definition) → fa0311 community upstream → caller-supplied
+        // fallback (CLI hardcoded, bumped via npm publish). The bundle
+        // scrape result is sessionStorage-cached for 1h so repeated
+        // calls stay cheap.
+        try {
+          const map = await scrapeBundleQueryIds();
+          if (map[operationName]) return map[operationName];
+        } catch {}
         try {
           const res = await fetch('https://raw.githubusercontent.com/fa0311/twitter-openapi/refs/heads/main/src/config/placeholder.json');
           if (res.ok) {
@@ -45,7 +84,7 @@ export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-yo
         } catch {}
         const fb = fallbacks[operationName];
         if (fb) return fb;
-        throw new Error('queryId for ' + operationName + ' missing — upgrade @bnbot/cli or pass queryIds in payload');
+        throw new Error('queryId for ' + operationName + ' missing — bundle scrape failed, fa0311 unreachable, no caller fallback');
       }
 
       const isFollowing = timelineType === 'following';
@@ -158,8 +197,17 @@ export async function searchTwitter(query: string, filter: 'Top' | 'Latest' | 'P
       const headers: Record<string, string> = {
         'Authorization': 'Bearer ' + decodeURIComponent(bearer),
         'X-Csrf-Token': ct0, 'X-Twitter-Auth-Type': 'OAuth2Session', 'X-Twitter-Active-User': 'yes',
+        'Content-Type': 'application/json',
       };
-      const FEATURES = { rweb_video_screen_enabled: false, profile_label_improvements_pcf_label_in_post_enabled: true, rweb_tipjar_consumption_enabled: true, verified_phone_label_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true, responsive_web_graphql_timeline_navigation_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, premium_content_api_read_enabled: false, communities_web_enable_tweet_community_results_fetch: true, c9s_tweet_anatomy_moderator_badge_enabled: true, responsive_web_grok_share_attachment_enabled: true, articles_preview_enabled: true, responsive_web_edit_tweet_api_enabled: true, graphql_is_translatable_rweb_tweet_is_translatable_enabled: true, view_counts_everywhere_api_enabled: true, longform_notetweets_consumption_enabled: true, responsive_web_twitter_article_tweet_consumption_enabled: true, tweet_awards_web_tipping_enabled: false, freedom_of_speech_not_reach_fetch_enabled: true, standardized_nudges_misinfo: true, tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true, longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: true, responsive_web_enhance_cards_enabled: false };
+      // Live x.com bundle (2026-04-29) shows SearchTimeline migrated to a
+      // new transport: POST https://api.x.com/graphql/{qid}/SearchTimeline
+      // with JSON body { queryId, variables, features, fieldToggles }
+      // where each is itself a stringified JSON. Old GET on /i/api/graphql
+      // started 404'ing. Other ops (HomeTimeline / UserTweets / Bookmarks /
+      // TweetDetail) still accept the legacy GET route as of this write,
+      // so we leave them; only SearchTimeline goes via the new path.
+      const FEATURES = { rweb_video_screen_enabled: false, rweb_cashtags_enabled: true, profile_label_improvements_pcf_label_in_post_enabled: true, responsive_web_profile_redirect_enabled: false, rweb_tipjar_consumption_enabled: true, verified_phone_label_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true, responsive_web_graphql_timeline_navigation_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, premium_content_api_read_enabled: false, communities_web_enable_tweet_community_results_fetch: true, c9s_tweet_anatomy_moderator_badge_enabled: true, responsive_web_grok_analyze_button_fetch_trends_enabled: false, responsive_web_grok_analyze_post_followups_enabled: true, responsive_web_jetfuel_frame: false, responsive_web_grok_share_attachment_enabled: true, responsive_web_grok_annotations_enabled: true, articles_preview_enabled: true, responsive_web_edit_tweet_api_enabled: true, graphql_is_translatable_rweb_tweet_is_translatable_enabled: true, view_counts_everywhere_api_enabled: true, longform_notetweets_consumption_enabled: true, responsive_web_twitter_article_tweet_consumption_enabled: true, content_disclosure_indicator_enabled: true, content_disclosure_ai_generated_indicator_enabled: true, responsive_web_grok_show_grok_translated_post: false, responsive_web_grok_analysis_button_from_backend: false, post_ctas_fetch_enabled: true, freedom_of_speech_not_reach_fetch_enabled: true, standardized_nudges_misinfo: true, tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true, longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: true, responsive_web_grok_image_annotation_enabled: true, responsive_web_grok_imagine_annotation_enabled: true, responsive_web_grok_community_note_auto_translation_is_enabled: true, responsive_web_enhance_cards_enabled: false };
+      const FIELD_TOGGLES = { withPayments: false, withAuxiliaryUserLabels: false, withArticleRichContentState: true, withArticlePlainText: false, withArticleSummaryText: true, withArticleVoiceOver: false, withGrokAnalyze: false, withDisallowedReplyControls: false };
 
       function extractMedia(l: any) {
         const mediaList = l?.extended_entities?.media || l?.entities?.media || [];
@@ -196,8 +244,14 @@ export async function searchTwitter(query: string, filter: 'Top' | 'Latest' | 'P
       const tweets: any[] = [];
       const seen = new Set<string>();
       const vars: Record<string, any> = { rawQuery: q, count: lim, querySource: 'typed_query', product: f };
-      const url = `/i/api/graphql/${queryId}/SearchTimeline?variables=${encodeURIComponent(JSON.stringify(vars))}&features=${encodeURIComponent(JSON.stringify(FEATURES))}`;
-      const res = await fetch(url, { headers, credentials: 'include' });
+      const body = JSON.stringify({
+        variables: JSON.stringify(vars),
+        features: JSON.stringify(FEATURES),
+        fieldToggles: JSON.stringify(FIELD_TOGGLES),
+        queryId,
+      });
+      const url = `https://api.x.com/graphql/${queryId}/SearchTimeline`;
+      const res = await fetch(url, { method: 'POST', headers, body, credentials: 'include' });
       if (!res.ok) return { error: 'Twitter search HTTP ' + res.status };
       const d = await res.json();
       const instructions = d?.data?.search_by_raw_query?.search_timeline?.timeline?.instructions || [];
