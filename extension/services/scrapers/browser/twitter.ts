@@ -11,16 +11,16 @@ import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService'
 const BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 
 /**
- * QueryId source-of-truth: the CLI / desktop caller passes a `queryIds`
- * map in the WS payload (`@bnbot/cli` ships them in `cli/src/xQueryIds.ts`,
- * bumped at each `npm publish`). The extension itself ships **no**
- * hardcoded queryIds — it never needs a Chrome Web Store re-review just
- * because X rotated a queryId.
+ * QueryId source-of-truth: the extension owns **zero** hardcoded queryIds.
+ * It never needs a Chrome Web Store re-review when X rotates a queryId.
  *
  * Resolution chain inside each scraper (`resolveQueryId()` below):
- *   1. fetch `fa0311/twitter-openapi/placeholder.json` → freshest, community-maintained
- *   2. caller-supplied `queryIds[operationName]` (from CLI / desktop)
- *   3. throw — caller must upgrade their CLI / desktop binary
+ *   1. live x.com bundle scrape (sessionStorage 1h cache, 6/7 ops covered)
+ *   2. caller-supplied `queryIds[operationName]` — fa0311 community map
+ *      fetched + 24h-cached by `@bnbot/cli` in Node (no CSP), passed
+ *      via WS payload. Covers Bookmarks (and any op bundle scrape misses).
+ *   3. throw — fa0311 also down + bundle scrape didn't find it; caller
+ *      should upgrade CLI or wait out the network blip.
  */
 type QueryIds = Record<string, string>;
 
