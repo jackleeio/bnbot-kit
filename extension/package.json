@@ -19,20 +19,17 @@
     "bump:major": "node scripts/bump-version.js major"
   },
   "dependencies": {
-    "@google/genai": "^1.48.0",
     "@tiptap/extension-link": "^3.17.0",
     "@tiptap/extension-placeholder": "^3.17.0",
     "@tiptap/extension-typography": "^3.17.0",
     "@tiptap/pm": "^3.17.0",
     "@tiptap/react": "^3.17.0",
     "@tiptap/starter-kit": "^3.17.0",
-    "html2canvas": "^1.4.1",
     "lucide-react": "^0.555.0",
     "marked": "^17.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
-    "recharts": "^3.5.1",
     "rehype-raw": "^7.0.0",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1"
@@ -44,7 +41,6 @@
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.22",
-    "daisyui": "^5.5.8",
     "postcss": "^8.5.6",
     "qrcode": "^1.5.4",
     "tailwindcss": "^4.1.17",
