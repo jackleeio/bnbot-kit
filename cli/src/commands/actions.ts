@@ -7,6 +7,7 @@
 
 import { runCliAction } from '../cli.js';
 import { resolveMediaListAsync, resolveMediaListAsPaths } from '../tools/mediaUtils.js';
+import { X_QUERY_IDS } from '../xQueryIds.js';
 
 type WriteEngine = 'dom' | 'debugger';
 
@@ -243,13 +244,13 @@ export async function scrapeTimelineCommand(options: { limit?: string; scrollAtt
   const scrollAttempts = parseInt(options.scrollAttempts || '5', 10);
   const type = options.type === 'following' ? 'following' : 'for-you';
   console.error(`Scraping timeline (type: ${type}, limit: ${limit})...`);
-  return runCliAction('scrape_timeline', { type, limit, scrollAttempts }, getPort());
+  return runCliAction('scrape_timeline', { type, limit, scrollAttempts, queryIds: X_QUERY_IDS }, getPort());
 }
 
 export async function scrapeBookmarksCommand(options: { limit?: string }): Promise<void> {
   const limit = parseInt(options.limit || '20', 10);
   console.error(`Scraping bookmarks (limit: ${limit})...`);
-  return runCliAction('scrape_bookmarks', { limit }, getPort());
+  return runCliAction('scrape_bookmarks', { limit, queryIds: X_QUERY_IDS }, getPort());
 }
 
 export async function scrapeNotificationsCommand(options: { limit?: string }): Promise<void> {
@@ -283,6 +284,7 @@ export async function scrapeSearchCommand(
   if (options.minLikes) params.minLikes = parseInt(options.minLikes, 10);
   if (options.minRetweets) params.minRetweets = parseInt(options.minRetweets, 10);
   if (options.has) params.has = options.has;
+  params.queryIds = X_QUERY_IDS;
   return runCliAction('scrape_search_results', params, getPort());
 }
 
@@ -290,17 +292,17 @@ export async function scrapeUserTweetsCommand(username: string, options: { limit
   const limit = parseInt(options.limit || '20', 10);
   const scrollAttempts = parseInt(options.scrollAttempts || '5', 10);
   console.error(`Scraping @${username} tweets (limit: ${limit})...`);
-  return runCliAction('scrape_user_tweets', { username, limit, scrollAttempts }, getPort());
+  return runCliAction('scrape_user_tweets', { username, limit, scrollAttempts, queryIds: X_QUERY_IDS }, getPort());
 }
 
 export async function scrapeUserProfileCommand(username: string): Promise<void> {
   console.error(`Scraping @${username} profile...`);
-  return runCliAction('scrape_user_profile', { username }, getPort());
+  return runCliAction('scrape_user_profile', { username, queryIds: X_QUERY_IDS }, getPort());
 }
 
 export async function scrapeThreadCommand(url: string): Promise<void> {
   console.error(`Scraping thread: ${url}`);
-  return runCliAction('scrape_thread', { tweetUrl: url }, getPort());
+  return runCliAction('scrape_thread', { tweetUrl: url, queryIds: X_QUERY_IDS }, getPort());
 }
 
 // ── Analytics ────────────────────────────────────────────────

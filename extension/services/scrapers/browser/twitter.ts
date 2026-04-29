@@ -10,35 +10,31 @@ import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService'
 
 const BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 
-// Fallback queryIds — resolved dynamically at runtime from GitHub or Twitter bundles
-const QID = {
-  HomeTimeline: 'c-CzHF1LboFilMpsx4ZCrQ',
-  HomeLatestTimeline: 'BKB7oi212Fi7kQtCBGE4zA',
-  // Refreshed 2026-04-27 from `fa0311/twitter-openapi` upstream — X
-  // rotates these GraphQL queryIds frequently (every few months). Old
-  // value `MJpjKqXlT-Kf2m3AepDxMg` started returning HTTP 404. The
-  // resolveQueryId() helper still tries to fetch the latest from the
-  // upstream JSON first, but GitHub raw is sometimes blocked/slow on
-  // mainland China connections, so the hardcoded fallback needs to
-  // stay current too.
-  SearchTimeline: 'VhUd6vHVmLBcw0uX-6jMLA',
-  UserByScreenName: 'qRednkZG-rn1P6b48NINmQ',
-  UserTweets: 'q6xj5bs0hapm9309hexA_g',
-  TweetDetail: 'xd_EMdYvB9hfZsZ6Idri0w',
-  Bookmarks: 'Fy0QMy4q_aZCpkO0PnyLYw',
-};
+/**
+ * QueryId source-of-truth: the CLI / desktop caller passes a `queryIds`
+ * map in the WS payload (`@bnbot/cli` ships them in `cli/src/xQueryIds.ts`,
+ * bumped at each `npm publish`). The extension itself ships **no**
+ * hardcoded queryIds — it never needs a Chrome Web Store re-review just
+ * because X rotated a queryId.
+ *
+ * Resolution chain inside each scraper (`resolveQueryId()` below):
+ *   1. fetch `fa0311/twitter-openapi/placeholder.json` → freshest, community-maintained
+ *   2. caller-supplied `queryIds[operationName]` (from CLI / desktop)
+ *   3. throw — caller must upgrade their CLI / desktop binary
+ */
+type QueryIds = Record<string, string>;
 
-export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-you', limit = 20): Promise<any[]> {
+export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-you', limit = 20, queryIds: QueryIds = {}): Promise<any[]> {
   const tabId = await getTab('https://x.com/home');
   await new Promise(r => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'Twitter');
 
-  const data = await executeInPage(tabId, async (bearer: string, fallbackQid: string, fallbackQidLatest: string, timelineType: string, lim: number) => {
+  const data = await executeInPage(tabId, async (bearer: string, fallbacks: QueryIds, timelineType: string, lim: number) => {
     try {
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
 
-      async function resolveQueryId(operationName: string, fallback: string): Promise<string> {
+      async function resolveQueryId(operationName: string): Promise<string> {
         try {
           const res = await fetch('https://raw.githubusercontent.com/fa0311/twitter-openapi/refs/heads/main/src/config/placeholder.json');
           if (res.ok) {
@@ -47,13 +43,15 @@ export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-yo
             if (qid && /^[A-Za-z0-9_-]+$/.test(qid)) return qid;
           }
         } catch {}
-        return fallback;
+        const fb = fallbacks[operationName];
+        if (fb) return fb;
+        throw new Error('queryId for ' + operationName + ' missing — upgrade @bnbot/cli or pass queryIds in payload');
       }
 
       const isFollowing = timelineType === 'following';
       const operationName = isFollowing ? 'HomeLatestTimeline' : 'HomeTimeline';
       const method = isFollowing ? 'POST' : 'GET';
-      const queryId = await resolveQueryId(operationName, isFollowing ? fallbackQidLatest : fallbackQid);
+      const queryId = await resolveQueryId(operationName);
 
       const headers: Record<string, string> = {
         'Authorization': 'Bearer ' + decodeURIComponent(bearer),
@@ -130,31 +128,33 @@ export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-yo
       }
       return tweets.slice(0, lim);
     } catch (e: any) { return { error: e.message || 'Twitter timeline scraper failed' }; }
-  }, [BEARER, QID.HomeTimeline, QID.HomeLatestTimeline, type, limit]);
+  }, [BEARER, queryIds, type, limit]);
 
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return (data as any[]) || [];
 }
 
-export async function searchTwitter(query: string, filter: 'Top' | 'Latest' | 'People' | 'Media' = 'Top', limit = 20): Promise<any[]> {
+export async function searchTwitter(query: string, filter: 'Top' | 'Latest' | 'People' | 'Media' = 'Top', limit = 20, queryIds: QueryIds = {}): Promise<any[]> {
   const tabId = await getTab('https://x.com/search');
   await new Promise(r => setTimeout(r, 2000));
   await checkLoginRedirect(tabId, 'Twitter');
 
-  const data = await executeInPage(tabId, async (bearer: string, fallbackQid: string, q: string, f: string, lim: number) => {
+  const data = await executeInPage(tabId, async (bearer: string, fallbacks: QueryIds, q: string, f: string, lim: number) => {
     try {
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
 
-      async function resolveQueryId(operationName: string, fallback: string): Promise<string> {
+      async function resolveQueryId(operationName: string): Promise<string> {
         try {
           const res = await fetch('https://raw.githubusercontent.com/fa0311/twitter-openapi/refs/heads/main/src/config/placeholder.json');
           if (res.ok) { const d = await res.json(); const qid = d?.[operationName]?.queryId; if (qid && /^[A-Za-z0-9_-]+$/.test(qid)) return qid; }
         } catch {}
-        return fallback;
+        const fb = fallbacks[operationName];
+        if (fb) return fb;
+        throw new Error('queryId for ' + operationName + ' missing — upgrade @bnbot/cli or pass queryIds in payload');
       }
 
-      const queryId = await resolveQueryId('SearchTimeline', fallbackQid);
+      const queryId = await resolveQueryId('SearchTimeline');
       const headers: Record<string, string> = {
         'Authorization': 'Bearer ' + decodeURIComponent(bearer),
         'X-Csrf-Token': ct0, 'X-Twitter-Auth-Type': 'OAuth2Session', 'X-Twitter-Active-User': 'yes',
@@ -213,7 +213,7 @@ export async function searchTwitter(query: string, filter: 'Top' | 'Latest' | 'P
       }
       return tweets.slice(0, lim);
     } catch (e: any) { return { error: e.message || 'Twitter search scraper failed' }; }
-  }, [BEARER, QID.SearchTimeline, query, filter, limit]);
+  }, [BEARER, queryIds, query, filter, limit]);
 
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return (data as any[]) || [];
@@ -258,26 +258,28 @@ export async function getTwitterTrending(limit = 20): Promise<any[]> {
   return (data as any[]) || [];
 }
 
-export async function getTwitterProfile(username: string): Promise<any> {
+export async function getTwitterProfile(username: string, queryIds: QueryIds = {}): Promise<any> {
   const uname = username.replace(/^@/, '');
   const tabId = await getTab(`https://x.com/${uname}`);
   await new Promise(r => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'Twitter');
 
-  const data = await executeInPage(tabId, async (bearer: string, fallbackQid: string, screenName: string) => {
+  const data = await executeInPage(tabId, async (bearer: string, fallbacks: QueryIds, screenName: string) => {
     try {
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
 
-      async function resolveQueryId(operationName: string, fallback: string): Promise<string> {
+      async function resolveQueryId(operationName: string): Promise<string> {
         try {
           const res = await fetch('https://raw.githubusercontent.com/fa0311/twitter-openapi/refs/heads/main/src/config/placeholder.json');
           if (res.ok) { const d = await res.json(); const qid = d?.[operationName]?.queryId; if (qid && /^[A-Za-z0-9_-]+$/.test(qid)) return qid; }
         } catch {}
-        return fallback;
+        const fb = fallbacks[operationName];
+        if (fb) return fb;
+        throw new Error('queryId for ' + operationName + ' missing — upgrade @bnbot/cli or pass queryIds in payload');
       }
 
-      const queryId = await resolveQueryId('UserByScreenName', fallbackQid);
+      const queryId = await resolveQueryId('UserByScreenName');
       const headers: Record<string, string> = {
         'Authorization': 'Bearer ' + decodeURIComponent(bearer),
         'X-Csrf-Token': ct0, 'X-Twitter-Auth-Type': 'OAuth2Session', 'X-Twitter-Active-User': 'yes',
@@ -301,21 +303,33 @@ export async function getTwitterProfile(username: string): Promise<any> {
         url: 'https://x.com/' + (l.screen_name || screenName),
       };
     } catch (e: any) { return { error: e.message || 'Twitter profile scraper failed' }; }
-  }, [BEARER, QID.UserByScreenName, uname]);
+  }, [BEARER, queryIds, uname]);
 
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data;
 }
 
-export async function getTwitterBookmarks(limit = 20): Promise<any[]> {
+export async function getTwitterBookmarks(limit = 20, queryIds: QueryIds = {}): Promise<any[]> {
   const tabId = await getTab('https://x.com/i/bookmarks');
   await new Promise(r => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'Twitter');
 
-  const data = await executeInPage(tabId, async (bearer: string, fallbackQid: string, lim: number) => {
+  const data = await executeInPage(tabId, async (bearer: string, fallbacks: QueryIds, lim: number) => {
     try {
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
+
+      async function resolveQueryId(operationName: string): Promise<string> {
+        try {
+          const res = await fetch('https://raw.githubusercontent.com/fa0311/twitter-openapi/refs/heads/main/src/config/placeholder.json');
+          if (res.ok) { const d = await res.json(); const qid = d?.[operationName]?.queryId; if (qid && /^[A-Za-z0-9_-]+$/.test(qid)) return qid; }
+        } catch {}
+        const fb = fallbacks[operationName];
+        if (fb) return fb;
+        throw new Error('queryId for ' + operationName + ' missing — upgrade @bnbot/cli or pass queryIds in payload');
+      }
+
+      const queryId = await resolveQueryId('Bookmarks');
 
       const FEATURES = { rweb_video_screen_enabled: false, profile_label_improvements_pcf_label_in_post_enabled: true, responsive_web_profile_redirect_enabled: false, rweb_tipjar_consumption_enabled: false, verified_phone_label_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true, responsive_web_graphql_timeline_navigation_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, premium_content_api_read_enabled: false, communities_web_enable_tweet_community_results_fetch: true, c9s_tweet_anatomy_moderator_badge_enabled: true, articles_preview_enabled: true, responsive_web_edit_tweet_api_enabled: true, graphql_is_translatable_rweb_tweet_is_translatable_enabled: true, view_counts_everywhere_api_enabled: true, longform_notetweets_consumption_enabled: true, responsive_web_twitter_article_tweet_consumption_enabled: true, tweet_awards_web_tipping_enabled: false, freedom_of_speech_not_reach_fetch_enabled: true, standardized_nudges_misinfo: true, tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true, longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: false, responsive_web_enhance_cards_enabled: false };
 
@@ -356,7 +370,7 @@ export async function getTwitterBookmarks(limit = 20): Promise<any[]> {
       for (let page = 0; page < 5 && tweets.length < lim; page++) {
         const vars: Record<string, any> = { count: Math.min(40, lim), includePromotedContent: false };
         if (cursor) vars.cursor = cursor;
-        const url = `/i/api/graphql/${fallbackQid}/Bookmarks?variables=${encodeURIComponent(JSON.stringify(vars))}&features=${encodeURIComponent(JSON.stringify(FEATURES))}`;
+        const url = `/i/api/graphql/${queryId}/Bookmarks?variables=${encodeURIComponent(JSON.stringify(vars))}&features=${encodeURIComponent(JSON.stringify(FEATURES))}`;
         const res = await fetch(url, { credentials: 'include', headers: { 'Authorization': 'Bearer ' + decodeURIComponent(bearer), 'X-Csrf-Token': ct0, 'X-Twitter-Auth-Type': 'OAuth2Session', 'X-Twitter-Active-User': 'yes' } });
         if (!res.ok) return { error: 'Twitter bookmarks HTTP ' + res.status };
         const d = await res.json();
@@ -375,29 +389,31 @@ export async function getTwitterBookmarks(limit = 20): Promise<any[]> {
       }
       return tweets.slice(0, lim);
     } catch (e: any) { return { error: e.message || 'Twitter bookmarks scraper failed' }; }
-  }, [BEARER, QID.Bookmarks, limit]);
+  }, [BEARER, queryIds, limit]);
 
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return (data as any[]) || [];
 }
 
-export async function getTwitterUserTweets(username: string, limit = 20): Promise<any[]> {
+export async function getTwitterUserTweets(username: string, limit = 20, queryIds: QueryIds = {}): Promise<any[]> {
   const uname = username.replace(/^@/, '');
   const tabId = await getTab(`https://x.com/${uname}`);
   await new Promise(r => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'Twitter');
 
-  const data = await executeInPage(tabId, async (bearer: string, qidUser: string, qidTweets: string, screenName: string, lim: number) => {
+  const data = await executeInPage(tabId, async (bearer: string, fallbacks: QueryIds, screenName: string, lim: number) => {
     try {
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
 
-      async function resolveQueryId(operationName: string, fallback: string): Promise<string> {
+      async function resolveQueryId(operationName: string): Promise<string> {
         try {
           const res = await fetch('https://raw.githubusercontent.com/fa0311/twitter-openapi/refs/heads/main/src/config/placeholder.json');
           if (res.ok) { const d = await res.json(); const qid = d?.[operationName]?.queryId; if (qid && /^[A-Za-z0-9_-]+$/.test(qid)) return qid; }
         } catch {}
-        return fallback;
+        const fb = fallbacks[operationName];
+        if (fb) return fb;
+        throw new Error('queryId for ' + operationName + ' missing — upgrade @bnbot/cli or pass queryIds in payload');
       }
 
       const headers: Record<string, string> = {
@@ -406,7 +422,7 @@ export async function getTwitterUserTweets(username: string, limit = 20): Promis
       };
 
       // Step 1: get userId via UserByScreenName
-      const userQid = await resolveQueryId('UserByScreenName', qidUser);
+      const userQid = await resolveQueryId('UserByScreenName');
       const userVars = JSON.stringify({ screen_name: screenName, withSafetyModeUserFields: true });
       const userFeatures = JSON.stringify({ hidden_profile_subscriptions_enabled: true, rweb_tipjar_consumption_enabled: true, responsive_web_graphql_exclude_directive_enabled: true, verified_phone_label_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, responsive_web_graphql_timeline_navigation_enabled: true });
       const userRes = await fetch(`/i/api/graphql/${userQid}/UserByScreenName?variables=${encodeURIComponent(userVars)}&features=${encodeURIComponent(userFeatures)}`, { headers, credentials: 'include' });
@@ -416,7 +432,7 @@ export async function getTwitterUserTweets(username: string, limit = 20): Promis
       if (!userId) return { error: 'User @' + screenName + ' not found' };
 
       // Step 2: get user tweets via UserTweets
-      const tweetsQid = await resolveQueryId('UserTweets', qidTweets);
+      const tweetsQid = await resolveQueryId('UserTweets');
       const FEATURES = { rweb_video_screen_enabled: false, profile_label_improvements_pcf_label_in_post_enabled: true, rweb_tipjar_consumption_enabled: true, verified_phone_label_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true, responsive_web_graphql_timeline_navigation_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, premium_content_api_read_enabled: false, communities_web_enable_tweet_community_results_fetch: true, c9s_tweet_anatomy_moderator_badge_enabled: true, articles_preview_enabled: true, responsive_web_edit_tweet_api_enabled: true, graphql_is_translatable_rweb_tweet_is_translatable_enabled: true, view_counts_everywhere_api_enabled: true, longform_notetweets_consumption_enabled: true, responsive_web_twitter_article_tweet_consumption_enabled: true, tweet_awards_web_tipping_enabled: false, freedom_of_speech_not_reach_fetch_enabled: true, standardized_nudges_misinfo: true, tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true, longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: true, responsive_web_enhance_cards_enabled: false };
       const tweetsVars = JSON.stringify({ userId, count: lim, includePromotedContent: false, withQuickPromoteEligibilityTweetFields: true, withVoice: true });
       const tweetsRes = await fetch(`/i/api/graphql/${tweetsQid}/UserTweets?variables=${encodeURIComponent(tweetsVars)}&features=${encodeURIComponent(JSON.stringify(FEATURES))}`, { headers, credentials: 'include' });
@@ -478,32 +494,34 @@ export async function getTwitterUserTweets(username: string, limit = 20): Promis
       }
       return tweets.slice(0, lim);
     } catch (e: any) { return { error: e.message || 'Twitter user-tweets scraper failed' }; }
-  }, [BEARER, QID.UserByScreenName, QID.UserTweets, uname, limit]);
+  }, [BEARER, queryIds, uname, limit]);
 
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return (data as any[]) || [];
 }
 
-export async function getTwitterThread(tweetId: string, limit = 50): Promise<any[]> {
+export async function getTwitterThread(tweetId: string, limit = 50, queryIds: QueryIds = {}): Promise<any[]> {
   const id = tweetId.match(/\/status\/(\d+)/)?.[1] || tweetId;
   const tabId = await getTab('https://x.com');
   await new Promise(r => setTimeout(r, 2000));
   await checkLoginRedirect(tabId, 'Twitter');
 
-  const data = await executeInPage(tabId, async (bearer: string, fallbackQid: string, tid: string, lim: number) => {
+  const data = await executeInPage(tabId, async (bearer: string, fallbacks: QueryIds, tid: string, lim: number) => {
     try {
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
 
-      async function resolveQueryId(operationName: string, fallback: string): Promise<string> {
+      async function resolveQueryId(operationName: string): Promise<string> {
         try {
           const res = await fetch('https://raw.githubusercontent.com/fa0311/twitter-openapi/refs/heads/main/src/config/placeholder.json');
           if (res.ok) { const d = await res.json(); const qid = d?.[operationName]?.queryId; if (qid && /^[A-Za-z0-9_-]+$/.test(qid)) return qid; }
         } catch {}
-        return fallback;
+        const fb = fallbacks[operationName];
+        if (fb) return fb;
+        throw new Error('queryId for ' + operationName + ' missing — upgrade @bnbot/cli or pass queryIds in payload');
       }
 
-      const queryId = await resolveQueryId('TweetDetail', fallbackQid);
+      const queryId = await resolveQueryId('TweetDetail');
       const headers: Record<string, string> = {
         'Authorization': 'Bearer ' + decodeURIComponent(bearer),
         'X-Csrf-Token': ct0, 'X-Twitter-Auth-Type': 'OAuth2Session', 'X-Twitter-Active-User': 'yes',
@@ -569,7 +587,7 @@ export async function getTwitterThread(tweetId: string, limit = 50): Promise<any
       }
       return tweets.slice(0, lim);
     } catch (e: any) { return { error: e.message || 'Twitter thread scraper failed' }; }
-  }, [BEARER, QID.TweetDetail, id, limit]);
+  }, [BEARER, queryIds, id, limit]);
 
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return (data as any[]) || [];
