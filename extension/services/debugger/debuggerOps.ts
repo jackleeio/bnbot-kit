@@ -360,10 +360,18 @@ export async function setFilesViaBlob(
   mimeType: string,
   base64: string,
 ): Promise<{ filesAfter: number }> {
-  // Use Runtime.evaluate with the base64 string passed in via a globally
-  // declared variable to avoid blowing up the expression length limit.
-  // We assign to window first, then read it inside the function to keep
-  // the inline script short.
+  // The selector may target an element inside a same-origin iframe
+  // (e.g. 视频号 helper iframes the publish form). Support an
+  // `<iframeSel> ::: <innerSel>` syntax: split on " ::: " — first part
+  // selects the iframe element in the top document, second part is
+  // queried against iframe.contentDocument.
+  const SPLIT = ' ::: '
+  const inIframe = selector.includes(SPLIT)
+  const iframeSel = inIframe ? selector.split(SPLIT)[0] : null
+  const innerSel = inIframe ? selector.split(SPLIT)[1] : selector
+
+  // Ship the base64 as a global var first, so the action expression
+  // stays short (CDP has a soft cap on Runtime.evaluate expression).
   await debuggerSend(targetId, 'Runtime.evaluate', {
     expression: `window.__bnbotFileBlob = ${JSON.stringify(base64)}; 'set'`,
     awaitPromise: false,
@@ -379,14 +387,19 @@ export async function setFilesViaBlob(
       const file = new File([arr], ${JSON.stringify(fileName)}, { type: ${JSON.stringify(mimeType)} });
       const dt = new DataTransfer();
       dt.items.add(file);
-      const inp = document.querySelector(${JSON.stringify(selector)});
-      if (!inp) throw new Error('input not found: ' + ${JSON.stringify(selector)});
-      // Override files getter to return our DataTransfer's FileList.
-      // Some sites use Object.getOwnPropertyDescriptor(input, 'files'),
-      // so we set on the instance with configurable:true.
+      let scope = document;
+      ${
+        iframeSel
+          ? `const fr = document.querySelector(${JSON.stringify(iframeSel)});
+             if (!fr) throw new Error('iframe not found: ' + ${JSON.stringify(iframeSel)});
+             if (!fr.contentDocument) throw new Error('iframe not same-origin: ' + ${JSON.stringify(iframeSel)});
+             scope = fr.contentDocument;`
+          : ''
+      }
+      const inp = scope.querySelector(${JSON.stringify(innerSel)});
+      if (!inp) throw new Error('input not found: ' + ${JSON.stringify(innerSel)});
       Object.defineProperty(inp, 'files', { value: dt.files, writable: false, configurable: true });
       inp.dispatchEvent(new Event('change', { bubbles: true }));
-      // Also dispatch input event some frameworks need.
       inp.dispatchEvent(new Event('input', { bubbles: true }));
       delete window.__bnbotFileBlob;
       return inp.files.length;

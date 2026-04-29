@@ -61,6 +61,7 @@ import { wxmpPostCommand } from './commands/wxmp.js';
 import { tiktokPostCommand } from './commands/tiktok.js';
 import { kuaishouPostCommand } from './commands/kuaishou.js';
 import { douyinPostCommand } from './commands/douyin.js';
+import { wxchannelsPostCommand } from './commands/wxchannels.js';
 import {
   tiktokSearchCommand, tiktokExploreCommand,
   youtubeSearchCommand, youtubeVideoCommand, youtubeTranscriptCommand,
@@ -795,6 +796,21 @@ function buildProgram(): Command {
         const planSource =
           arg && arg.trim().startsWith('{') ? { inline: arg } : { plan: arg ?? opts.plan ?? '-' }
         return kuaishouPostCommand(planSource)
+      },
+    );
+
+  // 微信视频号
+  const wxchannels = program.command('wxchannels').description('微信视频号 (channels.weixin.qq.com)');
+  wxchannels
+    .command('post')
+    .description('Upload a video to 视频号 + fill description / short title / 声明原创. Form lives in same-origin iframe; CLI handles iframe selectors automatically. Never auto-publishes.')
+    .argument('[plan-json-or-path]', 'Plan as inline JSON, file path, or "-" for stdin. Defaults to stdin.')
+    .option('--plan <path>', 'Alias for the positional arg', '-')
+    .action(
+      (arg: string | undefined, opts: { plan?: string }) => {
+        const planSource =
+          arg && arg.trim().startsWith('{') ? { inline: arg } : { plan: arg ?? opts.plan ?? '-' }
+        return wxchannelsPostCommand(planSource)
       },
     );
 
