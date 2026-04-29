@@ -9,7 +9,7 @@ import { localRelayManager, LocalActionRequest } from './utils/localRelayManager
 // and the server-side draft product line was retired.
 import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, IDLE_BONUS_EXPLORE, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok, ensureDebuggerAttached, debuggerSend, getPoolTabs, openTabInScraperWindow, getTab } from './services/scraperService';
 import { debuggerWriteHandlers } from './services/debugger';
-import { setFileInputFilesViaChooser, setFilesViaBlob } from './services/debugger/debuggerOps';
+import { setFileInputFilesViaChooser, setFilesViaBlob, registerEventListener } from './services/debugger/debuggerOps';
 
 /**
  * Capture a PNG screenshot of an arbitrary Chrome tab via CDP.
@@ -166,6 +166,19 @@ async function navigateTabViaCdp(args: {
   }
 
   const targetId = await ensureDebuggerAttached(tabId, ['Page']);
+  // Auto-accept any beforeunload "Leave site?" Chrome dialog the page
+  // might pop. Without this, navigate_to_url hangs for 60s and times
+  // out whenever the source page has unsaved-changes guards (Douyin's
+  // editor, microWeChat's article composer, etc.). One-shot listener
+  // — dispose right after to keep the dialog interception scoped.
+  const dialogUnregister = registerEventListener(targetId, (method, params) => {
+    if (method !== 'Page.javaScriptDialogOpening') return;
+    const p = params as { type?: string };
+    debuggerSend(targetId, 'Page.handleJavaScriptDialog', {
+      accept: p.type === 'beforeunload' ? true : true,
+    }).catch(() => null);
+  });
+  setTimeout(() => dialogUnregister(), 5_000);
   await debuggerSend(targetId, 'Page.navigate', { url: fullUrl });
   await waitForTabComplete(tabId, 15_000);
   // SPA render delay — status=complete fires before X's React tree

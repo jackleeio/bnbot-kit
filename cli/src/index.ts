@@ -60,6 +60,7 @@ import { xhsPostCommand, xhsStatsNoteCommand, xhsStatsAccountCommand } from './c
 import { wxmpPostCommand } from './commands/wxmp.js';
 import { tiktokPostCommand } from './commands/tiktok.js';
 import { kuaishouPostCommand } from './commands/kuaishou.js';
+import { douyinPostCommand } from './commands/douyin.js';
 import {
   tiktokSearchCommand, tiktokExploreCommand,
   youtubeSearchCommand, youtubeVideoCommand, youtubeTranscriptCommand,
@@ -794,6 +795,21 @@ function buildProgram(): Command {
         const planSource =
           arg && arg.trim().startsWith('{') ? { inline: arg } : { plan: arg ?? opts.plan ?? '-' }
         return kuaishouPostCommand(planSource)
+      },
+    );
+
+  // 抖音创作者中心
+  const douyin = program.command('douyin').description('Douyin (creator.douyin.com)');
+  douyin
+    .command('post')
+    .description('Upload a video to 抖音创作者中心 + fill caption. Uses blob inject path. saveDraft:true clicks 暂存离开 (real draft). Never auto-publishes.')
+    .argument('[plan-json-or-path]', 'Plan as inline JSON, file path, or "-" for stdin. Defaults to stdin.')
+    .option('--plan <path>', 'Alias for the positional arg', '-')
+    .action(
+      (arg: string | undefined, opts: { plan?: string }) => {
+        const planSource =
+          arg && arg.trim().startsWith('{') ? { inline: arg } : { plan: arg ?? opts.plan ?? '-' }
+        return douyinPostCommand(planSource)
       },
     );
 
