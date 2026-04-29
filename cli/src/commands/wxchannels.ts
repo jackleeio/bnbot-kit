@@ -43,12 +43,20 @@ export interface WxChannelsPostPlan {
   /** 视频描述 — `.input-editor` contenteditable. Up to 1000 chars; can
    *  embed `#topic` and `@friend` runs which Channels parses on submit. */
   description?: string
+  /** Hashtags appended into 视频描述 as `#tag` runs. Channels parses them
+   *  into clickable topic chips on submit. */
+  hashtags?: string[]
   /** 短标题 — `input[placeholder^="概括视频"]`. Limit 6-16 chars per the
    *  on-screen hint, but server enforces a separate cap. */
   shortTitle?: string
-  /** 声明原创 toggle. Sets the originality declaration so the post earns
-   *  the 原创 badge + ad revenue eligibility. */
+  /** 声明原创 — toggles the original-content declaration. Channels gates
+   *  this behind a "原创权益" dialog: tick the agreement checkbox + click
+   *  the "声明原创" primary button. */
   original?: boolean
+  /** Add to a 合集 (Channels playlist). String = collection name; if no
+   *  matching collection exists the CLI clicks "创建新合集" and creates
+   *  one with that name. Up to 10 chars per the on-screen counter. */
+  collection?: string
   /** Click 保存草稿 to commit as a real draft (stays on editor). */
   saveDraft?: boolean
 }
@@ -131,16 +139,33 @@ async function runPost(plan: WxChannelsPostPlan): Promise<Record<string, unknown
     log('description:set')
   }
 
+  // 4b. Hashtags — added as real chips via the 话题 button so Channels
+  //     parses them as topic links (not raw `#text`).
+  if (plan.hashtags?.length) {
+    for (const tag of plan.hashtags) {
+      const cleaned = tag.replace(/^#/, '').trim()
+      if (!cleaned) continue
+      const ok = await addHashtag(tabId, cleaned)
+      log(ok ? `hashtag:${cleaned}:added` : `hashtag:${cleaned}:fallback-text`)
+    }
+  }
+
   // 5. 短标题
   if (plan.shortTitle) {
     await setShortTitle(tabId, plan.shortTitle)
     log('short-title:set')
   }
 
-  // 6. 声明原创 toggle
+  // 5b. 合集 — pick existing or create new with this name.
+  if (plan.collection) {
+    const r = await setCollection(tabId, plan.collection)
+    log(`collection:${r}`)
+  }
+
+  // 6. 声明原创 — opens "原创权益" dialog, must tick agreement + click 声明原创.
   if (plan.original) {
-    const ok = await toggleOriginal(tabId)
-    log(ok ? 'original:enabled' : 'original:toggle-not-found')
+    const r = await declareOriginal(tabId)
+    log(`original:${r}`)
   }
 
   // 7. Optional: 保存草稿
@@ -245,27 +270,255 @@ async function setShortTitle(tabId: number, shortTitle: string): Promise<void> {
 }
 
 /**
- * Toggle 声明原创. The widget is a checkbox-shaped switch under the
- * "声明原创" label. Click anywhere on the labelled row.
+ * Add a hashtag chip via the 话题 button. Channels has a real autocomplete
+ * dropdown; selecting the first item turns the term into a clickable
+ * topic chip embedded in the description editor.
  */
-async function toggleOriginal(tabId: number): Promise<boolean> {
-  return (await evalJs(
+async function addHashtag(tabId: number, tag: string): Promise<boolean> {
+  // 1. Click the 话题 button to open the autocomplete inside the editor.
+  const opened = (await evalJs(
     tabId,
     `(() => {
       const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
       const fdoc = f?.contentDocument;
       if (!fdoc) return false;
-      const lbl = [...fdoc.querySelectorAll('*')].find(el => el.children.length < 4 && (el.innerText||'').trim() === '声明原创' && el.offsetParent !== null);
-      if (!lbl) return false;
-      // The row container has the click handler. Walk up until a clickable.
-      let target = lbl;
-      for (let i = 0; i < 4 && target.parentElement; i++) {
-        const cls = target.parentElement.className?.toString() || '';
-        if (/declare|original|switch|checkbox|toggle/i.test(cls)) {
-          target = target.parentElement;
-          break;
+      const ed = fdoc.querySelector('.input-editor');
+      if (!ed) return false;
+      ed.focus();
+      // Place caret at end so the # marker appends after current text.
+      const sel = f.contentWindow.getSelection();
+      const range = fdoc.createRange();
+      range.selectNodeContents(ed);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      const btn = fdoc.querySelector('.finder-tag-wrap.btn') ||
+                  [...fdoc.querySelectorAll('.btn,div')].find(b => (b.innerText||'').trim() === '#话题' && b.offsetParent !== null);
+      if (!btn) return false;
+      ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(t =>
+        btn.dispatchEvent(new MouseEvent(t, { bubbles:true, cancelable:true, view:f.contentWindow, button:0, buttons:1, detail:1 }))
+      );
+      return true;
+    })()`,
+  )) as boolean
+  if (!opened) return false
+
+  // 2. Type the tag text into the editor — the # marker just got inserted
+  //    by the button, our text appends after it and triggers autocomplete.
+  await sleep(300)
+  await evalJs(
+    tabId,
+    `(() => {
+      const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+      const fdoc = f?.contentDocument;
+      const ed = fdoc?.querySelector('.input-editor');
+      if (!ed) return false;
+      ed.focus();
+      const dt = new DataTransfer();
+      dt.setData('text/plain', ${JSON.stringify(tag)});
+      ed.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+      return true;
+    })()`,
+  )
+
+  // 3. Wait for autocomplete dropdown, then click first item. If it doesn't
+  //    appear within ~3s assume the tag is brand-new and create-on-the-fly
+  //    by pressing Enter.
+  const picked = await (async () => {
+    const deadline = Date.now() + 3000
+    while (Date.now() < deadline) {
+      const r = (await evalJs(
+        tabId,
+        `(() => {
+          const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+          const fdoc = f?.contentDocument;
+          if (!fdoc) return false;
+          const item = fdoc.querySelector('.tag-list .tag-item, .topic-list .topic-item, .finder-tag-list .item, .common-popover-list .item');
+          if (!item || item.offsetParent === null) return false;
+          ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(t =>
+            item.dispatchEvent(new MouseEvent(t, { bubbles:true, cancelable:true, view:f.contentWindow, button:0, buttons:1, detail:1 }))
+          );
+          return true;
+        })()`,
+      )) as boolean
+      if (r) return true
+      await sleep(200)
+    }
+    return false
+  })()
+
+  if (!picked) {
+    // Fall back: press Enter to commit as a brand-new tag chip.
+    await evalJs(
+      tabId,
+      `(() => {
+        const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+        const fdoc = f?.contentDocument;
+        const ed = fdoc?.querySelector('.input-editor');
+        if (!ed) return false;
+        const evInit = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
+        ed.dispatchEvent(new KeyboardEvent('keydown', evInit));
+        ed.dispatchEvent(new KeyboardEvent('keypress', evInit));
+        ed.dispatchEvent(new KeyboardEvent('keyup', evInit));
+        return true;
+      })()`,
+    )
+  }
+  await sleep(200)
+  return true
+}
+
+/**
+ * Pick a 合集 by name. If no existing collection matches, click 创建新合集
+ * and create one with that name.
+ *
+ * Flow:
+ *  - Click `.post-album-display` to open the dropdown.
+ *  - Look for an existing list item whose text === name; click it.
+ *  - Else click `.filter-wrap .create a` (创建新合集), fill the dialog
+ *    input, click 创建.
+ */
+async function setCollection(tabId: number, name: string): Promise<string> {
+  // 1. Open dropdown.
+  const opened = (await evalJs(
+    tabId,
+    `(() => {
+      const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+      const fdoc = f?.contentDocument;
+      if (!fdoc) return false;
+      const trig = fdoc.querySelector('.post-album-display, .album-display, .album-select');
+      if (!trig) return false;
+      ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(t =>
+        trig.dispatchEvent(new MouseEvent(t, { bubbles:true, cancelable:true, view:f.contentWindow, button:0, buttons:1, detail:1 }))
+      );
+      return true;
+    })()`,
+  )) as boolean
+  if (!opened) return 'trigger-not-found'
+
+  await sleep(500)
+
+  // 2. Try to match an existing item by name.
+  const matched = (await evalJs(
+    tabId,
+    `(() => {
+      const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+      const fdoc = f?.contentDocument;
+      if (!fdoc) return false;
+      const target = ${JSON.stringify(name.trim())};
+      const items = [...fdoc.querySelectorAll('.album-list-wrap .item, .album-list .item, .common-option-list .option, .post-album-popup .item')];
+      const hit = items.find(el => (el.innerText||'').trim() === target && el.offsetParent !== null);
+      if (!hit) return false;
+      ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(t =>
+        hit.dispatchEvent(new MouseEvent(t, { bubbles:true, cancelable:true, view:f.contentWindow, button:0, buttons:1, detail:1 }))
+      );
+      return true;
+    })()`,
+  )) as boolean
+  if (matched) return `picked-existing:${name}`
+
+  // 3. Click 创建新合集 link.
+  const createOpened = (await evalJs(
+    tabId,
+    `(() => {
+      const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+      const fdoc = f?.contentDocument;
+      if (!fdoc) return false;
+      const link = fdoc.querySelector('.filter-wrap .create a, .filter-wrap .create, .album-create');
+      const candidate = link || [...fdoc.querySelectorAll('a,div,span,button')].find(el => /创建.*合集|新建合集/.test((el.innerText||'').trim()) && el.offsetParent !== null);
+      if (!candidate) return false;
+      ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(t =>
+        candidate.dispatchEvent(new MouseEvent(t, { bubbles:true, cancelable:true, view:f.contentWindow, button:0, buttons:1, detail:1 }))
+      );
+      return true;
+    })()`,
+  )) as boolean
+  if (!createOpened) return 'create-link-not-found'
+
+  // 4. Fill the dialog input.
+  await waitFor(
+    tabId,
+    `(() => {
+      const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+      const fdoc = f?.contentDocument;
+      return !!fdoc?.querySelector('input[placeholder*="合集"], .weui-desktop-dialog input[type=text]');
+    })()`,
+    5000,
+  )
+
+  const filled = (await evalJs(
+    tabId,
+    `(() => {
+      const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+      const fdoc = f?.contentDocument;
+      if (!fdoc) return false;
+      const inp = fdoc.querySelector('input[placeholder*="合集"]') ||
+                  fdoc.querySelector('.weui-desktop-dialog input[type=text]');
+      if (!inp) return false;
+      const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(inp), 'value')?.set;
+      setter ? setter.call(inp, ${JSON.stringify(name)}) : (inp.value = ${JSON.stringify(name)});
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    })()`,
+  )) as boolean
+  if (!filled) return 'dialog-input-not-found'
+
+  // 5. Click 创建 primary button.
+  await sleep(300)
+  const created = (await evalJs(
+    tabId,
+    `(() => {
+      const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+      const fdoc = f?.contentDocument;
+      if (!fdoc) return false;
+      const dlg = fdoc.querySelector('.weui-desktop-dialog');
+      const scope = dlg || fdoc;
+      const btns = [...scope.querySelectorAll('button')].filter(b => b.offsetParent !== null);
+      const btn = btns.find(b => (b.innerText||'').trim() === '创建' && !b.classList.contains('weui-desktop-btn_disabled'));
+      if (!btn) return false;
+      ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(t =>
+        btn.dispatchEvent(new MouseEvent(t, { bubbles:true, cancelable:true, view:f.contentWindow, button:0, buttons:1, detail:1 }))
+      );
+      return true;
+    })()`,
+  )) as boolean
+  if (!created) return 'create-btn-not-found'
+
+  await sleep(1500)
+  return `created-new:${name}`
+}
+
+/**
+ * Click 声明原创 checkbox -> wait for "原创权益" dialog -> tick the
+ * agreement checkbox inside dialog -> click 声明原创 primary button
+ * (which is disabled until the agreement is ticked).
+ */
+async function declareOriginal(tabId: number): Promise<string> {
+  // 1. Click the outer 声明原创 checkbox to open the dialog.
+  const opened = (await evalJs(
+    tabId,
+    `(() => {
+      const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+      const fdoc = f?.contentDocument;
+      if (!fdoc) return false;
+      const inp = fdoc.querySelector('.declare-original-checkbox input.ant-checkbox-input, .declare-original-checkbox input[type=checkbox]');
+      const target = inp ? inp.closest('label') || inp.parentElement || inp : null;
+      if (!target) {
+        // Fallback: walk up from the "声明原创" label.
+        const lbl = [...fdoc.querySelectorAll('*')].find(el => el.children.length < 4 && (el.innerText||'').trim() === '声明原创' && el.offsetParent !== null);
+        if (!lbl) return false;
+        let t = lbl.parentElement;
+        for (let i = 0; i < 4 && t; i++) {
+          const cls = t.className?.toString() || '';
+          if (/declare|original|checkbox/i.test(cls)) break;
+          t = t.parentElement;
         }
-        target = target.parentElement;
+        const node = t || lbl;
+        ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(tt =>
+          node.dispatchEvent(new MouseEvent(tt, { bubbles:true, cancelable:true, view:f.contentWindow, button:0, buttons:1, detail:1 }))
+        );
+        return true;
       }
       ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(t =>
         target.dispatchEvent(new MouseEvent(t, { bubbles:true, cancelable:true, view:f.contentWindow, button:0, buttons:1, detail:1 }))
@@ -273,6 +526,88 @@ async function toggleOriginal(tabId: number): Promise<boolean> {
       return true;
     })()`,
   )) as boolean
+  if (!opened) return 'checkbox-not-found'
+
+  // 2. Wait for the 原创权益 dialog.
+  try {
+    await waitFor(
+      tabId,
+      `(() => {
+        const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+        const fdoc = f?.contentDocument;
+        if (!fdoc) return false;
+        return [...fdoc.querySelectorAll('.weui-desktop-dialog__title, .weui-desktop-dialog .title, .ant-modal-title')].some(el => (el.innerText||'').includes('原创权益'));
+      })()`,
+      5000,
+    )
+  } catch {
+    // Some accounts skip the dialog (already declared once); checkbox alone
+    // is enough — treat as success.
+    return 'no-dialog-toggled'
+  }
+
+  // 3. Tick the agreement checkbox inside the dialog.
+  const ticked = (await evalJs(
+    tabId,
+    `(() => {
+      const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+      const fdoc = f?.contentDocument;
+      if (!fdoc) return false;
+      const dlg = [...fdoc.querySelectorAll('.weui-desktop-dialog, .ant-modal')].find(d => (d.innerText||'').includes('原创权益') && d.offsetParent !== null);
+      if (!dlg) return false;
+      const cb = dlg.querySelector('input[type=checkbox]');
+      const target = cb ? (cb.closest('label') || cb.parentElement || cb) : null;
+      if (!target) return false;
+      // Skip if already checked (some flows persist the agreement).
+      if (cb && cb.checked) return true;
+      ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(t =>
+        target.dispatchEvent(new MouseEvent(t, { bubbles:true, cancelable:true, view:f.contentWindow, button:0, buttons:1, detail:1 }))
+      );
+      return true;
+    })()`,
+  )) as boolean
+  if (!ticked) return 'agreement-not-found'
+
+  // 4. Wait for primary button to be enabled and click it.
+  await sleep(300)
+  try {
+    await waitFor(
+      tabId,
+      `(() => {
+        const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+        const fdoc = f?.contentDocument;
+        if (!fdoc) return false;
+        const dlg = [...fdoc.querySelectorAll('.weui-desktop-dialog, .ant-modal')].find(d => (d.innerText||'').includes('原创权益') && d.offsetParent !== null);
+        if (!dlg) return false;
+        const btn = [...dlg.querySelectorAll('button')].find(b => (b.innerText||'').trim() === '声明原创' && b.offsetParent !== null);
+        return btn && !btn.classList.contains('weui-desktop-btn_disabled') && !btn.disabled;
+      })()`,
+      5000,
+    )
+  } catch {
+    return 'primary-btn-stays-disabled'
+  }
+
+  const confirmed = (await evalJs(
+    tabId,
+    `(() => {
+      const f = document.querySelector(${JSON.stringify(IFRAME_SEL)});
+      const fdoc = f?.contentDocument;
+      if (!fdoc) return false;
+      const dlg = [...fdoc.querySelectorAll('.weui-desktop-dialog, .ant-modal')].find(d => (d.innerText||'').includes('原创权益') && d.offsetParent !== null);
+      if (!dlg) return false;
+      const btn = [...dlg.querySelectorAll('button')].find(b => (b.innerText||'').trim() === '声明原创' && b.offsetParent !== null && !b.classList.contains('weui-desktop-btn_disabled'));
+      if (!btn) return false;
+      ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(t =>
+        btn.dispatchEvent(new MouseEvent(t, { bubbles:true, cancelable:true, view:f.contentWindow, button:0, buttons:1, detail:1 }))
+      );
+      return true;
+    })()`,
+  )) as boolean
+  if (!confirmed) return 'primary-btn-not-found'
+
+  await sleep(1000)
+  return 'declared'
 }
 
 async function clickSaveDraft(tabId: number): Promise<boolean> {
