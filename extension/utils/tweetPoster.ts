@@ -1,7 +1,23 @@
-
-import { RewrittenTweet } from '../components/panels/RewrittenTimeline';
 import { TweetPostInterceptor } from './TweetPostInterceptor';
 import { PostVerifier, PostVerifyResult } from './PostVerifier';
+
+// Inlined from the deleted RewrittenTimeline.tsx — the original UI is
+// gone but the type is still used by tweetPoster's queue API.
+export interface RewrittenTweet {
+  text: string;
+  media: {
+    type: 'photo' | 'video' | 'animated_gif';
+    media_url: string;
+    url: string;
+    sizes?: any;
+    video_url?: string;
+    duration_ms?: number;
+    aspect_ratio?: [number, number];
+    thumbnail_url?: string;
+    thumbnail?: string;
+    isAIGenerated?: boolean;
+  }[];
+}
 
 /**
  * Utility to handle posting a thread of tweets to Twitter/X.

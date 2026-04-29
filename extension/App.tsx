@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 // Sidebar removed — bottom nav is gone; X_Balance entry moved into BoostPanel
 // header (top-left wallet icon).
-import { ChatPanel } from './components/panels/ChatPanel';
+// ChatPanel removed — chat now lives in bnbot CLI / desktop app.
+// Extension popup is BoostPanel-only (boost queue + wallet).
 import { BoostPanel } from './components/panels/BoostPanel';
 // AnalysisPanel removed — KOL pulse moved to bnbot skill `/kol-pulse`
 // (skills/kol-pulse/SKILL.md). Extension no longer hosts the trends UI.
@@ -36,7 +37,7 @@ declare const chrome: any;
 function AppContent() {
   const { theme } = useTheme();
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<Tab>(Tab.CHAT);
+  const [activeTab, setActiveTab] = useState<Tab>(Tab.BOOST);
   const [tabInitialized, setTabInitialized] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [user, setUser] = useState<User | null>(null);
@@ -603,7 +604,7 @@ function AppContent() {
     setChatResetKey(prev => prev + 1);
     setGlobalChatResetTrigger(prev => prev + 1);
     if (pendingAgentMessage) {
-      setActiveTab(Tab.CHAT);
+      setActiveTab(Tab.BOOST);
     }
 
     // Note: WebSocket connection is owned by the background service worker.
@@ -820,7 +821,7 @@ function AppContent() {
     if (!user) {
       setShowLoginHint(true);
     } else {
-      setActiveTab(Tab.CHAT);
+      setActiveTab(Tab.BOOST);
     }
   };
 
@@ -828,7 +829,7 @@ function AppContent() {
     if (options.tweetId) {
       setCurrentTweetId(options.tweetId);
     }
-    setActiveTab(Tab.CHAT);
+    setActiveTab(Tab.BOOST);
   };
 
   // Render non-persistent panels (conditional rendering)
@@ -856,7 +857,6 @@ function AppContent() {
     }
 
     switch (activeTab) {
-      case Tab.CHAT: return null;
       case Tab.BOOST: return null; // BoostPanel is now persistent
       // Tab.CREDITS case removed — CreditsPanel deleted with the
       // login/account UI cleanup.
@@ -960,36 +960,13 @@ function AppContent() {
                   onOpenWallet={() => setActiveTab(Tab.X_BALANCE)}
                 />
               </div>
-              {/* Persistent ChatPanel - stays mounted to preserve state */}
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  // Show ChatPanel if it's the active tab, or if we are falling back to default (Tab.CHAT is usually default but let's be explicit about the explicit Tab.CHAT check)
-                  // Also handle the case where activeTab might be undefined or unknown (default case in switch previously)
-                  // But usually activeTab is initialized to Tab.CHAT.
-                  display: (activeTab === Tab.CHAT || !Object.values(Tab).includes(activeTab)) && !showLoginHint ? 'flex' : 'none',
-                  flexDirection: 'column',
-                }}
-              >
-                <ChatPanel
-                  resetTrigger={globalChatResetTrigger}
-                  onLoginClick={() => setShowLoginHint(true)}
-                  onCreditsClick={() => setShowLoginHint(true)}
-                  onTabChange={(tab) => setActiveTab(tab as Tab)}
-                  initialMessage={pendingAgentMessage}
-                  onMessageSent={() => setPendingAgentMessage(null)}
-                  onStayOnPage={() => { chatStayOnPageTimestampRef.current = Date.now(); }}
-                  hideHeaderSpacer={true}
-                />
-              </div>
-              {/* TweetContextPanel removed */}
+              {/* ChatPanel removed — chat moved to bnbot CLI / desktop. */}
               {/* Other panels rendered conditionally */}
               <div
                 style={{
                   position: 'absolute',
                   inset: 0,
-                  display: (showLoginHint && !user) || (activeTab !== Tab.CHAT && activeTab !== Tab.BOOST) ? 'flex' : 'none',
+                  display: (showLoginHint && !user) || activeTab !== Tab.BOOST ? 'flex' : 'none',
                   flexDirection: 'column',
                   zIndex: 20,
                 }}

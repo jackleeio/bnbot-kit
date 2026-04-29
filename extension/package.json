@@ -19,20 +19,9 @@
     "bump:major": "node scripts/bump-version.js major"
   },
   "dependencies": {
-    "@tiptap/extension-link": "^3.17.0",
-    "@tiptap/extension-placeholder": "^3.17.0",
-    "@tiptap/extension-typography": "^3.17.0",
-    "@tiptap/pm": "^3.17.0",
-    "@tiptap/react": "^3.17.0",
-    "@tiptap/starter-kit": "^3.17.0",
     "lucide-react": "^0.555.0",
-    "marked": "^17.0.1",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "react-markdown": "^10.1.0",
-    "rehype-raw": "^7.0.0",
-    "remark-breaks": "^4.0.0",
-    "remark-gfm": "^4.0.1"
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.2.1",
