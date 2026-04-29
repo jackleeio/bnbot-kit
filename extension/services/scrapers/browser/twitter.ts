@@ -34,26 +34,39 @@ export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-yo
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
 
-      async function scrapeBundleQueryIds(): Promise<Record<string, string>> {
-        // Cache live-bundle scrape in sessionStorage with 1h TTL — saves
-        // re-fetching dozens of JS files per scrape call.
+      // Bundle scrape inlined into resolveQueryId rather than extracted
+      // as a named inner function. terser was DCE-ing / mangling the
+      // separate `scrapeBundleQueryIds` declaration when called via name
+      // through resolveQueryId, leading to a "is not defined" runtime
+      // error and silent fallback to CLI hardcoded values. Inlining
+      // keeps everything in one closure scope the minifier can't break.
+      const resolveQueryId = async (operationName: string): Promise<string> => {
+        // L1: live x.com bundle scrape (cached in sessionStorage, 1h TTL)
         try {
           const cached = JSON.parse(sessionStorage.getItem('__bnbot_x_qids') || 'null');
-          if (cached?.ts && Date.now() - cached.ts < 3600_000 && cached.ids && Object.keys(cached.ids).length) {
-            return cached.ids;
+          if (cached?.ts && Date.now() - cached.ts < 3600_000 && cached.ids?.[operationName]) {
+            return cached.ids[operationName];
           }
         } catch {}
         const ops = ['HomeTimeline','HomeLatestTimeline','SearchTimeline','UserByScreenName','UserTweets','TweetDetail','Bookmarks'];
         const ids: Record<string, string> = {};
-        const scripts = Array.from(document.querySelectorAll('script[src]')) as HTMLScriptElement[];
-        for (const s of scripts) {
-          if (!s.src.endsWith('.js')) continue;
-          if (!s.src.includes('abs.twimg.com') && !s.src.includes('x.com') && !s.src.startsWith('/')) continue;
+        // Wait up to 6s for client-web bundle scripts to appear in DOM
+        // (freshly opened tab might still be hydrating).
+        const _startedAt = Date.now();
+        let scriptUrls: string[] = [];
+        while (Date.now() - _startedAt < 6000) {
+          scriptUrls = (Array.from(document.querySelectorAll('script[src]')) as HTMLScriptElement[])
+            .map(s => s.src)
+            .filter(src => src.endsWith('.js') && (src.includes('abs.twimg.com') || src.includes('client-web') || src.startsWith('/')));
+          if (scriptUrls.length > 0) break;
+          await new Promise(r => setTimeout(r, 300));
+        }
+        for (const url of scriptUrls.slice(0, 20)) {
           try {
-            const code = await (await fetch(s.src)).text();
+            const code = await (await fetch(url)).text();
             for (const op of ops) {
               if (ids[op]) continue;
-              const m = code.match(new RegExp('queryId:"([^"]+)",operationName:"' + op + '"'));
+              const m = code.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + op + '"'));
               if (m) ids[op] = m[1];
             }
             if (Object.keys(ids).length === ops.length) break;
@@ -61,31 +74,13 @@ export async function getTwitterTimeline(type: 'for-you' | 'following' = 'for-yo
         }
         if (Object.keys(ids).length) {
           try { sessionStorage.setItem('__bnbot_x_qids', JSON.stringify({ ts: Date.now(), ids })); } catch {}
+          if (ids[operationName]) return ids[operationName];
         }
-        return ids;
-      }
-      async function resolveQueryId(operationName: string): Promise<string> {
-        // Priority: live x.com bundle scrape (always X's current value
-        // by definition) → fa0311 community upstream → caller-supplied
-        // fallback (CLI hardcoded, bumped via npm publish). The bundle
-        // scrape result is sessionStorage-cached for 1h so repeated
-        // calls stay cheap.
-        try {
-          const map = await scrapeBundleQueryIds();
-          if (map[operationName]) return map[operationName];
-        } catch {}
-        try {
-          const res = await fetch('https://raw.githubusercontent.com/fa0311/twitter-openapi/refs/heads/main/src/config/placeholder.json');
-          if (res.ok) {
-            const d = await res.json();
-            const qid = d?.[operationName]?.queryId;
-            if (qid && /^[A-Za-z0-9_-]+$/.test(qid)) return qid;
-          }
-        } catch {}
+        // L2: caller-supplied fallback (CLI hardcoded, bumped via npm publish)
         const fb = fallbacks[operationName];
         if (fb) return fb;
-        throw new Error('queryId for ' + operationName + ' missing — bundle scrape failed, fa0311 unreachable, no caller fallback');
-      }
+        throw new Error('queryId for ' + operationName + ' missing — bundle scrape failed and no caller fallback supplied');
+      };
 
       const isFollowing = timelineType === 'following';
       const operationName = isFollowing ? 'HomeLatestTimeline' : 'HomeTimeline';
@@ -183,15 +178,45 @@ export async function searchTwitter(query: string, filter: 'Top' | 'Latest' | 'P
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
 
-      async function resolveQueryId(operationName: string): Promise<string> {
+      const resolveQueryId = async (operationName: string): Promise<string> => {
+        // L1: live x.com bundle scrape (sessionStorage 1h cache)
         try {
-          const res = await fetch('https://raw.githubusercontent.com/fa0311/twitter-openapi/refs/heads/main/src/config/placeholder.json');
-          if (res.ok) { const d = await res.json(); const qid = d?.[operationName]?.queryId; if (qid && /^[A-Za-z0-9_-]+$/.test(qid)) return qid; }
+          const cached = JSON.parse(sessionStorage.getItem('__bnbot_x_qids') || 'null');
+          if (cached?.ts && Date.now() - cached.ts < 3600_000 && cached.ids?.[operationName]) {
+            return cached.ids[operationName];
+          }
         } catch {}
+        const ops = ['HomeTimeline','HomeLatestTimeline','SearchTimeline','UserByScreenName','UserTweets','TweetDetail','Bookmarks'];
+        const ids: Record<string, string> = {};
+        const _startedAt = Date.now();
+        let scriptUrls: string[] = [];
+        while (Date.now() - _startedAt < 6000) {
+          scriptUrls = (Array.from(document.querySelectorAll('script[src]')) as HTMLScriptElement[])
+            .map(s => s.src)
+            .filter(src => src.endsWith('.js') && (src.includes('abs.twimg.com') || src.includes('client-web') || src.startsWith('/')));
+          if (scriptUrls.length > 0) break;
+          await new Promise(r => setTimeout(r, 300));
+        }
+        for (const url of scriptUrls.slice(0, 20)) {
+          try {
+            const code = await (await fetch(url)).text();
+            for (const op of ops) {
+              if (ids[op]) continue;
+              const m = code.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + op + '"'));
+              if (m) ids[op] = m[1];
+            }
+            if (Object.keys(ids).length === ops.length) break;
+          } catch {}
+        }
+        if (Object.keys(ids).length) {
+          try { sessionStorage.setItem('__bnbot_x_qids', JSON.stringify({ ts: Date.now(), ids })); } catch {}
+          if (ids[operationName]) return ids[operationName];
+        }
+        // L2: caller-supplied fallback (CLI hardcoded)
         const fb = fallbacks[operationName];
         if (fb) return fb;
-        throw new Error('queryId for ' + operationName + ' missing — upgrade @bnbot/cli or pass queryIds in payload');
-      }
+        throw new Error('queryId for ' + operationName + ' missing — bundle scrape failed and no caller fallback supplied');
+      };
 
       const queryId = await resolveQueryId('SearchTimeline');
       const headers: Record<string, string> = {
@@ -323,15 +348,45 @@ export async function getTwitterProfile(username: string, queryIds: QueryIds = {
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
 
-      async function resolveQueryId(operationName: string): Promise<string> {
+      const resolveQueryId = async (operationName: string): Promise<string> => {
+        // L1: live x.com bundle scrape (sessionStorage 1h cache)
         try {
-          const res = await fetch('https://raw.githubusercontent.com/fa0311/twitter-openapi/refs/heads/main/src/config/placeholder.json');
-          if (res.ok) { const d = await res.json(); const qid = d?.[operationName]?.queryId; if (qid && /^[A-Za-z0-9_-]+$/.test(qid)) return qid; }
+          const cached = JSON.parse(sessionStorage.getItem('__bnbot_x_qids') || 'null');
+          if (cached?.ts && Date.now() - cached.ts < 3600_000 && cached.ids?.[operationName]) {
+            return cached.ids[operationName];
+          }
         } catch {}
+        const ops = ['HomeTimeline','HomeLatestTimeline','SearchTimeline','UserByScreenName','UserTweets','TweetDetail','Bookmarks'];
+        const ids: Record<string, string> = {};
+        const _startedAt = Date.now();
+        let scriptUrls: string[] = [];
+        while (Date.now() - _startedAt < 6000) {
+          scriptUrls = (Array.from(document.querySelectorAll('script[src]')) as HTMLScriptElement[])
+            .map(s => s.src)
+            .filter(src => src.endsWith('.js') && (src.includes('abs.twimg.com') || src.includes('client-web') || src.startsWith('/')));
+          if (scriptUrls.length > 0) break;
+          await new Promise(r => setTimeout(r, 300));
+        }
+        for (const url of scriptUrls.slice(0, 20)) {
+          try {
+            const code = await (await fetch(url)).text();
+            for (const op of ops) {
+              if (ids[op]) continue;
+              const m = code.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + op + '"'));
+              if (m) ids[op] = m[1];
+            }
+            if (Object.keys(ids).length === ops.length) break;
+          } catch {}
+        }
+        if (Object.keys(ids).length) {
+          try { sessionStorage.setItem('__bnbot_x_qids', JSON.stringify({ ts: Date.now(), ids })); } catch {}
+          if (ids[operationName]) return ids[operationName];
+        }
+        // L2: caller-supplied fallback (CLI hardcoded)
         const fb = fallbacks[operationName];
         if (fb) return fb;
-        throw new Error('queryId for ' + operationName + ' missing — upgrade @bnbot/cli or pass queryIds in payload');
-      }
+        throw new Error('queryId for ' + operationName + ' missing — bundle scrape failed and no caller fallback supplied');
+      };
 
       const queryId = await resolveQueryId('UserByScreenName');
       const headers: Record<string, string> = {
@@ -373,15 +428,45 @@ export async function getTwitterBookmarks(limit = 20, queryIds: QueryIds = {}): 
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
 
-      async function resolveQueryId(operationName: string): Promise<string> {
+      const resolveQueryId = async (operationName: string): Promise<string> => {
+        // L1: live x.com bundle scrape (sessionStorage 1h cache)
         try {
-          const res = await fetch('https://raw.githubusercontent.com/fa0311/twitter-openapi/refs/heads/main/src/config/placeholder.json');
-          if (res.ok) { const d = await res.json(); const qid = d?.[operationName]?.queryId; if (qid && /^[A-Za-z0-9_-]+$/.test(qid)) return qid; }
+          const cached = JSON.parse(sessionStorage.getItem('__bnbot_x_qids') || 'null');
+          if (cached?.ts && Date.now() - cached.ts < 3600_000 && cached.ids?.[operationName]) {
+            return cached.ids[operationName];
+          }
         } catch {}
+        const ops = ['HomeTimeline','HomeLatestTimeline','SearchTimeline','UserByScreenName','UserTweets','TweetDetail','Bookmarks'];
+        const ids: Record<string, string> = {};
+        const _startedAt = Date.now();
+        let scriptUrls: string[] = [];
+        while (Date.now() - _startedAt < 6000) {
+          scriptUrls = (Array.from(document.querySelectorAll('script[src]')) as HTMLScriptElement[])
+            .map(s => s.src)
+            .filter(src => src.endsWith('.js') && (src.includes('abs.twimg.com') || src.includes('client-web') || src.startsWith('/')));
+          if (scriptUrls.length > 0) break;
+          await new Promise(r => setTimeout(r, 300));
+        }
+        for (const url of scriptUrls.slice(0, 20)) {
+          try {
+            const code = await (await fetch(url)).text();
+            for (const op of ops) {
+              if (ids[op]) continue;
+              const m = code.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + op + '"'));
+              if (m) ids[op] = m[1];
+            }
+            if (Object.keys(ids).length === ops.length) break;
+          } catch {}
+        }
+        if (Object.keys(ids).length) {
+          try { sessionStorage.setItem('__bnbot_x_qids', JSON.stringify({ ts: Date.now(), ids })); } catch {}
+          if (ids[operationName]) return ids[operationName];
+        }
+        // L2: caller-supplied fallback (CLI hardcoded)
         const fb = fallbacks[operationName];
         if (fb) return fb;
-        throw new Error('queryId for ' + operationName + ' missing — upgrade @bnbot/cli or pass queryIds in payload');
-      }
+        throw new Error('queryId for ' + operationName + ' missing — bundle scrape failed and no caller fallback supplied');
+      };
 
       const queryId = await resolveQueryId('Bookmarks');
 
@@ -460,15 +545,45 @@ export async function getTwitterUserTweets(username: string, limit = 20, queryId
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
 
-      async function resolveQueryId(operationName: string): Promise<string> {
+      const resolveQueryId = async (operationName: string): Promise<string> => {
+        // L1: live x.com bundle scrape (sessionStorage 1h cache)
         try {
-          const res = await fetch('https://raw.githubusercontent.com/fa0311/twitter-openapi/refs/heads/main/src/config/placeholder.json');
-          if (res.ok) { const d = await res.json(); const qid = d?.[operationName]?.queryId; if (qid && /^[A-Za-z0-9_-]+$/.test(qid)) return qid; }
+          const cached = JSON.parse(sessionStorage.getItem('__bnbot_x_qids') || 'null');
+          if (cached?.ts && Date.now() - cached.ts < 3600_000 && cached.ids?.[operationName]) {
+            return cached.ids[operationName];
+          }
         } catch {}
+        const ops = ['HomeTimeline','HomeLatestTimeline','SearchTimeline','UserByScreenName','UserTweets','TweetDetail','Bookmarks'];
+        const ids: Record<string, string> = {};
+        const _startedAt = Date.now();
+        let scriptUrls: string[] = [];
+        while (Date.now() - _startedAt < 6000) {
+          scriptUrls = (Array.from(document.querySelectorAll('script[src]')) as HTMLScriptElement[])
+            .map(s => s.src)
+            .filter(src => src.endsWith('.js') && (src.includes('abs.twimg.com') || src.includes('client-web') || src.startsWith('/')));
+          if (scriptUrls.length > 0) break;
+          await new Promise(r => setTimeout(r, 300));
+        }
+        for (const url of scriptUrls.slice(0, 20)) {
+          try {
+            const code = await (await fetch(url)).text();
+            for (const op of ops) {
+              if (ids[op]) continue;
+              const m = code.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + op + '"'));
+              if (m) ids[op] = m[1];
+            }
+            if (Object.keys(ids).length === ops.length) break;
+          } catch {}
+        }
+        if (Object.keys(ids).length) {
+          try { sessionStorage.setItem('__bnbot_x_qids', JSON.stringify({ ts: Date.now(), ids })); } catch {}
+          if (ids[operationName]) return ids[operationName];
+        }
+        // L2: caller-supplied fallback (CLI hardcoded)
         const fb = fallbacks[operationName];
         if (fb) return fb;
-        throw new Error('queryId for ' + operationName + ' missing — upgrade @bnbot/cli or pass queryIds in payload');
-      }
+        throw new Error('queryId for ' + operationName + ' missing — bundle scrape failed and no caller fallback supplied');
+      };
 
       const headers: Record<string, string> = {
         'Authorization': 'Bearer ' + decodeURIComponent(bearer),
@@ -565,15 +680,45 @@ export async function getTwitterThread(tweetId: string, limit = 50, queryIds: Qu
       const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
       if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
 
-      async function resolveQueryId(operationName: string): Promise<string> {
+      const resolveQueryId = async (operationName: string): Promise<string> => {
+        // L1: live x.com bundle scrape (sessionStorage 1h cache)
         try {
-          const res = await fetch('https://raw.githubusercontent.com/fa0311/twitter-openapi/refs/heads/main/src/config/placeholder.json');
-          if (res.ok) { const d = await res.json(); const qid = d?.[operationName]?.queryId; if (qid && /^[A-Za-z0-9_-]+$/.test(qid)) return qid; }
+          const cached = JSON.parse(sessionStorage.getItem('__bnbot_x_qids') || 'null');
+          if (cached?.ts && Date.now() - cached.ts < 3600_000 && cached.ids?.[operationName]) {
+            return cached.ids[operationName];
+          }
         } catch {}
+        const ops = ['HomeTimeline','HomeLatestTimeline','SearchTimeline','UserByScreenName','UserTweets','TweetDetail','Bookmarks'];
+        const ids: Record<string, string> = {};
+        const _startedAt = Date.now();
+        let scriptUrls: string[] = [];
+        while (Date.now() - _startedAt < 6000) {
+          scriptUrls = (Array.from(document.querySelectorAll('script[src]')) as HTMLScriptElement[])
+            .map(s => s.src)
+            .filter(src => src.endsWith('.js') && (src.includes('abs.twimg.com') || src.includes('client-web') || src.startsWith('/')));
+          if (scriptUrls.length > 0) break;
+          await new Promise(r => setTimeout(r, 300));
+        }
+        for (const url of scriptUrls.slice(0, 20)) {
+          try {
+            const code = await (await fetch(url)).text();
+            for (const op of ops) {
+              if (ids[op]) continue;
+              const m = code.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + op + '"'));
+              if (m) ids[op] = m[1];
+            }
+            if (Object.keys(ids).length === ops.length) break;
+          } catch {}
+        }
+        if (Object.keys(ids).length) {
+          try { sessionStorage.setItem('__bnbot_x_qids', JSON.stringify({ ts: Date.now(), ids })); } catch {}
+          if (ids[operationName]) return ids[operationName];
+        }
+        // L2: caller-supplied fallback (CLI hardcoded)
         const fb = fallbacks[operationName];
         if (fb) return fb;
-        throw new Error('queryId for ' + operationName + ' missing — upgrade @bnbot/cli or pass queryIds in payload');
-      }
+        throw new Error('queryId for ' + operationName + ' missing — bundle scrape failed and no caller fallback supplied');
+      };
 
       const queryId = await resolveQueryId('TweetDetail');
       const headers: Record<string, string> = {
