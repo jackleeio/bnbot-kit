@@ -62,6 +62,9 @@ export interface WriteResult {
   tweetId?: string
   error?: string
   durationMs: number
+  /** Set when caller passed `draftOnly: true`. Composer is filled but
+   *  not submitted; the pool window is left visible for user audit. */
+  draftOnly?: boolean
 }
 
 /** Poll until submit is both aria-enabled AND no progress circle is
@@ -325,6 +328,11 @@ export interface PostArgs {
   text: string
   mediaPaths?: string[]
   visible?: boolean
+  /** Fill composer + attach media but do NOT click submit. Pool window
+   *  is left un-minimized so the user can audit and either click Post
+   *  themselves, hit `bnbot x close` to discard, or `bnbot x close --save`
+   *  to keep as an X draft. */
+  draftOnly?: boolean
 }
 
 export async function postViaDebugger(args: PostArgs): Promise<WriteResult> {
@@ -347,6 +355,12 @@ export async function postViaDebugger(args: PostArgs): Promise<WriteResult> {
       await readyPromise
       await waitForSelector(target.targetId, SEL.attachmentsReady, 10_000)
       await jitter(400, 800)
+    }
+
+    if (args.draftOnly) {
+      // Skip submit. Leave the window foregrounded so the user can audit.
+      restore = null
+      return { success: true, draftOnly: true, durationMs: Date.now() - started }
     }
 
     const responsePromise = waitForJsonResponse<CreateTweetResponse>(

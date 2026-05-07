@@ -3,6 +3,15 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.12.1] - 2026-05-07
+
+### Added
+- **`bnbot x post --draft` 现在支持 `--engine debugger`**：CDP 引擎在隔离 pool 窗口里填好文字 + 媒体后停在那里（不点 submit、不还原最小化），用户可以在 pool 窗口里肉眼审稿，自己点 Post 或 `bnbot x close` 丢弃。之前 `--draft` 只能跑 DOM 引擎（用你当前 x.com tab），CDP 路径直接拒绝；现在两条路径都接受 draft，互不干扰。改动：`PostArgs` + `WriteResult` 加 `draftOnly` 字段，`postViaDebugger` 在 draft 时 skip 提交 + skip restore，`debuggerWriteHandlers.post_tweet_debugger` 把 payload `draftOnly` 透传过去。CLI 删掉 `[BNBOT] --draft is not supported by --engine debugger yet` 守卫。
+
+### Changed
+- **`bnbot x post -d` 默认引擎从 DOM 改成 debugger**：老逻辑是 draft 模式自动 fallback 到 DOM 引擎（霸占你当前 x.com tab），现在 `normEngine` 一律默认 `debugger`，draft 也走隔离 pool 窗口。要走旧的 DOM 路径必须显式 `--engine dom`。`--engine` flag 的 commander default 也补成 `'debugger'`，help 文案对齐。
+
+
 ## [0.12.0] - 2026-04-22
 
 ### Removed

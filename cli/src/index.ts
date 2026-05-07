@@ -341,8 +341,8 @@ function buildProgram(): Command {
   x.command('post <text>')
     .description('Post a tweet')
     .option('-m, --media <url>', 'Media file or URL (repeat for multiple, or comma-separate)', collectMedia, [])
-    .option('-d, --draft', 'Draft mode: fill composer without posting')
-    .option('--engine <engine>', 'Write engine: "debugger" (default for live publish — CDP, robust against X UI churn) or "dom" (default for --draft; content-script). Omit to auto-pick by mode.')
+    .option('-d, --draft', 'Draft mode: fill composer without posting. Pool window stays foregrounded for audit; click Post yourself or `bnbot x close` to discard.')
+    .option('--engine <engine>', 'Write engine: "debugger" (default — CDP, isolated pool window, robust against X UI churn) or "dom" (legacy, content-script in your active x.com tab).', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
     .action(postCommand);
 

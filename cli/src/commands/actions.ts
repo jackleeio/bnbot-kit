@@ -24,10 +24,9 @@ type WriteEngine = 'dom' | 'debugger';
  * "BNBot is debugging this browser" bar appears on the tab during
  * the call (purely cosmetic).
  */
-function normEngine(e?: string, opts: { draft?: boolean } = {}): WriteEngine {
+function normEngine(e?: string, _opts: { draft?: boolean } = {}): WriteEngine {
   if (e === 'dom') return 'dom';
-  if (e === 'debugger') return 'debugger';
-  return opts.draft ? 'dom' : 'debugger';
+  return 'debugger';
 }
 
 /** Parse media option into an array of source strings. */
@@ -76,16 +75,20 @@ export async function postCommand(text: string, options: { media?: string | stri
   const preview = text.slice(0, 80) + (text.length > 80 ? '...' : '');
   console.error(isDraft ? `Drafting: "${preview}"` : `Posting: "${preview}"` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
 
-  // Debugger engine: write actions go through chrome.debugger (CDP). No
-  // thread auto-split, no draft mode (X compose/post URL always publishes).
+  // Debugger engine: write actions go through chrome.debugger (CDP).
+  // `--draft` here fills the composer in the pool window and leaves it
+  // foregrounded for user audit (no submit click, no auto-minimize) —
+  // similar in spirit to DOM-engine draft mode but uses the isolated
+  // pool window instead of the user's active x.com tab.
   if (engine === 'debugger') {
-    if (isDraft) {
-      console.error('[BNBOT] --draft is not supported by --engine debugger yet; use default DOM engine for draft mode.');
-      process.exit(1);
-    }
     const sources = toSourceList(options.media);
     const mediaPaths = sources.length > 0 ? await resolveMediaListAsPaths(sources) : undefined;
-    return runCliAction('post_tweet_debugger', { text, mediaPaths, visible: !!options.visible }, getPort());
+    return runCliAction('post_tweet_debugger', {
+      text,
+      mediaPaths,
+      visible: !!options.visible,
+      draftOnly: isDraft,
+    }, getPort());
   }
 
   const params: Record<string, unknown> = { text, draftOnly: isDraft };
