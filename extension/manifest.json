@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "BNBot in Chrome (Beta)",
+  "name": "BNBot",
   "version": "0.12.2",
   "description": "Control Chrome with BNBot.",
   "icons": {

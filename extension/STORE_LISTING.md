@@ -7,7 +7,7 @@ Chrome Web Store copy for the BNBot extension.
 ## Extension Name
 
 ```
-BNBot in Chrome (Beta)
+BNBot
 ```
 
 ## Short Description
