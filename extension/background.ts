@@ -1327,34 +1327,16 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     return true;
   }
 
-  // TIKTOK_FETCH / TIKTOK_FETCH_V2 handlers removed — abandoned republish
-  // flow. CLI's `bnbot tiktok search` uses the read-only scraper pool.
-
-  // XIAOHONGSHU_SCRAPE removed — same orphan path as TikTok above.
-
-  // Fetch blob from URL and return as base64 data URL (to bypass CORS)
-  if (request.type === 'FETCH_BLOB') {
-    fetchBlobAsDataUrl(request.url)
-      .then(sendResponse)
-      .catch((error) => sendResponse({ error: error.message }));
-    return true;
-  }
-
-  // Video proxy - fetch video and return as base64 data URL
-  if (request.type === 'FETCH_VIDEO') {
-    fetchVideoAsDataUrl(request.url)
-      .then(sendResponse)
-      .catch((error) => sendResponse({ error: error.message }));
-    return true;
-  }
-
-  // Fetch image from URL and return as base64 (for article image uploads)
-  if (request.type === 'FETCH_IMAGE') {
-    fetchImageAsBase64(request.url)
-      .then(sendResponse)
-      .catch((error) => sendResponse({ success: false, error: error.message }));
-    return true;
-  }
+  // TIKTOK_FETCH / TIKTOK_FETCH_V2 / XIAOHONGSHU_SCRAPE handlers removed —
+  // abandoned republish flow.
+  //
+  // FETCH_BLOB / FETCH_VIDEO / FETCH_IMAGE handlers also removed: those
+  // were the CORS-bypass proxies feeding the DOM-write path
+  // (tweetPoster fallbacks). All writes now go through the CDP debugger
+  // engine, which uses DOM.setFileInputFiles on local file paths
+  // resolved CLI-side, so the extension never fetches third-party CDNs
+  // any more. Removing these proxies + their host_permissions narrows
+  // the User Data Privacy review surface.
 });
 
 // handleGoogleLogin removed — login flow lives in CLI (`bnbot login`).
@@ -1529,82 +1511,11 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
-// Handle port-based download with progress
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== 'DOWNLOAD_PORT') return;
-
-  console.log('[BNBot Background] Download port opened');
-
-  port.onDisconnect.addListener(() => {
-    console.log('[BNBot Background] Download port closed');
-  });
-
-  port.onMessage.addListener(async (msg) => {
-    if (msg.type === 'PING') return; // Keep-alive
-    if (msg.type !== 'START_DOWNLOAD') return;
-
-    const { url } = msg;
-    console.log('[BNBot Background] Starting download:', url);
-
-    try {
-      const fetchHeaders: Record<string, string> = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      };
-      // Add Referer for Xiaohongshu CDN
-      if (url.includes('xhscdn') || url.includes('xiaohongshu')) {
-        fetchHeaders['Referer'] = 'https://www.xiaohongshu.com/';
-      }
-
-      const response = await fetch(url, {
-        referrerPolicy: 'no-referrer',
-        headers: fetchHeaders,
-      });
-
-      if (!response.ok) {
-        port.postMessage({ type: 'DOWNLOAD_ERROR', error: `HTTP ${response.status}` });
-        return;
-      }
-
-      const contentLength = response.headers.get('content-length');
-      const total = contentLength ? parseInt(contentLength, 10) : 0;
-      const contentType = response.headers.get('content-type') || '';
-
-      port.postMessage({
-        type: 'DOWNLOAD_START',
-        total,
-        contentType,
-      });
-
-      if (!response.body) {
-        port.postMessage({ type: 'DOWNLOAD_ERROR', error: 'No response body' });
-        return;
-      }
-
-      const reader = response.body.getReader();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-        // Send chunk as array (ports handle structured clone)
-        // Convert Uint8Array to regular array to avoid serialization issues effectively? 
-        // Chrome ports verify efficiency with AraryBuffers. Value is Uint8Array.
-        // We can send it directly.
-        port.postMessage({ type: 'DOWNLOAD_CHUNK', chunk: Array.from(value) });
-      }
-
-      port.postMessage({ type: 'DOWNLOAD_END' });
-
-    } catch (error) {
-      console.error('[BNBot Background] Download error:', error);
-      port.postMessage({
-        type: 'DOWNLOAD_ERROR',
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  });
-});
+// DOWNLOAD_PORT (chunked media download with progress) removed alongside
+// FETCH_BLOB / FETCH_VIDEO / FETCH_IMAGE — the DOM-write path that drove
+// these (commandService → tweetPoster fallback chain) is dead now that
+// every desktop-app and CLI write goes through the CDP debugger engine,
+// which sets media via DOM.setFileInputFiles on local file paths.
 
 console.log('BNBot background service worker loaded');
 
@@ -1841,120 +1752,12 @@ async function handleFreshTokenRequest(): Promise<string | null> {
   }
 }
 
-// Fetch video from URL and return as blob URL
-async function fetchVideoAsDataUrl(url: string): Promise<{ blobUrl?: string; error?: string }> {
-  try {
-    console.log('[BNBot Background] Fetching video:', url.substring(0, 100) + '...');
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      },
-    });
-
-    if (!response.ok) {
-      return { error: `HTTP ${response.status}` };
-    }
-
-    const blob = await response.blob();
-
-    // Convert blob to base64 data URL
-    const reader = new FileReader();
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-
-    console.log('[BNBot Background] Video fetched, size:', blob.size);
-    return { blobUrl: dataUrl };
-  } catch (error) {
-    console.error('[BNBot Background] Video fetch error:', error);
-    return { error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
-
-// Fetch image from URL and return as base64 (for article image uploads)
-async function fetchImageAsBase64(url: string): Promise<{ success: boolean; data?: string; mimeType?: string; error?: string }> {
-  try {
-    console.log('[BNBot Background] Fetching image:', url.substring(0, 100) + '...');
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-        'Referer': 'https://mp.weixin.qq.com/',
-      },
-    });
-
-    if (!response.ok) {
-      return { success: false, error: `HTTP ${response.status}` };
-    }
-
-    const blob = await response.blob();
-    const mimeType = blob.type || 'image/jpeg';
-
-    // Convert blob to base64 (without data URL prefix)
-    const reader = new FileReader();
-    const base64 = await new Promise<string>((resolve, reject) => {
-      reader.onloadend = () => {
-        const dataUrl = reader.result as string;
-        // Remove the data URL prefix to get just base64
-        const base64Data = dataUrl.split(',')[1];
-        resolve(base64Data);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-
-    console.log('[BNBot Background] Image fetched, size:', blob.size, 'type:', mimeType);
-    return { success: true, data: base64, mimeType };
-  } catch (error) {
-    console.error('[BNBot Background] Image fetch error:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
-
-// Fetch blob from URL and return as blob URL
-async function fetchBlobAsDataUrl(url: string): Promise<{ success: boolean; data?: string; error?: string }> {
-  try {
-    console.log('[BNBot Background] Fetching blob:', url.substring(0, 100) + '...');
-
-    // Build fetch options with appropriate headers for different CDNs
-    const fetchOptions: RequestInit = { method: 'GET' };
-    const isXhs = url.includes('xhscdn') || url.includes('xiaohongshu');
-    if (isXhs) {
-      fetchOptions.headers = {
-        'Referer': 'https://www.xiaohongshu.com/',
-      };
-    }
-
-    const response = await fetch(url, fetchOptions);
-
-    if (!response.ok) {
-      return { success: false, error: `HTTP ${response.status}` };
-    }
-
-    const blob = await response.blob();
-
-    // Convert blob to base64 data URL
-    const reader = new FileReader();
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-
-    console.log('[BNBot Background] Blob fetched, size:', blob.size);
-    return { success: true, data: dataUrl };
-  } catch (error) {
-    console.error('[BNBot Background] Blob fetch error:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
-
+// fetchVideoAsDataUrl / fetchImageAsBase64 / fetchBlobAsDataUrl removed —
+// the FETCH_VIDEO / FETCH_IMAGE / FETCH_BLOB message handlers that drove
+// them were the CORS-bypass proxies for the legacy DOM-write path.
+// Every write goes through the CDP debugger engine now, so no extension
+// code fetches xhscdn / mmbiz.qpic.cn / qpic.cn any more — and those
+// host_permissions came off the manifest in the same change.
 
 // 抓取微信公众号文章 HTML
 async function scrapeWechatUrl(url: string): Promise<{ success: boolean; data?: string; error?: string }> {

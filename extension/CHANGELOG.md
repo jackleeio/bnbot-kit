@@ -3,6 +3,17 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.12.3] - 2026-05-10
+
+### Removed
+- **`host_permissions` 从 5 个收到 2 个，CSP 同步收紧** — 给 Chrome Web Store 审核员的"为什么需要这些 host"提问面减小：
+  - 删 `*://*.xhscdn.com/*`、`*://mmbiz.qpic.cn/*`、`*://*.qpic.cn/*`。所有抓数据走 CDP（`chrome.debugger` + `Runtime.evaluate`，见 `services/scraperService.ts:executeInPage` 注释），不需要这些 host 给 `chrome.scripting.executeScript` 用；曾经依赖这些 host 的 background `fetch()` 路径（`FETCH_BLOB` / `FETCH_VIDEO` / `FETCH_IMAGE` 三个 message handler + `DOWNLOAD_PORT` 长连 + 三个对应 fetch 函数）也是 dead code，因为 v0.12.1 起 CLI 默认 `engine=debugger`，CDP 写入路径用 `DOM.setFileInputFiles` + 本地文件路径，扩展从此不再 fetch 任何第三方 CDN 把图/视频转 base64。
+  - 留 `*://api.bnbot.ai/*`（必要：扩展 ↔ 后端 API）+ `*://mp.weixin.qq.com/*`（`WECHAT_SCRAPE` 旧 fetch 路径还在 `wechatScraperService` 里用，等微信抓取迁到 CDP 后再删）。
+  - `manifest.json` + `manifest.firefox.json` 同时收紧 CSP `connect-src` / `img-src` / `media-src`，把 `*.googlevideo.com`、`*.tiktok*`、`*.xiaohongshu.com`、`*.xhscdn.com`、`mmbiz.qpic.cn`、`*.qpic.cn` 全删（fetch 走不到了，CSP 留着只是 noise）。
+  - `background.ts` 删了 `DOWNLOAD_PORT` `onConnect` 监听 + `FETCH_BLOB` / `FETCH_VIDEO` / `FETCH_IMAGE` 三个 `onMessage` handler + `fetchBlobAsDataUrl` / `fetchImageAsBase64` / `fetchVideoAsDataUrl` 三个 dead 函数定义，bg bundle 略缩。
+  - `utils/tweetPoster.ts` 的 fallback 3 (TikTok DOWNLOAD_PORT) 和 fallback 5 (FETCH_BLOB proxy) 在新版本里调用会因为 background 不再监听这些消息而失败回退到 fallback 4 (直接 fetch)，但整个 tweetPoster DOM 路径在 v0.12.1 之后实际不再被 production 触发（CLI 走 CDP），不动它的代码降低改动半径。
+
+
 ## [0.12.2] - 2026-05-10
 
 ### Changed
