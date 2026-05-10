@@ -13,7 +13,7 @@ BNBot in Chrome (Beta)
 ## Short Description
 
 ```
-Browser side of the BNBot desktop AI agent — acts on the social platforms you're already signed in to.
+Control Chrome with BNBot.
 ```
 
 ---
@@ -21,11 +21,9 @@ Browser side of the BNBot desktop AI agent — acts on the social platforms you'
 ## Detailed Description - English
 
 ```
-Run BNBot in your browser.
+Control Chrome with BNBot.
 
-BNBot is an AI growth agent that lives on your desktop. This extension is its browser side — install it, sign in to BNBot from the desktop app, and your agent can work on the social platforms you are already signed in to. It uses your own browser session, with no cookie sharing and no password handling.
-
-The desktop app is required and available at https://bnbot.ai.
+BNBot can now use Chrome on your computer to complete work inside the social platforms where you are already signed in. The desktop app is required and available at https://bnbot.ai.
 
 
 OVERVIEW
@@ -81,11 +79,9 @@ Privacy Policy: https://bnbot.ai/privacy/
 ## Detailed Description - Chinese
 
 ```
-在你的浏览器里跑 BNBot。
+让 BNBot 控制 Chrome。
 
-BNBot 是住在你桌面的 AI Growth Agent，这个插件是它的浏览器端 —— 装上插件、在桌面 app 里登录 BNBot，Agent 就能在你已经登录的社交平台上干活。它用的是你自己的浏览器登录态，不复制 cookie，也不需要密码。
-
-桌面 app 是必须的，从 https://bnbot.ai 下载。
+BNBot 现在可以使用你电脑上的 Chrome，在你已经登录的社交平台上完成工作。桌面 app 是必须的，从 https://bnbot.ai 下载。
 
 
 总览
