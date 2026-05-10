@@ -3,6 +3,16 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.12.2] - 2026-05-10
+
+### Changed
+- **Listing 改包装 — 重提 Chrome Web Store**：上一个 0.7.5 草稿被 `Purple Nickel / User Data Privacy` 拒绝，原因是 Dashboard 里填的 Privacy Policy URL 指向旧仓库 `jackleeio/bnbot-extension/.../PRIVACY_POLICY.md`，2026-04-19 monorepo 拆分后已 404。这版同步重新定位 listing：
+  - `manifest.json` + `manifest.firefox.json` 的 `name` 从 `BNBot` 改成 `BNBot in Chrome (Beta)`，对齐 Anthropic `Claude in Chrome (Beta)` / `Codex for Chrome` 这类"桌面 agent 的浏览器端"命名约定。
+  - `description` 从 `BNBot in Chrome` 改成 `Browser side of the BNBot desktop AI agent — acts on the social platforms you're already signed in to.`，去掉 "discover trends / create content / run social workflows" 等多功能宣传，对齐 Single Purpose policy。
+  - `STORE_LISTING.md`：EN + ZH 文案重写，融合 Anthropic + Codex 模板。新增 `OVERVIEW` / `WHAT YOU CAN DO` / `YOU'RE IN CONTROL` / `GETTING STARTED` / `WHAT THIS EXTENSION DOES NOT DO` 段；显式 disclaim "no auto-like, auto-follow, mass DM"，避免审核员误判 spam automation；删掉 `OpenClaw 🦞` / "Discover trends across X, YouTube, TikTok, Reddit, GitHub, Product Hunt, Bilibili, Weibo" 等长平台清单（host_permissions 审核敏感词）。
+  - 配套：`bnbot-web-new` 加 `app/privacy/` 路由（layout + page），把 `extension/docs/PRIVACY_POLICY.md` 的内容用 marked 渲染成 `https://bnbot.ai/privacy/`，Cloudflare Pages 已上线 200。Dashboard 把 Privacy Policy URL 换成这个，未来不再因 repo 重组失效。
+
+
 ## [0.12.1] - 2026-05-07
 
 ### Added

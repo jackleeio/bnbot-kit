@@ -1,265 +1,186 @@
-# BNBOT - Chrome Web Store 上架文档
+# BNBot - Chrome Web Store Listing
 
-> 本文档包含提交 Chrome Web Store 所需的所有文案（纯文本格式，可直接复制粘贴）
-
----
-
-## 扩展名称
-
-```
-BNBOT - AI Growth Agent for X
-```
-
-## 简短描述（132字符以内）
-
-```
-AI-powered X growth agent. Auto Pilot replies, earn crypto rewards, KOL tracking & AI content creation. Get your first 5M impressions.
-```
+Chrome Web Store copy for the BNBot extension.
 
 ---
 
-## 详细描述（英文 - 纯文本格式）
+## Extension Name
 
 ```
-BNBOT – Your AI Growth Agent for X
+BNBot in Chrome (Beta)
+```
 
-AI-powered sidebar that lives inside X. Achieve millions of impressions, automate engagement, create viral content, and earn cryptocurrency.
+## Short Description
 
-AI CHAT
-
-Your personal command center for X growth.
-
-• Viral Tweet Generator – Create scroll-stopping tweets that get engagement
-• AI Image & Meme Creation – Generate eye-catching visuals in seconds
-• YouTube to Tweet – Convert videos into viral thread content
-• Token Hunter – Discover the latest crypto opportunities
-• Smart Search – AI-powered search to find exactly what you need
-• Bookmark Summary – Instantly summarize your saved content
-• Thread Merge – Combine long threads into one powerful tweet
-
-The AI can take action on your behalf with tool-calling capabilities.
-
-AUTO PILOT
-
-24/7 intelligent engagement system that works while you sleep.
-
-• Smart Timeline Scanning – Automatically finds high-value tweets
-• Contextual Reply Generation – Creates replies that sound like you
-• Customizable Tone – Casual, professional, humorous, or questioning
-• Advanced Filtering – Set minimum likes, views, followers, freshness
-• AI Image Replies – Generate visual responses that stand out
-• Dry Run Mode – Test settings without posting
-• Confirmation Mode – Review each reply before it goes live
-
-BOOST
-
-Earn crypto through engagement.
-
-• Browse Active Campaigns – Discover opportunities with real token rewards
-• Complete Tasks – Like, Quote, Repost, Follow to earn
-• Earn BNB, USDT, USDC – Direct crypto rewards
-• AI-Powered Quotes – Generate high-quality responses
-
-ANALYSIS
-
-Real-time trend intelligence and analytics.
-
-• X Analytics Dashboard – Track followers growth, impressions, reply performance
-• Share Analytics Screenshot – One-click generate and share your growth stats
-• Crypto & AI KOL Tracking – Real-time feed of top influencers
-• Auto-Translation – Content translated to your language
-• AI Tweet Analysis – Deep dive into any tweet
-• Quick Actions – Generate AI replies, quotes, or summaries instantly
-
-TWEET ACTIONS
-
-Smart actions for any tweet.
-
-• AI Reply – One-click contextual replies
-• AI Quote – Add insightful commentary
-• AI Rewrite – Transform tweets into your voice
-• Fact Check – Verify claims with AI
-• Thread Creation – Expand ideas into threads
-• Image Reply – Generate visual responses
-
-PERFECT FOR
-
-• Web3 Founders – Build influence at lightning speed
-• Crypto Traders – Track alpha and KOL sentiment in real-time
-• Content Creators – 10x your output with AI
-• Growth Marketers – Automate without losing authenticity
-
-PRIVACY & SECURITY
-
-• Only runs on x.com
-• Secure Google OAuth authentication
-• Your data stays private
-• Delete your account anytime
-
-Get your first 5M impressions. Start today.
+```
+Browser side of the BNBot desktop AI agent — acts on the social platforms you're already signed in to.
 ```
 
 ---
 
-## 详细描述（中文 - 纯文本格式）
+## Detailed Description - English
 
 ```
-BNBOT – 你的 AI 增长代理
+Run BNBot in your browser.
 
-X 平台的 AI 侧边栏助手。实现百万级曝光、自动化互动、创作病毒内容、赚取加密货币。
+BNBot is an AI growth agent that lives on your desktop. This extension is its browser side — install it, sign in to BNBot from the desktop app, and your agent can work on the social platforms you are already signed in to. It uses your own browser session, with no cookie sharing and no password handling.
 
-AI 聊天
+The desktop app is required and available at https://bnbot.ai.
 
-你的 X 增长指挥中心。
 
-• 病毒推文生成器 – 创作让人停下滑动的推文
-• AI 图片 & Meme 创作 – 秒级生成吸睛视觉内容
-• YouTube 转推文 – 将视频转化为热门帖子
-• Token 猎手 – 发现最新加密货币机会
-• 智能搜索 – AI 驱动精准搜索
-• 书签摘要 – 即时总结保存的内容
-• Thread 合并 – 将长推文串合并成一条
+OVERVIEW
 
-AI 可以通过工具调用能力代你执行操作。
+BNBot for Chrome lets BNBot help with work that happens inside the social platforms where you are already signed in.
 
-自动驾驶
+Use it when a task depends on a logged-in account — posting on X, replying in your voice, saving an item, executing a scheduled post you set up in the desktop app. You drive everything from the desktop app; this extension is the connector that lets BNBot reach into your existing browser session.
 
-24/7 智能互动系统，在你睡觉时持续工作。
+You stay in control. BNBot only acts on a request you made in the desktop app. It does not run unsupervised in the background.
 
-• 智能时间线扫描 – 自动发现高价值推文
-• 上下文回复生成 – 创作听起来像你的回复
-• 可定制语气 – 休闲、专业、幽默或质疑
-• 高级过滤 – 设置最低点赞、阅读量、粉丝数
-• AI 图片回复 – 生成脱颖而出的视觉回复
-• 试运行模式 – 测试设置而不实际发布
-• 确认模式 – 发布前审核每条回复
 
-Boost 任务
+WHAT YOU CAN DO
 
-通过互动赚取加密货币。
+- Post tweets, threads, and replies on X, in your voice
+- Quote, bookmark, and save items the agent surfaces for you
+- Read posts and timelines so the desktop agent has fresh context
+- Execute scheduled posts you set up in the desktop app
 
-• 浏览活跃活动 – 发现有真实代币奖励的机会
-• 完成任务 – 点赞、引用、转发、关注即可赚取
-• 赚取 BNB、USDT、USDC – 直接获得加密货币
-• AI 驱动引用 – 生成高质量回复
 
-趋势分析
+YOU'RE IN CONTROL
 
-实时情报中心和数据分析。
+- Every browser action starts from a request you make in the desktop app. Nothing runs in the background on its own.
+- The extension talks to BNBot only over a local connection on your own machine (localhost). It does not send your browser data to any third-party server.
+- You choose which sites it works on. Host permissions are scoped to the platforms BNBot supports today.
+- Pause, disable, or remove the extension at any time. The desktop app keeps working for everything that does not need a browser.
 
-• X 数据分析面板 – 追踪粉丝增长、曝光量、回复表现
-• 分享数据截图 – 一键生成并分享你的增长数据
-• Crypto & AI KOL 追踪 – 顶级大 V 的实时动态
-• 自动翻译 – 内容自动翻译成你的语言
-• AI 推文分析 – 深度分析任意推文
-• 快捷操作 – 即时生成 AI 回复、引用或摘要
 
-推文操作
+GETTING STARTED
 
-任意推文的智能操作。
+1. Download the BNBot desktop app from https://bnbot.ai
+2. Install this Chrome extension
+3. Open the desktop app and sign in
+4. The extension auto-pairs with the desktop app on localhost
+5. Ask BNBot to do something on a supported site — it acts in your browser
 
-• AI 回复 – 一键生成上下文回复
-• AI 引用 – 添加有洞察力的评论
-• AI 改写 – 转化为你的风格
-• 事实核查 – 用 AI 验证声明
-• Thread 创作 – 将想法扩展为长推文
-• 图片回复 – 生成视觉回复
 
-适合人群
+WHAT THIS EXTENSION DOES NOT DO
 
-• Web3 创业者 – 闪电般建立影响力
-• 加密货币交易员 – 实时追踪 Alpha 和 KOL 情绪
-• 内容创作者 – 用 AI 10 倍提升产出
-• 增长营销人员 – 自动化而不失真实性
+- Does not collect, store, or upload your browsing history.
+- Does not run mass automation campaigns (no auto-like, auto-follow, mass DM, or similar).
+- Does not modify any page for users other than you.
+- Does not work without the BNBot desktop app.
 
-隐私安全
 
-• 仅在 x.com 运行
-• 安全的 Google OAuth 认证
-• 数据隐私保护
-• 随时可删除账户
+Note: BNBot for Chrome is in beta. Functionality may evolve as we refine the desktop ↔ browser integration. BNBot is built for one user (you), running on your own machine, acting on your own accounts — not a shared cloud bot service.
 
-获得你的第一个 500 万曝光，今天就开始。
-• 安全的 Google OAuth
-• 数据隐私保护
-
-获得你的第一个 500 万曝光，今天就开始。
+Website: https://bnbot.ai
+Privacy Policy: https://bnbot.ai/privacy/
 ```
 
 ---
 
-## 分类信息
-
-- **主要类别：** Productivity
-- **次要类别：** Social & Communication
-
----
-
-## 搜索关键词
+## Detailed Description - Chinese
 
 ```
-Twitter AI, X assistant, auto reply, social media automation, crypto earning, Twitter growth, AI content creation, tweet generator, Twitter bot, engagement tool, KOL tracking, crypto twitter, Web3 social, meme generator, Twitter sidebar, auto pilot, AI agent, earn crypto, BNB, USDT
+在你的浏览器里跑 BNBot。
+
+BNBot 是住在你桌面的 AI Growth Agent，这个插件是它的浏览器端 —— 装上插件、在桌面 app 里登录 BNBot，Agent 就能在你已经登录的社交平台上干活。它用的是你自己的浏览器登录态，不复制 cookie，也不需要密码。
+
+桌面 app 是必须的，从 https://bnbot.ai 下载。
+
+
+总览
+
+BNBot for Chrome 让 BNBot 在你已经登录的社交平台上帮你处理工作。
+
+当任务依赖一个登录态的账号 —— 发推、用你的语气回复、保存内容、执行你在桌面 app 里设好的定时发布 —— 就用 BNBot。所有事都在桌面 app 里发起，这个插件只是把 BNBot 接入你已经打开的浏览器。
+
+你始终掌控。BNBot 只在你从桌面 app 发起请求时动作，不会在后台自循环。
+
+
+你可以做什么
+
+- 在 X 上用你的语气发推、发长推、写回复
+- 引用、收藏、保存 Agent 帮你挑出来的内容
+- 读取你的时间线，让桌面 Agent 拿到最新上下文
+- 执行你在桌面 app 里设好的定时发布
+
+
+你始终掌控
+
+- 每一个浏览器动作都来自你在桌面 app 里发起的请求，没有后台自循环。
+- 插件只通过本地连接（localhost）和 BNBot 通信，不会把你的浏览器数据送到任何第三方服务器。
+- 你决定它在哪些站点上工作。Host 权限只覆盖 BNBot 当前支持的平台。
+- 你可以随时暂停、禁用或卸载插件。桌面 app 在不需要浏览器的功能继续工作。
+
+
+开始使用
+
+1. 从 https://bnbot.ai 下载 BNBot 桌面 app
+2. 安装这个 Chrome 插件
+3. 打开桌面 app 并登录
+4. 插件会自动通过 localhost 和桌面 app 配对
+5. 在桌面 app 里让 BNBot 做事 —— 它会在你的浏览器里执行
+
+
+这个插件不会做的事
+
+- 不收集、不保存、不上传你的浏览历史。
+- 不跑群发自动化（不自动 like、不自动 follow、不群发 DM）。
+- 不修改其他人看到的页面内容，只在你这端起作用。
+- 没有 BNBot 桌面 app 的话，插件不工作。
+
+
+说明：BNBot for Chrome 处于 beta 阶段，功能可能随桌面 ↔ 浏览器集成的迭代而变化。BNBot 是给一个人（你）用的，在你自己的机器上，操作你自己的账号 —— 不是共享云端机器人服务。
+
+官网：https://bnbot.ai
+隐私政策：https://bnbot.ai/privacy/
 ```
 
 ---
 
-## 截图建议（1280x800 或 640x400）
+## Category
 
-1. **主界面全览** - 展示侧边栏在 X 中的整体外观，突出 AI Chat
-2. **Auto Pilot 运行中** - 展示自动驾驶扫描推文、生成回复的过程
-3. **Boost 活动列表** - 展示可赚取加密货币的活动卡片
-4. **Analysis KOL Feed** - 展示 Crypto/AI KOL 实时追踪
-5. **AI 工具调用** - 展示 AI 执行搜索、生成图片等高级功能
+- Primary: Productivity
+- Secondary: Social & Communication
 
 ---
 
-## 隐私政策要点
+## Search Keywords
 
-- 仅在 x.com 域名上运行
-- 使用 Google OAuth 安全登录
-- 不收集或存储用户推文内容用于 AI 训练
-- API 通信通过加密通道
-- 用户可随时删除账户和数据
+```
+BNBot, desktop app companion, browser AI, AI agent, social media AI, AI growth agent, social growth, AI content creation, tweet generator, social media automation, auto reply, KOL tracking, trend discovery, content repurposing, thread generator, bookmark summary, Twitter AI, X assistant, X automation
+```
 
 ---
 
-## 版本更新说明模板
+## Screenshot Suggestions
+
+1. BNBot desktop app controlling the browser extension
+2. Browser sidebar on a social platform
+3. Trend discovery results
+4. AI reply / quote action
+5. Content repurposing from a URL
+
+---
+
+## Privacy Notes
+
+- Works with the BNBot desktop app
+- Uses BNBot account authentication
+- Uses your browser session only for the workflows you start
+- Does not use your posts for AI training
+- Sends API traffic over encrypted connections
+- Users can delete their account and data
+
+---
+
+## Release Notes Template
 
 ```
 Version X.X.X
 
 What's New:
-• [New] 新功能描述
-• [Improved] 改进内容
-• [Fixed] 修复的问题
+• [New] Feature description
+• [Improved] Improvement
+• [Fixed] Bug fix
 ```
-
----
-
-## 营销口号备选
-
-**英文：**
-- "Your AI Growth Agent for X"
-- "Grow smarter. Earn bolder."
-- "Get your first 5M impressions"
-- "24/7 AI-powered engagement"
-- "Turn engagement into earnings"
-
-**中文：**
-- "你的 AI 增长代理"
-- "智能增长，大胆赚取"
-- "获得你的第一个 500 万曝光"
-- "24/7 AI 驱动的智能互动"
-- "将互动转化为收益"
-
----
-
-## 差异化卖点总结
-
-| 竞品类型 | 他们做什么 | BNBOT 的优势 |
-|---------|-----------|-------------|
-| ChatGPT/Claude | 通用 AI 对话 | 专为 X 优化 + 可执行操作 |
-| Buffer/Hootsuite | 定时发帖 | 智能自动互动 + 趋势追踪 |
-| 手动刷推 | 耗时耗力 | 24/7 Auto Pilot 自动化 |
-| 普通分析工具 | 展示历史数据 | 实时 KOL 追踪 + AI 分析 |
-| 其他 X 工具 | 无收益功能 | Boost 赚取加密货币 |

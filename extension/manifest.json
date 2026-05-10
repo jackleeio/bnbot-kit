@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "BNBot",
-  "version": "0.12.1",
-  "description": "Your AI growth agent for X. Made for humans & OpenClaw 🦞.",
+  "name": "BNBot in Chrome (Beta)",
+  "version": "0.12.2",
+  "description": "Browser side of the BNBot desktop AI agent — acts on the social platforms you're already signed in to.",
   "icons": {
     "16": "assets/images/icon-16.png",
     "48": "assets/images/icon-48.png",
