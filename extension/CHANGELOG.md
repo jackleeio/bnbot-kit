@@ -3,7 +3,15 @@
 All notable changes to BNBOT will be documented in this file.
 
 
-## [0.12.3] - 2026-05-10
+## [0.12.3] - 2026-05-12
+
+### Removed
+- **`alarms` permission 删了** — v0.12.0 一刀切掉了所有 `chrome.alarms` 驱动的 scheduler，剩下的唯一调用是 logout 时一次 `chrome.alarms.clearAll()` 的 no-op 兜底。删 permission + 一并删那行 cleanup（没人 create 就没东西要 clear）。
+- **`DOWNLOAD_VIDEO` background handler 删了** — `VideoDownloadManager`（往 X 分享菜单注入"下载视频"按钮的代码）在 v0.12.0 被砍掉时漏删了这个对应的 background handler；handler 调 `chrome.downloads.download(...)`，但 `downloads` permission 从来没在 manifest 声明，所以即便有 caller 也会立刻 throw。两条都是 sliver 死代码，一起清。
+- **Permissions 从 5 收到 4**：`storage` / `offscreen` / `tabs` / `debugger`。审核员翻 Permission Justification 时少一条要解释的项。
+- Firefox manifest 的 `permissions` 同步收到 `storage` / `tabs`。
+
+
 
 ### Removed
 - **`host_permissions` 从 5 个收到 2 个，CSP 同步收紧** — 给 Chrome Web Store 审核员的"为什么需要这些 host"提问面减小：

@@ -12,7 +12,6 @@
     "storage",
     "offscreen",
     "tabs",
-    "alarms",
     "debugger"
   ],
   "host_permissions": [

@@ -1265,8 +1265,8 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     } else {
       chrome.runtime.sendMessage({ type: 'OFFSCREEN_WS_DISCONNECT' }).catch(() => {});
     }
-    // Clear all task alarms on logout
-    chrome.alarms.clearAll();
+    // (chrome.alarms.clearAll removed alongside the alarms permission —
+    // v0.12.0 killed every alarm-driver, so there are no alarms to clear.)
     handleLogout()
       .then(() => sendResponse({ success: true }))
       .catch((error) => sendResponse({ error: error.message }));
@@ -1310,22 +1310,12 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   }
 
   // Twitter 视频下载
-  if (request.type === 'DOWNLOAD_VIDEO') {
-    const filename = request.filename || 'twitter-video.mp4';
-    chrome.downloads.download({
-      url: request.url,
-      filename,
-    }, (downloadId: number) => {
-      if (chrome.runtime.lastError) {
-        console.error('[BNBot Background] Download failed:', chrome.runtime.lastError.message);
-        sendResponse({ success: false, error: chrome.runtime.lastError.message });
-      } else {
-        console.log('[BNBot Background] Download started, id:', downloadId);
-        sendResponse({ success: true, downloadId });
-      }
-    });
-    return true;
-  }
+  // DOWNLOAD_VIDEO handler removed — VideoDownloadManager (the tweet-
+  // video share-menu injection that called this) was deleted in
+  // v0.12.0 alongside the abandoned republish flow. The handler had
+  // no remaining caller and chrome.downloads.download required a
+  // permission that was never declared, so any invocation would have
+  // thrown anyway.
 
   // TIKTOK_FETCH / TIKTOK_FETCH_V2 / XIAOHONGSHU_SCRAPE handlers removed —
   // abandoned republish flow.
