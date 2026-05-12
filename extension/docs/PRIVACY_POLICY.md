@@ -12,32 +12,23 @@ two halves are designed to be used together.
 
 ## How BNBot works, in plain terms
 
-The desktop app is where you sign in and tell BNBot what to do. The
-Chrome extension is a thin executor: when the desktop app asks, the
-extension reads pages you are currently viewing or performs an action
-you triggered (post a tweet, send a reply, save a bookmark, and so on)
-in your own browser session.
+The desktop app is where you tell BNBot what to do. The Chrome
+extension is a thin executor: when the desktop app asks, the extension
+reads pages you are currently viewing or performs an action you
+triggered (post a tweet, send a reply, save a bookmark, and so on) in
+your own browser session.
 
-The two halves communicate over a local WebSocket on your own machine
-(127.0.0.1 / localhost). That channel is never exposed to the public
-internet.
+The extension pairs with the BNBot desktop app automatically over a
+local WebSocket on your own machine (127.0.0.1 / localhost). That
+channel is never exposed to the public internet.
+
+The extension acts on social platforms inside the browser session you
+already have — it never asks for your password and never copies your
+cookies.
 
 ## Information We Collect
 
-### 1. Account information (collected by the desktop app)
-
-When you sign in to BNBot from the desktop app, we receive:
-
-- The identifier you signed in with — your BNBot account key (issued
-  by api.bnbot.ai) or, if you chose email-OTP login, your email address
-- Authentication tokens issued by api.bnbot.ai
-
-The extension does not collect a separate identity. It receives the
-same tokens from the desktop app over the local WebSocket described
-above, and stores them in Chrome's secure extension storage so it can
-authenticate against api.bnbot.ai on your behalf.
-
-### 2. Page content you ask BNBot to look at
+### 1. Page content you ask BNBot to look at
 
 When the desktop app asks the extension to look at a page you are
 currently viewing on a supported social platform (currently X / Twitter):
@@ -54,7 +45,7 @@ We do not crawl pages in the background, and we do not record your
 browsing history. The extension only interacts with pages relevant to
 a task you have actively started in the desktop app.
 
-### 3. Actions you trigger
+### 2. Actions you trigger
 
 When you ask the desktop agent to post, reply, like, bookmark, follow,
 or perform any other action, the extension carries out that action in
@@ -62,7 +53,7 @@ your existing browser session using its `debugger` capability (Chrome
 DevTools Protocol). The outcome is sent back to the desktop app so it
 can show you what happened.
 
-### 4. Boost campaign detection
+### 3. Boost campaign detection
 
 The extension can show visual indicators on tweets that have an active
 "Money Vision" boost campaign. To do this it:
@@ -72,14 +63,13 @@ The extension can show visual indicators on tweets that have an active
 - Receives back a list of which IDs are currently boosted
 
 Only tweet IDs are transmitted — no tweet content, no author info,
-no your-account info.
+no information about you.
 
-### 5. Local storage on your device
+### 4. Local storage on your device
 
-The extension stores the following in Chrome's `chrome.storage.local`:
-
-- Your BNBot authentication tokens (relayed from the desktop app)
-- Your in-extension preferences and panel state
+The extension stores your in-extension preferences and panel state in
+Chrome's `chrome.storage.local`. Nothing else lives there that you
+need to manage.
 
 The desktop app keeps its own logs and history on your local disk
 inside its application data directory. The extension does not have
@@ -103,16 +93,15 @@ access to that data.
 
 | Data | Where it lives | Sent to api.bnbot.ai? |
 |------|----------------|-----------------------|
-| Auth tokens | Desktop app and extension's `chrome.storage.local` on your device | Yes — used to authenticate API calls you make |
 | Pages BNBot looks at | Read into the desktop agent's working memory while a task is running | Only if you ask the agent to do something that requires our cloud (e.g. AI inference you signed up for) |
 | Tweet IDs for boost detection | Sent to api.bnbot.ai for lookup | Yes (IDs only) |
 | Preferences / panel state | Local browser only | No |
 
 ## Third-party services
 
-- **api.bnbot.ai** — our own backend. Handles authentication, the
-  boost-campaign lookup, and (when you opt in) cloud-based AI inference
-  for the desktop agent.
+- **api.bnbot.ai** — our own backend. Handles the boost-campaign
+  lookup and (when you opt in) cloud-based AI inference for the
+  desktop agent.
 - **AI providers** — if your plan uses cloud AI, the content you ask
   BNBot to act on is forwarded by the desktop app to AI providers we
   partner with. The Chrome extension itself does not call any
@@ -121,18 +110,12 @@ access to that data.
 ## Data security
 
 - All API traffic to api.bnbot.ai is over HTTPS.
-- Authentication uses tokens issued by api.bnbot.ai; we do not store
-  passwords. If you signed up with email-OTP, no password exists in
-  the first place.
 - Local data uses Chrome's secure storage API.
 - The extension ↔ desktop-app channel is bound to localhost and is
   never exposed to the network.
 
 ## Data retention
 
-- Auth tokens are kept until you log out from the desktop app, at
-  which point they are revoked server-side and cleared from the
-  extension.
 - Preferences are kept until you uninstall the extension.
 - You can remove all extension data at any time by uninstalling the
   extension. To remove desktop data, delete the BNBot app's data
@@ -142,9 +125,7 @@ access to that data.
 
 You have the right to:
 
-- Access the personal information we hold about you — email
-  support@bnbot.ai
-- Request deletion of your account and data — email support@bnbot.ai
+- Request deletion of your data — email support@bnbot.ai
 - Uninstall the extension and the desktop app at any time
 
 ## Children's privacy
