@@ -3,6 +3,15 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.12.5] - 2026-05-16
+
+### Changed
+- **WeChat article scraping no longer needs `mp.weixin.qq.com` host permission**: `fetch_wechat_article` now uses the existing browser/CDP scraper tab instead of a background cross-origin fetch, and no longer depends on an open X content-script tab.
+
+### Removed
+- **Removed `*://mp.weixin.qq.com/*` from host permissions and CSP**. The extension now only requests `*://api.bnbot.ai/*` as an explicit host permission in Chrome.
+
+
 ## [0.12.4] - 2026-05-16
 
 ### Added

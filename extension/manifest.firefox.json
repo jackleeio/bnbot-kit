@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BNBot",
-  "version": "0.12.4",
+  "version": "0.12.5",
   "description": "Control Chrome with BNBot.",
   "icons": {
     "16": "assets/images/icon-16.png",
@@ -14,7 +14,6 @@
   ],
   "host_permissions": [
     "*://api.bnbot.ai/*",
-    "*://mp.weixin.qq.com/*",
     "http://localhost:*/*"
   ],
   "background": {
@@ -47,7 +46,7 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' wss://api.bnbot.ai https://api.bnbot.ai https://mp.weixin.qq.com http://mp.weixin.qq.com ws://localhost:* http://localhost:* blob: data:; img-src 'self' https://abs.twimg.com https://pbs.twimg.com blob: data:; media-src 'self' blob: data:; worker-src 'self';"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' wss://api.bnbot.ai https://api.bnbot.ai ws://localhost:* http://localhost:* blob: data:; img-src 'self' https://abs.twimg.com https://pbs.twimg.com blob: data:; media-src 'self' blob: data:; worker-src 'self';"
   },
   "browser_specific_settings": {
     "gecko": {

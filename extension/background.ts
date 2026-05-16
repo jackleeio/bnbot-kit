@@ -1301,14 +1301,6 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     return true;
   }
 
-  // 微信公众号文章抓取
-  if (request.type === 'WECHAT_SCRAPE') {
-    scrapeWechatUrl(request.url)
-      .then(sendResponse)
-      .catch((error) => sendResponse({ success: false, error: error.message }));
-    return true;
-  }
-
   // Twitter 视频下载
   // DOWNLOAD_VIDEO handler removed — VideoDownloadManager (the tweet-
   // video share-menu injection that called this) was deleted in
@@ -1530,6 +1522,7 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   SCRAPER_SEARCH_36KR: (m) => search36Kr(m.query, m.limit),
   SCRAPER_FETCH_PRODUCTHUNT: (m) => fetchProductHuntHot(m.limit),
   SCRAPER_FETCH_WEIXIN: (m) => fetchWeixinArticle(m.url),
+  fetch_wechat_article: (m) => fetchWeixinArticle(m.url),
   SCRAPER_FETCH_YAHOO_FINANCE: (m) => fetchYahooFinanceQuote(m.symbol),
   SCRAPER_FETCH_REDDIT_HOT: (m) => fetchRedditHot(m.limit),
   SCRAPER_FETCH_BILIBILI_HOT: (m) => fetchBilibiliHot(m.limit),
@@ -1748,33 +1741,3 @@ async function handleFreshTokenRequest(): Promise<string | null> {
 // Every write goes through the CDP debugger engine now, so no extension
 // code fetches xhscdn / mmbiz.qpic.cn / qpic.cn any more — and those
 // host_permissions came off the manifest in the same change.
-
-// 抓取微信公众号文章 HTML
-async function scrapeWechatUrl(url: string): Promise<{ success: boolean; data?: string; error?: string }> {
-  try {
-    console.log('[BNBot Background] 抓取微信文章:', url);
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-      },
-    });
-
-    if (!response.ok) {
-      return { success: false, error: `HTTP ${response.status}` };
-    }
-
-    const html = await response.text();
-    console.log('[BNBot Background] 微信文章抓取成功, 长度:', html.length);
-
-    return { success: true, data: html };
-  } catch (error) {
-    console.error('[BNBot Background] 微信文章抓取失败:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
-
-

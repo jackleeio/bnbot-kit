@@ -4,9 +4,23 @@
  */
 
 import { ActionHandler } from '../../types/action';
-import { scrapeWechatArticleForBackend, isValidWechatUrl } from '../wechatScraperService';
+import { fetchWeixinArticle } from '../scrapers/browser/weixin';
 
 const SCRAPE_TIMEOUT = 30000;
+
+function isValidWechatUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    const normalized = url.startsWith('mp.weixin.qq.com/')
+      ? `https://${url}`
+      : url.startsWith('//mp.weixin.qq.com/')
+        ? `https:${url}`
+        : url;
+    return new URL(normalized).hostname.toLowerCase() === 'mp.weixin.qq.com';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * 抓取微信公众号文章
@@ -41,20 +55,31 @@ export const fetchWechatArticleHandler: ActionHandler = async (params, callbacks
 
   try {
     // 带超时的抓取逻辑
-    const scrapePromise = scrapeWechatArticleForBackend(url);
+    const scrapePromise = fetchWeixinArticle(url);
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('抓取超时（30秒）')), SCRAPE_TIMEOUT);
     });
 
-    const articleData = await Promise.race([scrapePromise, timeoutPromise]);
+    const article = await Promise.race([scrapePromise, timeoutPromise]);
 
-    if (!articleData) {
+    if (!article) {
       console.error('[WechatActions] 抓取返回空数据');
       return {
         success: false,
         error: '无法获取文章内容'
       };
     }
+
+    const articleData = {
+      title: article.title,
+      author: article.author,
+      account_name: article.author,
+      publish_time: article.publishTime,
+      content: article.content,
+      cover_image: article.coverImage || article.images[0],
+      images: article.images,
+      original_url: article.sourceUrl,
+    };
 
     console.log('[WechatActions] 抓取成功:', articleData.title);
     callbacks.onProgress?.(context, `已抓取: ${articleData.title}`);

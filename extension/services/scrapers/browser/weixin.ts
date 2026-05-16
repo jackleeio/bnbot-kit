@@ -12,6 +12,8 @@ export interface WeixinArticleResult {
   author: string;
   publishTime: string;
   content: string;
+  images: string[];
+  coverImage: string;
   sourceUrl: string;
 }
 
@@ -70,20 +72,63 @@ export async function fetchWeixinArticle(url: string): Promise<WeixinArticleResu
           }
         }
 
-        // Content: #js_content
+        const normalizeImageUrl = (raw: string | null): string => {
+          if (!raw) return '';
+          const decoded = raw.replace(/&amp;/g, '&').trim();
+          if (!decoded || !decoded.startsWith('http')) return '';
+          return decoded;
+        };
+
+        // Content: #js_content. Preserve image positions as Markdown
+        // placeholders so downstream rewrite flows don't silently drop
+        // visual context.
         const contentEl = document.querySelector('#js_content');
         let content = '';
+        const images: string[] = [];
         if (contentEl) {
           // Remove noise elements
           contentEl.querySelectorAll('script, style, .qr_code_pc, .reward_area').forEach(el => el.remove());
-          // Get text content (strip HTML but preserve newlines for paragraphs)
-          const blocks: string[] = [];
-          contentEl.querySelectorAll('p, section, h1, h2, h3, h4, h5, h6, li, blockquote').forEach(el => {
-            const text = (el as HTMLElement).innerText?.trim();
-            if (text) blocks.push(text);
-          });
-          content = blocks.length > 0 ? blocks.join('\n\n') : (contentEl as HTMLElement).innerText?.trim() || '';
+          const chunks: string[] = [];
+          const seenImages = new Set<string>();
+          const blockTags = new Set(['P', 'DIV', 'SECTION', 'BR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOCKQUOTE']);
+
+          const visit = (node: Node) => {
+            if (node.nodeType === Node.TEXT_NODE) {
+              const text = node.textContent?.trim();
+              if (text) chunks.push(text);
+              return;
+            }
+            if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+            const el = node as Element;
+            if (el.tagName === 'IMG') {
+              const src = normalizeImageUrl(el.getAttribute('data-src') || el.getAttribute('src'));
+              if (src && (src.includes('mmbiz.qpic.cn') || src.includes('mmbiz.qlogo.cn'))) {
+                if (!seenImages.has(src)) {
+                  seenImages.add(src);
+                  images.push(src);
+                  chunks.push(`\n![图片${images.length}](${src})\n`);
+                }
+              }
+              return;
+            }
+
+            if (blockTags.has(el.tagName)) chunks.push('\n');
+            el.childNodes.forEach(visit);
+            if (blockTags.has(el.tagName)) chunks.push('\n');
+          };
+
+          contentEl.childNodes.forEach(visit);
+          content = chunks.join('')
+            .replace(/[ \t]+\n/g, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
         }
+
+        let coverImage = '';
+        const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
+        const twitterImage = document.querySelector('meta[name="twitter:image"]')?.getAttribute('content');
+        coverImage = normalizeImageUrl(ogImage || twitterImage);
 
         if (!title && !content) {
           const url = window.location.href;
@@ -92,7 +137,7 @@ export async function fetchWeixinArticle(url: string): Promise<WeixinArticleResu
           }
         }
 
-        return { title, author, publishTime, content, sourceUrl: srcUrl };
+        return { title, author, publishTime, content, images, coverImage, sourceUrl: srcUrl };
       } catch (e: any) {
         return { error: e.message || 'WeChat article scraper failed' };
       }
