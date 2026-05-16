@@ -33,15 +33,20 @@ let globalEventHandlerInstalled = false
 export function registerEventListener(
   targetId: string,
   listener: DebuggerEventListener,
+  tabId?: number,
 ): () => void {
   ensureGlobalEventHandler()
-  if (!eventListeners.has(targetId)) eventListeners.set(targetId, new Set())
-  eventListeners.get(targetId)!.add(listener)
+  const keys = [targetId]
+  if (tabId != null) keys.push(`tab:${tabId}`)
+  for (const key of keys) {
+    if (!eventListeners.has(key)) eventListeners.set(key, new Set())
+    eventListeners.get(key)!.add(listener)
+  }
   let unregistered = false
   return () => {
     if (unregistered) return
     unregistered = true
-    eventListeners.get(targetId)?.delete(listener)
+    for (const key of keys) eventListeners.get(key)?.delete(listener)
   }
 }
 
@@ -52,10 +57,15 @@ function ensureGlobalEventHandler(): void {
   if (globalEventHandlerInstalled) return
   globalEventHandlerInstalled = true
   chrome.debugger.onEvent.addListener((source, method, params) => {
-    const key = source.targetId ?? `tab:${source.tabId}`
-    const set = eventListeners.get(key)
-    if (!set) return
-    for (const listener of set) {
+    const keys = [
+      source.targetId,
+      source.tabId != null ? `tab:${source.tabId}` : undefined,
+    ].filter((key): key is string => !!key)
+    const listeners = new Set<DebuggerEventListener>()
+    for (const key of keys) {
+      for (const listener of eventListeners.get(key) ?? []) listeners.add(listener)
+    }
+    for (const listener of listeners) {
       try {
         listener(method, params)
       } catch {
@@ -77,10 +87,10 @@ export interface AttachedTarget {
 const viewportApplied = new Set<string>()
 
 export async function prepareTab(url: string): Promise<AttachedTarget> {
-  const tabId = await getTab(url)
+  let tabId = await getTab(url, { navigateExisting: false })
   // If the pooled tab already exists on a different URL, navigate it.
-  const current = await chrome.tabs.get(tabId).catch(() => null)
-  const needsNav = !current?.url || !current.url.startsWith(url)
+  let current = await chrome.tabs.get(tabId).catch(() => null)
+  let needsNav = !current?.url || !current.url.startsWith(url)
   const targetId = await ensureDebuggerAttached(tabId, [
     'Page',
     'Runtime',
@@ -102,16 +112,178 @@ export async function prepareTab(url: string): Promise<AttachedTarget> {
     mobile: false,
   }).catch(() => {})
   viewportApplied.add(targetId)
-  if (needsNav) {
-    await chrome.tabs.update(tabId, { url })
-    await waitForStatusComplete(tabId, 15_000)
-  } else if (firstApply) {
-    // URL already right but we just applied viewport override — React
-    // has cached mobile layout, force a reload so it re-mounts at 1280.
-    await debuggerSend(targetId, 'Page.reload', { ignoreCache: false }).catch(() => {})
-    await waitForStatusComplete(tabId, 15_000)
+  if (needsNav || firstApply) {
+    // Auto-handle any JavaScript dialog around this navigation. The
+    // common case is the beforeunload prompt ("Leave site? Changes
+    // you made may not be saved.") that X raises when the pool
+    // window is on /compose/post with unsaved composer text. With
+    // CDP attached, that prompt is routed through CDP and BLOCKS
+    // navigation indefinitely until `Page.handleJavaScriptDialog`
+    // is called. Two ways a dialog can be live:
+    //
+    //   1. It opens *during* our Page.navigate — covered by
+    //      the event listener below (with Page.enable so events
+    //      actually fire).
+    //   2. It was *already open* before this prepareTab call —
+    //      e.g. a previous run left a stale draft on /compose/post,
+    //      or the extension was reloaded mid-session and the new
+    //      debugger session attaches to a tab that already has a
+    //      blocking dialog up. The `javascriptDialogOpening` event
+    //      does NOT replay on re-attach, so the listener alone is
+    //      not enough. We proactively call handleJavaScriptDialog
+    //      first; if no dialog is up, CDP returns an error which
+    //      we silently swallow.
+    await debuggerSend(targetId, 'Page.enable', {}).catch(() => {})
+    await debuggerSend(targetId, 'Page.handleJavaScriptDialog', {
+      accept: true,
+    }).catch(() => {})
+
+    // Register before touching the composer. On x.com/compose/post, even
+    // clicking the modal's close button can route away from the compose URL
+    // and raise the native beforeunload prompt before the explicit nav below.
+    const navCleanup = registerEventListener(targetId, (method, _params) => {
+      if (method !== 'Page.javascriptDialogOpening') return
+      debuggerSend(targetId, 'Page.handleJavaScriptDialog', {
+        accept: true,
+      }).catch(() => {})
+    }, tabId)
+
+    const isXHost =
+      !!current?.url && (current.url.includes('x.com') || current.url.includes('twitter.com'))
+
+    try {
+      if (isXHost) {
+        await debuggerSend(targetId, 'Runtime.evaluate', {
+          expression: `(function(){
+            try { window.onbeforeunload = null; } catch (_) {}
+            try {
+              if (!window.__bnbotBeforeUnloadSuppressed) {
+                Object.defineProperty(window, '__bnbotBeforeUnloadSuppressed', {
+                  value: true,
+                  configurable: true
+                });
+                window.addEventListener('beforeunload', function(event) {
+                  event.stopImmediatePropagation();
+                }, { capture: true });
+              }
+            } catch (_) {}
+          })()`,
+          awaitPromise: false,
+          returnByValue: true,
+        }).catch(() => {})
+      }
+
+      // /compose/post is X's modal route. Navigating or reloading from
+      // that URL with unsaved text raises Chrome's native beforeunload
+      // prompt, so close the composer through X's own UI first.
+      if (needsNav && isXComposePostUrl(current?.url)) {
+        await closeXComposeModalBeforeNavigation(targetId)
+        current = await chrome.tabs.get(tabId).catch(() => null)
+        needsNav = !current?.url || !current.url.startsWith(url)
+      }
+
+      if (needsNav) {
+        await debuggerSend(targetId, 'Page.navigate', { url })
+      } else {
+        // URL already right but we just applied viewport override — React
+        // has cached mobile layout, force a reload so it re-mounts at 1280.
+        await debuggerSend(targetId, 'Page.reload', { ignoreCache: false }).catch(() => {})
+      }
+      await waitForStatusComplete(tabId, 15_000)
+    } finally {
+      navCleanup()
+    }
   }
   return { tabId, targetId }
+}
+
+function isXComposePostUrl(currentUrl: string | undefined): boolean {
+  if (!currentUrl) return false
+  try {
+    const parsed = new URL(currentUrl)
+    if (parsed.hostname !== 'x.com' && parsed.hostname !== 'twitter.com') return false
+    return parsed.pathname.replace(/\/$/, '') === '/compose/post'
+  } catch {
+    return currentUrl.includes('x.com/compose/post') || currentUrl.includes('twitter.com/compose/post')
+  }
+}
+
+async function closeXComposeModalBeforeNavigation(targetId: string): Promise<void> {
+  const result = await debuggerSend<{
+    result?: {
+      value?: { closed: boolean; href: string; reason?: string; dialogText?: string }
+    }
+  }>(targetId, 'Runtime.evaluate', {
+    expression: `(async function(){
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const textOf = (el) => String(el?.innerText || el?.textContent || '').trim();
+      const visible = (el) => {
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+      };
+      const isComposeRoute = () => location.pathname.replace(/\\/$/, '') === '/compose/post';
+      const clickFirst = (selectors) => {
+        for (const selector of selectors) {
+          for (const el of document.querySelectorAll(selector)) {
+            if (!visible(el)) continue;
+            el.scrollIntoView({block:'center'});
+            el.click();
+            return { clicked: true, selector, text: textOf(el) };
+          }
+        }
+        return { clicked: false };
+      };
+      const clickConfirmation = () => {
+        const sheet = document.querySelector('[data-testid="confirmationSheetDialog"]')
+          || Array.from(document.querySelectorAll('[role="dialog"]')).find((el) =>
+            /draft|草稿|save|保存|discard|放弃|丢弃|舍弃/i.test(textOf(el))
+          );
+        if (!sheet) return { clicked: false, reason: 'no-sheet' };
+        const buttons = Array.from(sheet.querySelectorAll('[role="button"], button'));
+        const byText = buttons.find((el) =>
+          /discard|放弃|丢弃|舍弃|删除/i.test(textOf(el))
+        );
+        const byTestId = sheet.querySelector('[data-testid="confirmationSheetCancel"]')
+          || sheet.querySelector('[data-testid="confirmationSheetConfirm"]');
+        const button = byText || byTestId || buttons[buttons.length - 1];
+        if (!button || !visible(button)) {
+          return { clicked: false, reason: 'no-visible-button', dialogText: textOf(sheet).slice(0, 300) };
+        }
+        button.click();
+        return { clicked: true, text: textOf(button), dialogText: textOf(sheet).slice(0, 300) };
+      };
+
+      if (!isComposeRoute()) {
+        return { closed: true, href: location.href, reason: 'not-compose-route' };
+      }
+
+      for (let i = 0; i < 4; i++) {
+        clickFirst([
+          '[data-testid="app-bar-close"]',
+          '[role="dialog"] [aria-label="Close"]',
+          '[role="dialog"] [aria-label="关闭"]'
+        ]);
+        await sleep(500);
+        clickConfirmation();
+        await sleep(700);
+        if (!isComposeRoute()) {
+          return { closed: true, href: location.href, reason: 'route-left-compose' };
+        }
+      }
+
+      const dialogText = textOf(document.querySelector('[role="dialog"]')).slice(0, 300);
+      return { closed: !isComposeRoute(), href: location.href, reason: 'still-compose-route', dialogText };
+    })()`,
+    awaitPromise: true,
+    returnByValue: true,
+  })
+  const value = result.result?.value
+  if (value?.closed) return
+  throw new Error(
+    `failed to close X compose modal before navigation: ${value?.reason ?? 'unknown'} ${value?.href ?? ''} ${value?.dialogText ?? ''}`.trim(),
+  )
 }
 
 /** Temporarily un-minimize + focus the automation window so Chrome
@@ -132,6 +304,7 @@ export async function bringTabToFront(tabId: number): Promise<() => Promise<void
       state: 'normal',
       focused: false,
     })
+    await chrome.tabs.update(tabId, { active: true })
   } catch {
     // Best-effort.
   }
@@ -307,9 +480,73 @@ export async function focusAndType(
   selector: string,
   text: string,
 ): Promise<void> {
-  await focusSelector(targetId, selector)
+  await trustedClickSelector(targetId, selector).catch(async () => {
+    await focusSelector(targetId, selector)
+  })
   await sleep(80)
   await insertText(targetId, text)
+
+  if (await elementTextIncludes(targetId, selector, text, 1_500)) return
+
+  await evalExpr<boolean>(
+    targetId,
+    `(function(){
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) throw new Error('not found: '+${JSON.stringify(selector)});
+      el.scrollIntoView({block:'center'});
+      el.focus();
+      try {
+        const dt = new DataTransfer();
+        dt.setData('text/plain', ${JSON.stringify(text)});
+        el.dispatchEvent(new ClipboardEvent('paste', {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: dt
+        }));
+      } catch (_) {}
+      if (!((el.innerText || el.textContent || el.value || '').includes(${JSON.stringify(text)}))) {
+        document.execCommand('insertText', false, ${JSON.stringify(text)});
+      }
+      el.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: ${JSON.stringify(text)}
+      }));
+      return true;
+    })()`,
+  )
+
+  if (await elementTextIncludes(targetId, selector, text, 2_500)) return
+  const found = await readElementText(targetId, selector).catch(() => '')
+  throw new Error(
+    `text insertion did not stick for ${selector}; found=${JSON.stringify(found.slice(0, 80))}`,
+  )
+}
+
+async function elementTextIncludes(
+  targetId: string,
+  selector: string,
+  text: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const current = await readElementText(targetId, selector).catch(() => '')
+    if (current.includes(text)) return true
+    await sleep(150)
+  }
+  return false
+}
+
+async function readElementText(targetId: string, selector: string): Promise<string> {
+  return await evalExpr<string>(
+    targetId,
+    `(function(){
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return '';
+      return String(el.innerText || el.textContent || el.value || '');
+    })()`,
+  )
 }
 
 // ============ File upload ============

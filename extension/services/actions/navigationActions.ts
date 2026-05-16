@@ -378,6 +378,22 @@ export const getExtensionStatusHandler: ActionHandler = async (_params, callback
 };
 
 /**
+ * 读取当前登录的 X 账号（DOM 引擎，content-script 路径）。
+ *
+ * Primarily a diagnostic helper for the multi-account flow: the CLI's
+ * `ensureAccount` doesn't actually call this — it goes straight to
+ * `switch_account`, which short-circuits when `current === target` and
+ * therefore covers both verify and switch in one round-trip. This
+ * handler is exposed for human / agent introspection via
+ * `bnbot get-current-username`.
+ */
+export const getCurrentUsernameHandler: ActionHandler = async (_params, callbacks) => {
+  callbacks.onProgress?.({} as any, '读取当前登录账号...');
+  const username = getCurrentUsername();
+  return { success: true, data: { username } };
+};
+
+/**
  * 切换 Twitter 账号
  * 1. 点击 SideNav_AccountSwitcher_Button 打开账号菜单
  * 2. 在菜单中找到目标用户名对应的 UserCell 按钮并点击
@@ -461,5 +477,6 @@ export const navigationHandlers: Record<string, ActionHandler> = {
   navigate_to_following: navigateToFollowingHandler,
   get_current_url: getCurrentUrlHandler,
   get_extension_status: getExtensionStatusHandler,
+  get_current_username: getCurrentUsernameHandler,
   switch_account: switchAccountHandler,
 };

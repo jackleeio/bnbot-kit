@@ -695,6 +695,16 @@ export const SWITCH_ACCOUNT: ActionDefinition = {
   timeout: 10000
 };
 
+export const GET_CURRENT_USERNAME: ActionDefinition = {
+  id: 'get_current_username',
+  name: 'Get Current Username',
+  nameKey: 'actions.getCurrentUsername',
+  category: 'navigation',
+  trigger: 'both',
+  parameters: [],
+  timeout: 5000
+};
+
 // ============================================
 // 复合 Actions
 // ============================================
@@ -878,6 +888,7 @@ class ActionRegistry {
       GET_CURRENT_URL,
       GET_EXTENSION_STATUS,
       SWITCH_ACCOUNT,
+      GET_CURRENT_USERNAME,
       // 复合类
       BOOKMARK_SUMMARY,
       REPLY_WITH_IMAGE,

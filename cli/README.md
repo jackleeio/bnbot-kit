@@ -1,6 +1,6 @@
 # @bnbot/cli
 
-**BNBot (Brand & Bot)** — AI-powered personal branding toolkit for X. Discover trends from 30+ platforms, create content with AI, and automate your growth.
+**BNBot** — AI Growth Agent for social platforms. Find trends, create content, and automate growth with AI agents.
 
 ## Quick Start
 

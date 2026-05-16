@@ -21,6 +21,10 @@ import {
   replyViaDebugger,
   retweetViaDebugger,
 } from './debuggerWriteActions'
+import {
+  getCurrentUsernameViaDebugger,
+  switchAccountViaDebugger,
+} from './debuggerAccountActions'
 import { postXhsNote, XhsEmojiSlot } from './xhsWriteActions'
 import { getXhsNoteStats, getXhsAccountStats } from './xhsStatsActions'
 
@@ -102,6 +106,17 @@ export const debuggerWriteHandlers: Record<string, (payload: Payload) => Promise
     deleteViaDebugger({
       tweetUrl: str(payload, 'tweetUrl'),
       visible: bool(payload, 'visible'),
+    }),
+
+  // Account verify + switch (CDP path — drives the pool window, not
+  // the user's active x.com tab). DOM-engine twin lives in
+  // actions/navigationActions.ts::switchAccountHandler. See
+  // debuggerAccountActions.ts for the mechanic.
+  get_current_username_debugger: async () => getCurrentUsernameViaDebugger(),
+
+  switch_account_debugger: async (payload) =>
+    switchAccountViaDebugger({
+      username: str(payload, 'username'),
     }),
 
   // Ad-hoc JS probe on the pooled x.com tab — navigates if needed, then

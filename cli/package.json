@@ -1,7 +1,7 @@
 {
   "name": "@bnbot/cli",
-  "version": "0.3.41",
-  "description": "AI-powered personal branding toolkit for X. Discover trends, create content, automate growth.",
+  "version": "0.3.42",
+  "description": "AI Growth Agent for social platforms. Find trends, create content, and automate growth.",
   "main": "dist/index.js",
   "bin": {
     "bnbot": "dist/index.js",

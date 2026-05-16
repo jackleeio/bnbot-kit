@@ -179,8 +179,32 @@ async function getTabHost(tabId: number): Promise<string> {
   }
 }
 
+/**
+ * Compare two URLs by host + pathname + sorted search params, ignoring
+ * hash and param ordering. Used by getTab() to decide whether a pooled
+ * tab is already on the right page or needs a fresh navigation.
+ */
+function urlsEquivalent(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  try {
+    const ua = new URL(a);
+    const ub = new URL(b);
+    if (ua.host !== ub.host) return false;
+    if (ua.pathname.replace(/\/$/, '') !== ub.pathname.replace(/\/$/, '')) return false;
+    const sa = [...ua.searchParams.entries()].sort().map(([k, v]) => `${k}=${v}`).join('&');
+    const sb = [...ub.searchParams.entries()].sort().map(([k, v]) => `${k}=${v}`).join('&');
+    return sa === sb;
+  } catch {
+    return a === b;
+  }
+}
+
 /** Get or create a minimized popup window for a given domain, reusing existing ones. */
-export async function getTab(url: string): Promise<number> {
+export async function getTab(
+  url: string,
+  options: { navigateExisting?: boolean } = {},
+): Promise<number> {
+  const navigateExisting = options.navigateExisting !== false;
   const expectedHost = new URL(url).hostname;
   const existing = tabPool.get(expectedHost);
 
@@ -192,6 +216,17 @@ export async function getTab(url: string): Promise<number> {
       const tab = await chrome.tabs.get(existing.tabId);
       const curHost = (() => { try { return new URL(tab.url || '').hostname; } catch { return ''; } })();
       if (curHost === expectedHost && tab.url?.startsWith('https://')) {
+        // Same host, but the requested URL (e.g. a different search query)
+        // may differ from what the tab is currently showing. SPAs like
+        // 小红书 won't reload on identical-host re-entry, so without an
+        // explicit `tabs.update` every subsequent search would reuse the
+        // first query's results. Compare path+search and re-navigate when
+        // they drift; identical URLs short-circuit so a single search
+        // query doesn't keep flapping its own tab.
+        if (navigateExisting && !urlsEquivalent(tab.url, url)) {
+          await chrome.tabs.update(existing.tabId, { url });
+          await waitForLoad(existing.tabId, expectedHost);
+        }
         return existing.tabId;
       }
       // URL drifted (tab hijacked or closed) — discard and rebuild from scratch

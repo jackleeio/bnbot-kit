@@ -3,6 +3,17 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.12.4] - 2026-05-16
+
+### Added
+- **X multi-account guard**: `bnbot x` 写入和抓取命令支持 `--as <handle>`，在 `~/.bnbot/settings.json` 启用 `multiAccount` 后会先校验并自动切换到目标 X 账号。
+- **Account diagnostics**: 新增 `bnbot x whoami` / `bnbot x switch <handle>`，并补齐 DOM 与 CDP 两条账号读取/切换路径。
+
+### Fixed
+- **修复 `/compose/post` 草稿 modal 导致切号卡死**：CDP pool tab 在 X composer 打开时切换账号会触发 Chrome 原生 `Leave site?` / `Reload site?` beforeunload 弹窗。现在导航或切号前会先通过 X UI 丢弃并关闭 composer，再继续后续动作，避免 240s timeout。
+- **修复 CDP draft 假成功**：`post --draft` 现在使用真实点击聚焦 composer，并校验文本确实写入；如果文本没有进入编辑器会直接失败，不再返回成功。
+
+
 ## [0.12.3] - 2026-05-12
 
 ### Removed

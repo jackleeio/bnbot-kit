@@ -6,10 +6,9 @@
  */
 
 import { runCliAction } from '../cli.js';
+import { ensureAccount, type WriteEngine } from '../accountGuard.js';
 import { resolveMediaListAsync, resolveMediaListAsPaths } from '../tools/mediaUtils.js';
 import { getXQueryIds } from '../fa0311.js';
-
-type WriteEngine = 'dom' | 'debugger';
 
 /**
  * Pick the write-path engine. Default switched debugger → dom only when
@@ -69,9 +68,10 @@ async function resolveMedia(
 
 // ── Tweet / Post ─────────────────────────────────────────────
 
-export async function postCommand(text: string, options: { media?: string | string[]; draft?: boolean; engine?: string; visible?: boolean }): Promise<void> {
+export async function postCommand(text: string, options: { media?: string | string[]; draft?: boolean; engine?: string; visible?: boolean; as?: string }): Promise<void> {
   const isDraft = options.draft || false;
   const engine = normEngine(options.engine, { draft: isDraft });
+  await ensureAccount({ expected: options.as, engine, port: getPort() });
   const preview = text.slice(0, 80) + (text.length > 80 ? '...' : '');
   console.error(isDraft ? `Drafting: "${preview}"` : `Posting: "${preview}"` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
 
@@ -119,7 +119,7 @@ export async function closeCommand(options: { save?: boolean }): Promise<void> {
   return runCliAction('close_composer', { save: isSave }, getPort());
 }
 
-export async function threadCommand(tweetsJson: string, options: { engine?: string; visible?: boolean } = {}): Promise<void> {
+export async function threadCommand(tweetsJson: string, options: { engine?: string; visible?: boolean; as?: string } = {}): Promise<void> {
   let tweets: unknown;
   try {
     tweets = JSON.parse(tweetsJson);
@@ -127,6 +127,7 @@ export async function threadCommand(tweetsJson: string, options: { engine?: stri
     fail('Invalid JSON for thread tweets. Expected: \'[{"text":"..."},{"text":"..."}]\'');
   }
   const engine = normEngine(options.engine);
+  await ensureAccount({ expected: options.as, engine, port: getPort() });
   console.error('Posting thread...' + (engine === 'debugger' ? ' [engine=debugger]' : ''));
   if (engine === 'debugger') {
     if (!Array.isArray(tweets) || tweets.length === 0) {
@@ -146,8 +147,9 @@ export async function threadCommand(tweetsJson: string, options: { engine?: stri
   return runCliAction('post_thread', { tweets }, getPort());
 }
 
-export async function replyCommand(url: string, text: string, options: { media?: string | string[]; engine?: string; visible?: boolean }): Promise<void> {
+export async function replyCommand(url: string, text: string, options: { media?: string | string[]; engine?: string; visible?: boolean; as?: string }): Promise<void> {
   const engine = normEngine(options.engine);
+  await ensureAccount({ expected: options.as, engine, port: getPort() });
   console.error(`Replying to: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
 
   if (engine === 'debugger') {
@@ -162,8 +164,9 @@ export async function replyCommand(url: string, text: string, options: { media?:
   return runCliAction('submit_reply', params, getPort());
 }
 
-export async function quoteCommand(url: string, text: string, options?: { media?: string | string[]; engine?: string; visible?: boolean }): Promise<void> {
+export async function quoteCommand(url: string, text: string, options?: { media?: string | string[]; engine?: string; visible?: boolean; as?: string }): Promise<void> {
   const engine = normEngine(options?.engine);
+  await ensureAccount({ expected: options?.as, engine, port: getPort() });
   console.error(`Quoting: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
   if (engine === 'debugger') {
     const sources = toSourceList(options?.media);
@@ -175,8 +178,9 @@ export async function quoteCommand(url: string, text: string, options?: { media?
 
 // ── Engagement ───────────────────────────────────────────────
 
-export async function likeCommand(url: string, options?: { engine?: string; visible?: boolean }): Promise<void> {
+export async function likeCommand(url: string, options?: { engine?: string; visible?: boolean; as?: string }): Promise<void> {
   const engine = normEngine(options?.engine);
+  await ensureAccount({ expected: options?.as, engine, port: getPort() });
   console.error(`Liking: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
   if (engine === 'debugger') {
     return runCliAction('like_tweet_debugger', { tweetUrl: url, visible: !!options?.visible }, getPort());
@@ -184,8 +188,9 @@ export async function likeCommand(url: string, options?: { engine?: string; visi
   return runCliAction('like_tweet', { tweetUrl: url }, getPort());
 }
 
-export async function unlikeCommand(url: string, options?: { engine?: string; visible?: boolean }): Promise<void> {
+export async function unlikeCommand(url: string, options?: { engine?: string; visible?: boolean; as?: string }): Promise<void> {
   const engine = normEngine(options?.engine);
+  await ensureAccount({ expected: options?.as, engine, port: getPort() });
   console.error(`Unliking: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
   if (engine === 'debugger') {
     return runCliAction('unlike_tweet_debugger', { tweetUrl: url, visible: !!options?.visible }, getPort());
@@ -193,8 +198,9 @@ export async function unlikeCommand(url: string, options?: { engine?: string; vi
   return runCliAction('unlike_tweet', { tweetUrl: url }, getPort());
 }
 
-export async function retweetCommand(url: string, options?: { engine?: string; visible?: boolean }): Promise<void> {
+export async function retweetCommand(url: string, options?: { engine?: string; visible?: boolean; as?: string }): Promise<void> {
   const engine = normEngine(options?.engine);
+  await ensureAccount({ expected: options?.as, engine, port: getPort() });
   console.error(`Retweeting: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
   if (engine === 'debugger') {
     return runCliAction('retweet_debugger', { tweetUrl: url, visible: !!options?.visible }, getPort());
@@ -202,8 +208,9 @@ export async function retweetCommand(url: string, options?: { engine?: string; v
   return runCliAction('retweet', { tweetUrl: url }, getPort());
 }
 
-export async function unretweetCommand(url: string, options?: { engine?: string; visible?: boolean }): Promise<void> {
+export async function unretweetCommand(url: string, options?: { engine?: string; visible?: boolean; as?: string }): Promise<void> {
   const engine = normEngine(options?.engine);
+  await ensureAccount({ expected: options?.as, engine, port: getPort() });
   console.error(`Unretweeting: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
   if (engine === 'debugger') {
     return runCliAction('unretweet_debugger', { tweetUrl: url, visible: !!options?.visible }, getPort());
@@ -211,18 +218,25 @@ export async function unretweetCommand(url: string, options?: { engine?: string;
   return runCliAction('unretweet', { tweetUrl: url }, getPort());
 }
 
-export async function followCommand(username: string): Promise<void> {
+export async function followCommand(username: string, options?: { as?: string }): Promise<void> {
+  // follow / unfollow have no engine flag — they go through the DOM path
+  // (content-script GraphQL). Account guard still applies because
+  // "following someone from the wrong brand" is exactly the cross-account
+  // bug this whole feature exists to prevent.
+  await ensureAccount({ expected: options?.as, engine: 'dom', port: getPort() });
   console.error(`Following: @${username}`);
   return runCliAction('follow_user', { username }, getPort());
 }
 
-export async function unfollowCommand(username: string): Promise<void> {
+export async function unfollowCommand(username: string, options?: { as?: string }): Promise<void> {
+  await ensureAccount({ expected: options?.as, engine: 'dom', port: getPort() });
   console.error(`Unfollowing: @${username}`);
   return runCliAction('unfollow_user', { username }, getPort());
 }
 
-export async function deleteCommand(url: string, options: { engine?: string; visible?: boolean } = {}): Promise<void> {
+export async function deleteCommand(url: string, options: { engine?: string; visible?: boolean; as?: string } = {}): Promise<void> {
   const engine = normEngine(options.engine);
+  await ensureAccount({ expected: options.as, engine, port: getPort() });
   console.error(`Deleting: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
   if (engine === 'debugger') {
     return runCliAction('delete_tweet_debugger', { tweetUrl: url, visible: !!options.visible }, getPort());
@@ -230,19 +244,52 @@ export async function deleteCommand(url: string, options: { engine?: string; vis
   return runCliAction('delete_tweet', { tweetUrl: url }, getPort());
 }
 
-export async function bookmarkCommand(url: string): Promise<void> {
+export async function bookmarkCommand(url: string, options?: { as?: string }): Promise<void> {
+  await ensureAccount({ expected: options?.as, engine: 'dom', port: getPort() });
   console.error(`Bookmarking: ${url}`);
   return runCliAction('bookmark_tweet', { tweetUrl: url }, getPort());
 }
 
-export async function unbookmarkCommand(url: string): Promise<void> {
+export async function unbookmarkCommand(url: string, options?: { as?: string }): Promise<void> {
+  await ensureAccount({ expected: options?.as, engine: 'dom', port: getPort() });
   console.error(`Unbookmarking: ${url}`);
   return runCliAction('unbookmark_tweet', { tweetUrl: url }, getPort());
 }
 
+// ── Account ────────────────────────────────────────────────
+
+/**
+ * `bnbot x whoami` — print the currently active X handle as JSON.
+ * Useful for sanity-checking the pool window state before kicking off
+ * a longer agent run.
+ */
+export async function whoamiCommand(options: { engine?: string } = {}): Promise<void> {
+  const engine: WriteEngine = options.engine === 'dom' ? 'dom' : 'debugger';
+  const action = engine === 'debugger' ? 'get_current_username_debugger' : 'get_current_username';
+  return runCliAction(action, {}, getPort());
+}
+
+/**
+ * `bnbot x switch <handle>` — explicitly switch the pool window's
+ * active X account. The same logic ensureAccount uses internally,
+ * exposed as a top-level verb for setup/debugging.
+ */
+export async function switchAccountCommand(username: string, options: { engine?: string } = {}): Promise<void> {
+  const engine: WriteEngine = options.engine === 'dom' ? 'dom' : 'debugger';
+  const action = engine === 'debugger' ? 'switch_account_debugger' : 'switch_account';
+  return runCliAction(action, { username }, getPort());
+}
+
 // ── Scrape ───────────────────────────────────────────────────
 
-export async function scrapeTimelineCommand(options: { limit?: string; scrollAttempts?: string; type?: string }): Promise<void> {
+export async function scrapeTimelineCommand(options: { limit?: string; scrollAttempts?: string; type?: string; as?: string }): Promise<void> {
+  // Timeline / bookmarks / notifications / analytics all read inside
+  // the scraper pool window (see scrapers/browser/twitter.ts —
+  // `getTab('https://x.com/home')`), which shares cookies with the
+  // debugger write path. So `engine: 'debugger'` is the right guard
+  // here — switching pool accounts via the SideNav switcher makes
+  // the next scrape see the new session.
+  await ensureAccount({ expected: options.as, engine: 'debugger', port: getPort() });
   const limit = parseInt(options.limit || '20', 10);
   const scrollAttempts = parseInt(options.scrollAttempts || '5', 10);
   const type = options.type === 'following' ? 'following' : 'for-you';
@@ -250,13 +297,15 @@ export async function scrapeTimelineCommand(options: { limit?: string; scrollAtt
   return runCliAction('scrape_timeline', { type, limit, scrollAttempts, queryIds: await getXQueryIds() }, getPort());
 }
 
-export async function scrapeBookmarksCommand(options: { limit?: string }): Promise<void> {
+export async function scrapeBookmarksCommand(options: { limit?: string; as?: string }): Promise<void> {
+  await ensureAccount({ expected: options.as, engine: 'debugger', port: getPort() });
   const limit = parseInt(options.limit || '20', 10);
   console.error(`Scraping bookmarks (limit: ${limit})...`);
   return runCliAction('scrape_bookmarks', { limit, queryIds: await getXQueryIds() }, getPort());
 }
 
-export async function scrapeNotificationsCommand(options: { limit?: string }): Promise<void> {
+export async function scrapeNotificationsCommand(options: { limit?: string; as?: string }): Promise<void> {
+  await ensureAccount({ expected: options.as, engine: 'debugger', port: getPort() });
   const limit = parseInt(options.limit || '40', 10);
   console.error(`Scraping notifications (limit: ${limit})...`);
   return runCliAction('scrape_notifications', { limit }, getPort());
@@ -310,7 +359,8 @@ export async function scrapeThreadCommand(url: string): Promise<void> {
 
 // ── Analytics ────────────────────────────────────────────────
 
-export async function analyticsCommand(): Promise<void> {
+export async function analyticsCommand(options: { as?: string } = {}): Promise<void> {
+  await ensureAccount({ expected: options.as, engine: 'debugger', port: getPort() });
   console.error('Fetching analytics...');
   return runCliAction('account_analytics', {}, getPort());
 }

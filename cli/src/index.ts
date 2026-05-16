@@ -52,6 +52,8 @@ import {
   navigateNotificationsCommand,
   statusCommand,
   fetchWeixinArticleCommand,
+  whoamiCommand,
+  switchAccountCommand,
 } from './commands/actions.js';
 import { screenshotCommand } from './commands/screenshot.js';
 import { downloadCommand } from './commands/download.js';
@@ -116,7 +118,7 @@ function buildProgram(): Command {
   const program = new Command();
   program
     .name('bnbot')
-    .description('BNBot — AI-powered personal branding toolkit for X')
+    .description('BNBot - AI Growth Agent for social platforms')
     .version(pkg.version);
   // Active diagnostics on typo'd verbs / flags. The primary caller of
   // this CLI is now the bnbot agent (an LLM), and LLMs hallucinate
@@ -337,6 +339,9 @@ function buildProgram(): Command {
     .command('x')
     .description('X (Twitter) platform commands');
 
+  // Shared --as description (avoid drift across commands).
+  const AS_HELP = 'Expected active X handle (no leading @). Verified / switched before the action when `multiAccount: true` is set in ~/.bnbot/settings.json; ignored otherwise. Refuses to act on a mismatched account.';
+
   // x post
   x.command('post <text>')
     .description('Post a tweet')
@@ -344,6 +349,7 @@ function buildProgram(): Command {
     .option('-d, --draft', 'Draft mode: fill composer without posting. Pool window stays foregrounded for audit; click Post yourself or `bnbot x close` to discard.')
     .option('--engine <engine>', 'Write engine: "debugger" (default — CDP, isolated pool window, robust against X UI churn) or "dom" (legacy, content-script in your active x.com tab).', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
+    .option('--as <handle>', AS_HELP)
     .action(postCommand);
 
   // x close
@@ -357,6 +363,7 @@ function buildProgram(): Command {
     .description('Post a tweet thread (JSON array)')
     .option('--engine <engine>', 'Write engine: "debugger" (default, CDP) or "dom" (content-script)', 'debugger')
     .option('--visible', 'Bring the automation window to front during the action')
+    .option('--as <handle>', AS_HELP)
     .action(threadCommand);
 
   // x reply
@@ -365,6 +372,7 @@ function buildProgram(): Command {
     .option('-m, --media <url>', 'Media file or URL (repeat for multiple, or comma-separate)', collectMedia, [])
     .option('--engine <engine>', 'Write engine: "debugger" (CDP, default — robust against X UI churn) or "dom" (content-script, fallback for --draft)', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
+    .option('--as <handle>', AS_HELP)
     .action(replyCommand);
 
   // x quote
@@ -373,6 +381,7 @@ function buildProgram(): Command {
     .option('-m, --media <url>', 'Media file or URL (repeat for multiple, or comma-separate)', collectMedia, [])
     .option('--engine <engine>', 'Write engine: "debugger" (default) or "dom"', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
+    .option('--as <handle>', AS_HELP)
     .action(quoteCommand);
 
   // x like / unlike
@@ -380,12 +389,14 @@ function buildProgram(): Command {
     .description('Like a tweet')
     .option('--engine <engine>', 'Write engine: "debugger" (default) or "dom"', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
+    .option('--as <handle>', AS_HELP)
     .action(likeCommand);
 
   x.command('unlike <url>')
     .description('Unlike a tweet')
     .option('--engine <engine>', 'Write engine: "debugger" (default) or "dom"', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
+    .option('--as <handle>', AS_HELP)
     .action(unlikeCommand);
 
   // x retweet / unretweet
@@ -393,21 +404,25 @@ function buildProgram(): Command {
     .description('Retweet a tweet')
     .option('--engine <engine>', 'Write engine: "debugger" (default) or "dom"', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
+    .option('--as <handle>', AS_HELP)
     .action(retweetCommand);
 
   x.command('unretweet <url>')
     .description('Unretweet a tweet')
     .option('--engine <engine>', 'Write engine: "debugger" (default) or "dom"', 'debugger')
     .option('--visible', 'Open the automation tab in foreground (debug engine only)')
+    .option('--as <handle>', AS_HELP)
     .action(unretweetCommand);
 
   // x follow / unfollow
   x.command('follow <username>')
     .description('Follow a user')
+    .option('--as <handle>', AS_HELP)
     .action(followCommand);
 
   x.command('unfollow <username>')
     .description('Unfollow a user')
+    .option('--as <handle>', AS_HELP)
     .action(unfollowCommand);
 
   // x delete
@@ -415,20 +430,40 @@ function buildProgram(): Command {
     .description('Delete a tweet')
     .option('--engine <engine>', 'Write engine: "debugger" (default, CDP) or "dom" (content-script)', 'debugger')
     .option('--visible', 'Bring the automation window to front during the action')
+    .option('--as <handle>', AS_HELP)
     .action(deleteCommand);
 
   // x bookmark / unbookmark
   x.command('bookmark <url>')
     .description('Bookmark a tweet')
+    .option('--as <handle>', AS_HELP)
     .action(bookmarkCommand);
 
   x.command('unbookmark <url>')
     .description('Unbookmark a tweet')
+    .option('--as <handle>', AS_HELP)
     .action(unbookmarkCommand);
+
+  // x whoami / switch — explicit account verbs. Useful for setup
+  // (confirm which account the pool window is currently on) and for
+  // scripted flows that want to force a switch outside of a write.
+  // Both are read-only with respect to user data; safe to invoke
+  // anytime. Default engine is `debugger` because that's the path
+  // every other write command uses by default.
+  x.command('whoami')
+    .description('Print the active X handle in the pool window (or active x.com tab if --engine dom)')
+    .option('--engine <engine>', '"debugger" (default, reads pool window) or "dom" (reads your active x.com tab)', 'debugger')
+    .action(whoamiCommand);
+
+  x.command('switch <handle>')
+    .description('Switch the active X account by clicking the in-page account switcher (target must already be logged in)')
+    .option('--engine <engine>', '"debugger" (default, drives pool window) or "dom" (drives your active x.com tab)', 'debugger')
+    .action(switchAccountCommand);
 
   // x analytics
   x.command('analytics')
     .description('Get account analytics')
+    .option('--as <handle>', AS_HELP)
     .action(analyticsCommand);
 
   // ── x scrape subgroup ──────────────────────────────────
@@ -443,18 +478,21 @@ function buildProgram(): Command {
     .option('-l, --limit <n>', 'Max tweets', '20')
     .option('--scrollAttempts <n>', 'Scroll attempts', '5')
     .option('-t, --type <type>', 'Timeline type: for-you (algorithmic) or following (chronological from accounts you follow)', 'for-you')
+    .option('--as <handle>', AS_HELP)
     .action(scrapeTimelineCommand);
 
   xScrape
     .command('bookmarks')
     .description('Scrape bookmarked tweets')
     .option('-l, --limit <n>', 'Max tweets', '20')
+    .option('--as <handle>', AS_HELP)
     .action(scrapeBookmarksCommand);
 
   xScrape
     .command('notifications')
     .description('Scrape inbox notifications (mentions, replies, likes, RTs, follows)')
     .option('-l, --limit <n>', 'Max notifications', '40')
+    .option('--as <handle>', AS_HELP)
     .action(scrapeNotificationsCommand);
 
   xScrape
@@ -485,9 +523,16 @@ function buildProgram(): Command {
     .option('--from <iso>', 'ISO start datetime (overrides --range)')
     .option('--to <iso>', 'ISO end datetime (defaults to now)')
     .option('--granularity <g>', 'Daily | Weekly | Monthly (auto-picked by --range if omitted)')
+    .option('--as <handle>', AS_HELP)
     .action(
-      async (opts: { range: string; from?: string; to?: string; granularity?: string }) => {
+      async (opts: { range: string; from?: string; to?: string; granularity?: string; as?: string }) => {
         const { runCliAction } = await import('./cli.js');
+        const { ensureAccount } = await import('./accountGuard.js');
+        // Stats are strictly per-account — passing --as on a brand that
+        // isn't currently active would otherwise silently read the wrong
+        // account's metrics. Guard runs against the same scraper pool
+        // window the underlying account_analytics action uses.
+        await ensureAccount({ expected: opts.as, engine: 'debugger', port: DEFAULT_PORT });
         const now = new Date();
         const to = new Date(now);
         to.setHours(23, 59, 59, 999);
@@ -510,7 +555,7 @@ function buildProgram(): Command {
         await runCliAction(
           'account_analytics',
           { fromTime, toTime, granularity },
-          18900,
+          DEFAULT_PORT,
         );
       },
     );

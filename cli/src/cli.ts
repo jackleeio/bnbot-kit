@@ -57,6 +57,9 @@ const TOOL_MAP: Record<string, string> = {
   'navigate-to-notifications': 'navigate_to_notifications',
   'navigate-to-following': 'navigate_to_following',
   'return-to-timeline': 'return_to_timeline',
+  // Account (multi-account guard helpers)
+  'get-current-username': 'get_current_username',
+  'switch-account': 'switch_account',
   // Content
   'fetch-wechat-article': 'fetch_wechat_article',
   // Article
@@ -221,29 +224,54 @@ export async function ensureServer(port: number): Promise<void> {
 }
 
 /**
- * Send an action to the WS server and print the result.
- * Auto-starts server if not running.
+ * Result shape returned by the silent `sendAction` kernel. Mirrors the
+ * extension's `action_result` envelope minus the WS plumbing fields.
  */
-export async function runCliAction(actionType: string, params: Record<string, unknown>, port: number): Promise<void> {
+export interface ActionResult<T = Record<string, unknown>> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+/**
+ * Silent RPC kernel — open a one-shot WS, send a `cli_action`, return
+ * the structured result. Does NOT print, does NOT exit. The verbose
+ * shell `runCliAction` wraps this for the human-facing path; internal
+ * callers (e.g. `accountGuard.ensureAccount`) use this directly so they
+ * can interpret the result without polluting stdout.
+ *
+ * Server auto-spawn lives in `ensureServer` and is called once per
+ * action — cheap when the daemon is already up.
+ */
+export async function sendAction<T = Record<string, unknown>>(
+  actionType: string,
+  params: Record<string, unknown>,
+  port: number,
+): Promise<ActionResult<T>> {
   await ensureServer(port);
 
-  return new Promise((resolve) => {
+  return new Promise<ActionResult<T>>((resolve) => {
     const url = `ws://127.0.0.1:${port}`;
     const requestId = randomUUID();
 
     let ws: WebSocket;
     try {
       ws = new WebSocket(url);
-    } catch {
-      console.error(`Failed to connect to BNBot server at ${url}`);
-      process.exit(1);
+    } catch (err) {
+      resolve({ success: false, error: `Failed to connect to ${url}: ${(err as Error).message}` });
       return;
     }
 
+    let settled = false;
+    const finish = (r: ActionResult<T>) => {
+      if (settled) return;
+      settled = true;
+      try { ws.close(); } catch { /* already closed */ }
+      resolve(r);
+    };
+
     const timeout = setTimeout(() => {
-      console.error(`Timeout: no response within ${CLI_TIMEOUT / 1000}s`);
-      ws.close();
-      process.exit(1);
+      finish({ success: false, error: `Timeout: no response within ${CLI_TIMEOUT / 1000}s` });
     }, CLI_TIMEOUT);
 
     ws.on('open', () => {
@@ -255,63 +283,66 @@ export async function runCliAction(actionType: string, params: Record<string, un
       }));
     });
 
-    // Tracks whether we received a complete action_result before the
-    // socket closed. Without this, a server-side silent close (socket
-    // ends before any result is delivered) would fall through to the
-    // 'close' handler and exit 0 with no output — causing scheduled
-    // wrappers to falsely assume success ("silent-close bug").
-    let resolved = false;
-
-    ws.on('message', (data) => {
+    ws.on('message', (raw) => {
       try {
-        const msg = JSON.parse(data.toString());
-        if (msg.requestId === requestId && msg.type === 'action_result') {
-          clearTimeout(timeout);
-          resolved = true;
-          if (msg.success) {
-            // Enrich the result with a clickable X URL when the
-            // extension returned a tweetId but no url. The CLI's
-            // primary consumer is now the bnbot agent, which surfaces
-            // the JSON to humans verbatim — pasting an `id` is
-            // useless, pasting `https://x.com/i/status/<id>` opens
-            // the post in one click.
-            const data = (msg.data || {}) as Record<string, unknown>;
-            const tweetId = typeof data.tweetId === 'string' ? data.tweetId : null;
-            if (tweetId && !data.url && !data.tweetUrl) {
-              data.tweetUrl = `https://x.com/i/status/${tweetId}`;
-            }
-            console.log(JSON.stringify(data, null, 2));
-          } else {
-            console.error(msg.error || 'Action failed');
-          }
-          ws.close();
-          process.exit(msg.success ? 0 : 1);
+        const msg = JSON.parse(raw.toString());
+        if (msg.requestId !== requestId || msg.type !== 'action_result') return;
+        clearTimeout(timeout);
+        if (msg.success) {
+          finish({ success: true, data: (msg.data ?? {}) as T });
+        } else {
+          finish({ success: false, error: msg.error || 'Action failed' });
         }
       } catch {
-        // Ignore non-JSON messages
+        // Non-JSON noise on the channel — ignore.
       }
     });
 
     ws.on('error', (err) => {
       clearTimeout(timeout);
-      resolved = true;
-      console.error(`Connection error: ${err.message}`);
-      console.error('Make sure "bnbot serve" is running first.');
-      process.exit(1);
+      finish({
+        success: false,
+        error: `Connection error: ${err.message}. Try "bnbot serve" first.`,
+      });
     });
 
     ws.on('close', () => {
       clearTimeout(timeout);
-      if (!resolved) {
-        // Socket closed without any action_result. This is an abnormal
-        // close (server crashed mid-request, extension reconnect while
-        // waiting, etc). Exit 1 with a clear error so callers (shell
-        // scripts, launchd wrappers) don't mistake it for success.
-        console.error('Server closed connection before sending a result');
-        console.error('Try: bnbot status, or restart with pkill -f "bnbot.*serve" && bnbot serve');
-        process.exit(1);
-      }
-      resolve();
+      // Same "silent-close bug" defence as before: if the socket
+      // closed without ever delivering a result, surface that as a
+      // failure instead of letting the promise hang.
+      finish({
+        success: false,
+        error:
+          'Server closed connection before sending a result. ' +
+          'Try: bnbot status, or restart with pkill -f "bnbot.*serve" && bnbot serve',
+      });
     });
   });
+}
+
+/**
+ * Verbose shell — used by every Commander action handler. Calls the
+ * silent kernel above, then prints JSON / errors to stdout/stderr and
+ * `process.exit`s with the right code. This is the long-standing
+ * contract callers (shell scripts, launchd wrappers, the agent) expect.
+ */
+export async function runCliAction(actionType: string, params: Record<string, unknown>, port: number): Promise<void> {
+  const r = await sendAction(actionType, params, port);
+  if (r.success) {
+    // Enrich tweetId-only results with a clickable URL, identical to
+    // the pre-refactor behavior. Primary consumer is the bnbot agent,
+    // which surfaces this JSON verbatim to humans — a bare id is
+    // useless, `https://x.com/i/status/<id>` opens the post.
+    const data = (r.data ?? {}) as Record<string, unknown>;
+    const tweetId = typeof data.tweetId === 'string' ? data.tweetId : null;
+    if (tweetId && !data.url && !data.tweetUrl) {
+      data.tweetUrl = `https://x.com/i/status/${tweetId}`;
+    }
+    console.log(JSON.stringify(data, null, 2));
+    process.exit(0);
+  } else {
+    console.error(r.error || 'Action failed');
+    process.exit(1);
+  }
 }
