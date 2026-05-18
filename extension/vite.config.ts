@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs';
-import { defineConfig, loadEnv, build } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { crx } from '@crxjs/vite-plugin';
@@ -29,33 +29,11 @@ export default defineConfig(({ mode }) => {
         )
   };
 
-  // Build offscreen.ts separately
-  const buildOffscreen = async () => {
-    await build({
-      configFile: false,
-      build: {
-        outDir: 'dist',
-        emptyOutDir: false,
-        lib: {
-          entry: path.resolve(__dirname, 'offscreen.ts'),
-          name: 'offscreen',
-          formats: ['iife'],
-          fileName: () => 'offscreen.js',
-        },
-        rollupOptions: {
-          output: {
-            entryFileNames: 'offscreen.js',
-          },
-        },
-      },
-      define: {
-        'process.env.API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL || 'http://localhost:8000'),
-        'process.env.WS_BASE_URL': JSON.stringify(env.VITE_WS_BASE_URL || ''),
-        '__FIREFOX__': 'false',
-      },
-    });
-    console.log('[vite] Built offscreen.js');
-  };
+  // offscreen.ts build removed — the offscreen document used to host
+  // the legacy wss://api.bnbot.ai push connection; that path was
+  // retired together with Telegram-driven actions and the old
+  // ChatPanel, so the extension no longer needs an offscreen doc at
+  // all (and the `offscreen` permission is off the manifest).
 
   return {
     server: {
@@ -115,19 +93,6 @@ export default defineConfig(({ mode }) => {
             );
           }
         },
-      },
-      {
-        name: 'build-offscreen',
-        closeBundle: {
-          sequential: true,
-          async handler() {
-            await buildOffscreen();
-          }
-        },
-        async configureServer() {
-          // Also build offscreen.js in dev mode
-          await buildOffscreen();
-        }
       },
       react(),
       tailwindcss(),

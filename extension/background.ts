@@ -2,7 +2,8 @@
 // Handles Google OAuth via popup window, API proxy, and WebSocket
 
 import { isFirefox, isChrome } from './utils/browserCompat';
-import { WebSocketManager } from './utils/websocketManager';
+// WebSocketManager import removed — the wss://api.bnbot.ai push channel
+// (and its Firefox direct-background variant) was retired in v0.12.6.
 import { localRelayManager, LocalActionRequest } from './utils/localRelayManager';
 // taskAlarmScheduler + draftService removed — scheduling moved to the
 // bnbot main repo's auto-publish loop (see bnbot/src/services/autoPublish/),
@@ -657,39 +658,14 @@ import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontp
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8000';
 const WS_BASE_URL = process.env.WS_BASE_URL || '';
 
-// Track if remote control is enabled (WebSocket connected)
-let remoteControlEnabled = false;
-
-// Firefox: WebSocket runs directly in background (no offscreen document)
-let firefoxWsManager: WebSocketManager | null = null;
-if (isFirefox) {
-  firefoxWsManager = new WebSocketManager(API_BASE_URL, {
-    notifyHost(data: any) {
-      // In Firefox, the background IS the host — forward WS events to content scripts
-      if (data.type === 'WS_CONNECTED') {
-        remoteControlEnabled = true;
-        setXTabsKeepAlive(true);
-        sendToOneXTab(data);
-      } else if (data.type === 'WS_DISCONNECTED') {
-        remoteControlEnabled = false;
-        setXTabsKeepAlive(false);
-        chrome.tabs.query({ url: ['*://twitter.com/*', '*://x.com/*'] }, (tabs) => {
-          for (const tab of tabs) {
-            if (tab.id) {
-              chrome.tabs.sendMessage(tab.id, data).catch(() => {});
-            }
-          }
-        });
-      } else if (data.type === 'WS_MESSAGE') {
-        // task_sync messages dropped — scheduling now lives in bnbot CLI calendar.
-        sendToOneXTab(data);
-      }
-    },
-    async requestFreshToken() {
-      return handleFreshTokenRequest();
-    },
-  }, WS_BASE_URL || undefined);
-}
+// Legacy wss://api.bnbot.ai push channel removed. The extension used to
+// hold a WebSocket to the backend to receive Telegram-driven action /
+// chat / scheduled_trigger pushes. That entire upstream input (Telegram
+// integration, ChatPanel, AnalysisPanel, scheduled task push) was
+// retired in v0.12.0, and the desktop BNBot agent communicates with the
+// extension over the local CLI bridge (ws://127.0.0.1:18900) instead.
+// firefoxWsManager / offscreen WS manager / OFFSCREEN_WS_* messages all
+// dropped along with the offscreen permission.
 
 // ============ Local Relay (bnbot bridge — ws://localhost:18900) ============
 
@@ -1102,179 +1078,15 @@ async function sendToOneXTab(message: object): Promise<boolean> {
   }
 }
 
-// ============ Offscreen Document Management (Chrome/Edge only) ============
-
-let creatingOffscreen: Promise<void> | null = null;
-
-async function ensureOffscreenDocument(): Promise<void> {
-  // Firefox doesn't support offscreen documents
-  if (isFirefox) return;
-
-  const offscreenUrl = chrome.runtime.getURL('offscreen.html');
-
-  // Check if offscreen document already exists
-  if (chrome.runtime.getContexts) {
-    const existingContexts = await chrome.runtime.getContexts({
-      contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
-      documentUrls: [offscreenUrl]
-    });
-
-    if (existingContexts.length > 0) {
-      return; // Already exists
-    }
-  }
-
-  // Create offscreen document (prevent multiple simultaneous creations)
-  if (creatingOffscreen) {
-    await creatingOffscreen;
-    return;
-  }
-
-  creatingOffscreen = chrome.offscreen.createDocument({
-    url: offscreenUrl,
-    reasons: [chrome.offscreen.Reason.WEB_RTC], // WEB_RTC allows persistent connections
-    justification: 'Maintain WebSocket connection for remote control + bnbot bridge'
-  });
-
-  await creatingOffscreen;
-  creatingOffscreen = null;
-  console.log('[Background] Offscreen document created');
-}
-
-// Forward WebSocket messages from offscreen to content scripts (Chrome only)
-// On Firefox, WS events are forwarded by firefoxWsManager.notifyHost directly
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // Messages from offscreen document to broadcast to tabs (Chrome only path)
-  if (isChrome && message.type === 'WS_CONNECTED') {
-    remoteControlEnabled = true;
-    setXTabsKeepAlive(true);
-
-    // Send to active X tab first, otherwise first X tab
-    sendToOneXTab(message);
-    return false;
-  }
-
-  if (isChrome && message.type === 'WS_DISCONNECTED') {
-    remoteControlEnabled = false;
-    setXTabsKeepAlive(false);
-
-    // Broadcast disconnect to all tabs
-    chrome.tabs.query({ url: ['*://twitter.com/*', '*://x.com/*'] }, (tabs) => {
-      for (const tab of tabs) {
-        if (tab.id) {
-          chrome.tabs.sendMessage(tab.id, message).catch(() => {});
-        }
-      }
-    });
-    return false;
-  }
-
-  if (isChrome && message.type === 'WS_MESSAGE') {
-    // Send to active X tab first, otherwise first X tab.
-    // task_sync handling dropped — scheduling lives in bnbot CLI calendar.
-    sendToOneXTab(message);
-    return false;
-  }
-
-  // Handle WS commands from content scripts
-  if (message.type === 'WS_CONNECT') {
-    const { userId, accessToken } = message;
-
-    if (isFirefox && firefoxWsManager) {
-      // Firefox: connect directly in background
-      console.log('[Background] WS_CONNECT received (Firefox direct mode)');
-      firefoxWsManager.connect(userId, accessToken)
-        .then((result) => sendResponse(result))
-        .catch((err) => sendResponse({ success: false, error: err.message }));
-      return true;
-    }
-
-    // Chrome: use offscreen document
-    console.log('[Background] WS_CONNECT received, ensuring offscreen document...');
-
-    const tryConnect = async (attempt: number): Promise<any> => {
-      try {
-        await ensureOffscreenDocument();
-        console.log('[Background] Offscreen document ready, attempt:', attempt);
-        // 显示连接的 WebSocket 地址
-        const _apiBase = process.env.API_BASE_URL || 'http://localhost:8000';
-        const _wsBase = process.env.WS_BASE_URL || '';
-        const WS_URL = _wsBase || (_apiBase.includes('localhost')
-          ? 'ws://localhost:8001'
-          : _apiBase.replace('http://', 'ws://').replace('https://', 'wss://'));
-        console.log('[Background] WebSocket connecting to:', WS_URL);
-        // Wait for offscreen document to initialize its message listener
-        await new Promise(resolve => setTimeout(resolve, 1000 + attempt * 500));
-        console.log('[Background] Sending OFFSCREEN_WS_CONNECT...');
-        return await chrome.runtime.sendMessage({
-          type: 'OFFSCREEN_WS_CONNECT',
-          userId,
-          accessToken
-        });
-      } catch (err: any) {
-        if (attempt < 3 && err?.message?.includes('Receiving end does not exist')) {
-          console.log('[Background] Retrying connection, attempt:', attempt + 1);
-          return tryConnect(attempt + 1);
-        }
-        throw err;
-      }
-    };
-
-    tryConnect(1)
-      .then((result) => {
-        console.log('[Background] OFFSCREEN_WS_CONNECT result:', result);
-        sendResponse(result);
-      })
-      .catch((err) => {
-        console.error('[Background] OFFSCREEN_WS_CONNECT error:', err);
-        sendResponse({ success: false, error: err.message });
-      });
-    return true;
-  }
-
-  if (message.type === 'WS_DISCONNECT') {
-    if (isFirefox && firefoxWsManager) {
-      firefoxWsManager.disconnect();
-      sendResponse({ success: true });
-      return true;
-    }
-    chrome.runtime.sendMessage({ type: 'OFFSCREEN_WS_DISCONNECT' })
-      .then(() => sendResponse({ success: true }))
-      .catch(() => sendResponse({ success: true }));
-    return true;
-  }
-
-  if (message.type === 'WS_SEND') {
-    if (isFirefox && firefoxWsManager) {
-      const success = firefoxWsManager.send(message.message);
-      sendResponse({ success });
-      return true;
-    }
-    chrome.runtime.sendMessage({ type: 'OFFSCREEN_WS_SEND', message: message.message })
-      .then((result) => sendResponse(result))
-      .catch(() => sendResponse({ success: false }));
-    return true;
-  }
-
-  if (message.type === 'WS_STATUS') {
-    if (isFirefox && firefoxWsManager) {
-      sendResponse(firefoxWsManager.getStatus());
-      return true;
-    }
-    chrome.runtime.sendMessage({ type: 'OFFSCREEN_WS_STATUS' })
-      .then((result) => sendResponse(result))
-      .catch(() => sendResponse({ connected: false, userId: null }));
-    return true;
-  }
-
-  // Handle fresh token request from offscreen (for reconnection)
-  if (message.type === 'REQUEST_FRESH_TOKEN') {
-    handleFreshTokenRequest()
-      .then((accessToken) => sendResponse({ accessToken }))
-      .catch(() => sendResponse({ accessToken: null }));
-    return true;
-  }
-});
+// Offscreen document management + WS_CONNECT/DISCONNECT/SEND/STATUS +
+// REQUEST_FRESH_TOKEN handlers removed. The whole block existed to
+// host a wss://api.bnbot.ai push connection (so the backend could
+// dispatch Telegram-driven actions, ChatPanel chats, scheduled
+// triggers, etc. to the extension in real time). Those upstream
+// inputs were retired in v0.12.0 and the desktop BNBot agent now
+// drives the extension through the local CLI bridge
+// (ws://127.0.0.1:18900) instead — removing the entire offscreen
+// push channel + its `offscreen` permission from the manifest.
 
 // Listen for messages from content script
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
@@ -1282,12 +1094,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   // tokens arrive via the `inject_auth_tokens` WS action.
 
   if (request.type === 'LOGOUT') {
-    // Disconnect WebSocket on logout
-    if (isFirefox && firefoxWsManager) {
-      firefoxWsManager.disconnect();
-    } else {
-      chrome.runtime.sendMessage({ type: 'OFFSCREEN_WS_DISCONNECT' }).catch(() => {});
-    }
+    // (Offscreen WS disconnect dropped — no offscreen channel remains.)
     // (chrome.alarms.clearAll removed alongside the alarms permission —
     // v0.12.0 killed every alarm-driver, so there are no alarms to clear.)
     handleLogout()
@@ -1691,7 +1498,14 @@ Object.assign(self, {
   fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote,
 });
 
-// Handle fresh token request for WebSocket reconnection
+// handleFreshTokenRequest removed — its two callers (the firefoxWsManager
+// requestFreshToken hook and the REQUEST_FRESH_TOKEN onMessage handler)
+// were both part of the offscreen / wss://api.bnbot.ai push channel
+// that v0.12.6 retired. Token refresh for live extension API calls
+// (Money Vision boostService etc.) is handled inside authService's
+// fetchWithAuth wrapper, not from background.ts.
+
+/* dead function previously here — see notes above:
 async function handleFreshTokenRequest(): Promise<string | null> {
   try {
     // Get current access token
@@ -1757,6 +1571,7 @@ async function handleFreshTokenRequest(): Promise<string | null> {
     return null;
   }
 }
+*/
 
 // fetchVideoAsDataUrl / fetchImageAsBase64 / fetchBlobAsDataUrl removed —
 // the FETCH_VIDEO / FETCH_IMAGE / FETCH_BLOB message handlers that drove

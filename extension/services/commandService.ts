@@ -64,21 +64,19 @@ class CommandService {
     if (this.messageListenerAdded) return;
 
     chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
-      if (message.type === 'WS_CONNECTED') {
-        console.log('[CommandService] WebSocket connected to:', message.wsUrl || 'unknown');
-        this.options.onConnected?.();
-      } else if (message.type === 'WS_DISCONNECTED') {
-        console.log('[CommandService] WebSocket disconnected');
-        this.options.onDisconnected?.();
-      } else if (message.type === 'WS_MESSAGE') {
-        this.handleMessage(message.message);
-      } else if (message.type === 'LOCAL_ACTION') {
-        // Handle action from the bnbot bridge (ws://localhost:18900)
+      if (message.type === 'LOCAL_ACTION') {
+        // Handle action from the bnbot bridge (ws://localhost:18900) —
+        // the desktop BNBot agent driving the extension through the CLI
+        // daemon. This is the only inbound channel that remains.
         this.handleLocalActionFromBackground(message);
       }
-      // EXECUTE_SCHEDULED_TASK / PUBLISH_SCHEDULED_DRAFT handlers removed —
-      // the chrome.alarms-driven schedulers that sent these messages are gone.
-      // Scheduling now lives in `bnbot calendar` + macOS launchd.
+      // WS_CONNECTED / WS_DISCONNECTED / WS_MESSAGE handlers removed —
+      // the wss://api.bnbot.ai push channel was retired in v0.12.6 along
+      // with the offscreen permission and the Telegram-driven inputs
+      // that fed it (ChatPanel, AnalysisPanel, scheduled task push).
+      //
+      // EXECUTE_SCHEDULED_TASK / PUBLISH_SCHEDULED_DRAFT also removed —
+      // scheduling now lives in `bnbot calendar` + macOS launchd.
     });
 
     this.messageListenerAdded = true;

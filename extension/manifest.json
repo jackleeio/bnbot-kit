@@ -10,7 +10,6 @@
   },
   "permissions": [
     "storage",
-    "offscreen",
     "tabs",
     "debugger"
   ],
@@ -49,8 +48,7 @@
         "assets/*",
         "wechat-scraper-inject.js",
         "timeline-interceptor.js",
-        "tweet-interceptor.js",
-        "offscreen.html"
+        "tweet-interceptor.js"
       ],
       "matches": [
         "*://x.com/*"
