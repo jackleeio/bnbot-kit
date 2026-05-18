@@ -23,14 +23,16 @@ Control Chrome with BNBot.
 ```
 Browser automation bridge for the BNBot desktop agent. Executes commands on the social platforms you are already signed in to, via a local daemon.
 
-Bridge between BNBot and your browser. Requires the BNBot desktop app from https://bnbot.ai.
+Bridge between BNBot and your browser.
 ```
 
 Tone reference: OpenCLI's Chrome Web Store listing (2-sentence
 "browser automation bridge" framing). Deliberately keeps no feature
-list, no platform names, no GETTING STARTED — so adding capabilities
-later (new platforms, new actions, new sidebar features) does not
-require re-submitting a new Description.
+list, no platform names, no GETTING STARTED, and no inline link to
+the desktop app — adding capabilities later (new platforms, new
+actions, new sidebar features) does not require re-submitting a new
+Description. The desktop-app URL is carried by the Dashboard's
+"Homepage URL" field (https://bnbot.ai) instead of duplicated here.
 
 ---
 
@@ -39,7 +41,7 @@ require re-submitting a new Description.
 ```
 BNBot 桌面 agent 的浏览器执行桥。通过本地 daemon，在你已经登录的社交平台上执行命令。
 
-BNBot 和你浏览器之间的桥。需要在 https://bnbot.ai 下载 BNBot 桌面 app。
+BNBot 和你浏览器之间的桥。
 ```
 
 ---
