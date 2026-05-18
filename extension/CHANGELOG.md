@@ -3,6 +3,12 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.12.7] - 2026-05-18
+
+### Fixed
+- **本地 CLI bridge keep-alive 修复**：0.12.6 移除远端 offscreen push channel 后，`background.ts` 里还残留了旧 `remoteControlEnabled` 引用。现在 keep-alive 状态改为读取仍然活跃的 `localRelayManager.isConnected()`，避免本地 `ws://127.0.0.1:18900` relay 连接/断开或自动打开 X tab 时触发 `ReferenceError`。
+
+
 ## [0.12.6] - 2026-05-18
 
 ### Removed

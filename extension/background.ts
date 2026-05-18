@@ -835,7 +835,7 @@ localRelayManager.init({
     // Keep at least one X tab alive when local relay is connected
     if (connected) {
       setXTabsKeepAlive(true);
-    } else if (!remoteControlEnabled) {
+    } else {
       setXTabsKeepAlive(false);
     }
   },
@@ -968,7 +968,7 @@ async function setXTabsKeepAlive(enabled: boolean): Promise<void> {
 const keepAliveTabs = new Set<number>();
 if (isChrome) {
   chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (remoteControlEnabled && changeInfo.status === 'complete' && tab.url) {
+    if (localRelayManager.isConnected() && changeInfo.status === 'complete' && tab.url) {
       if ((tab.url.includes('twitter.com') || tab.url.includes('x.com')) && !keepAliveTabs.has(tabId)) {
         chrome.tabs.update(tabId, { autoDiscardable: false }).catch(() => {});
         keepAliveTabs.add(tabId);
@@ -1067,7 +1067,7 @@ async function sendToOneXTab(message: object): Promise<boolean> {
     }
 
     // Set keep-alive if remote control is enabled (Chrome/Edge only)
-    if (remoteControlEnabled && isChrome) {
+    if (localRelayManager.isConnected() && isChrome) {
       chrome.tabs.update(newTab.id, { autoDiscardable: false }).catch(() => {});
     }
 
