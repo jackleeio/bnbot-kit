@@ -1,6 +1,6 @@
 # BNBot Skill
 
-Claude Code skill for BNBot — provides AI agents with X/Twitter growth workflows.
+AI Growth Agent for social platforms. Helps agents find trends, create content, and automate growth.
 
 ## Usage
 
@@ -21,8 +21,7 @@ This installs the skill into your Claude Code environment and configures the CLI
 
 ## What It Does
 
-- Tweet creation with AI (single tweets, threads, articles)
-- Cross-platform content reposting
-- Trend scraping from 30+ platforms
-- Draft management and scheduling
-- Image generation for tweets
+- Find trends across 30+ platforms
+- Create tweets, threads, and articles
+- Repurpose content from links and videos
+- Draft, schedule, and automate publishing workflows

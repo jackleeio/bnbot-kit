@@ -1,6 +1,6 @@
 # BNBot
 
-AI-powered growth agent for X/Twitter. Create tweets, schedule posts, auto-reply, and scrape trends from 30+ platforms — all driven by your AI agent.
+AI Growth Agent for social platforms. Find trends, create content, repurpose posts, and automate growth with AI agents.
 
 ## Quick Start
 
@@ -14,7 +14,7 @@ Works with [Claude Code](https://claude.ai/code), [Codex](https://codex.openai.c
 
 | Package | Description |
 |---------|-------------|
-| [extension/](./extension) | Chrome extension — AI sidebar for X/Twitter |
+| [extension/](./extension) | Chrome extension — browser companion for the BNBot desktop app |
 | [cli/](./cli) | `@bnbot/cli` — draft management, scheduling, bridge to extension |
 | [skill/](./skill) | Claude Code skill — AI agent prompts and workflows |
 | [web/](./web) | [bnbot.ai](https://bnbot.ai) — landing page and draft previews |

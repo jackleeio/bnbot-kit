@@ -46,7 +46,7 @@ export const en = {
     greeting: "Hi!",
     imBNBot: "I'm",
     bnbotName: "BNBot",
-    tagline: "Your AI Growth Agent for X",
+    tagline: "Your AI Growth Agent",
     bnbChain: "",
     autoPost: 'Auto-post',
     post: 'Post',

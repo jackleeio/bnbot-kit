@@ -46,7 +46,7 @@ export const zh = {
     greeting: 'Hi!',
     imBNBot: '我是',
     bnbotName: 'BNBot',
-    tagline: '你在 X 上的 AI 增长 Agent',
+    tagline: '你的 AI 增长 Agent',
     bnbChain: '',
     autoPost: '自动发布',
     post: '发布',

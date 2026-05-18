@@ -53,7 +53,7 @@ function AppContent() {
   // Popup bottom/right follow the FAB's dynamic position. Updated via
   // `bnbot-fab-aligned` event broadcast by BnbotFabInjector. Defaults
   // match the CSS fallback so the first paint isn't a jump.
-  const [fabPosition, setFabPosition] = useState({ bottom: 90, right: 20, height: 54 });
+  const [fabPosition, setFabPosition] = useState({ bottom: 90, right: 20, height: 40 });
   const [showCollapseButton, setShowCollapseButton] = useState(true);
   const [collapseButtonHovered, setCollapseButtonHovered] = useState(false);
   const [isArticleFocusMode, setIsArticleFocusMode] = useState(false);

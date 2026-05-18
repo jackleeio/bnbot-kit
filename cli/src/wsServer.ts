@@ -468,6 +468,24 @@ export class BnbotWsServer {
       case 'heartbeat':
         // Just acknowledge
         break;
+
+      case 'source_capture':
+        void this.forwardSourceCaptureToDesktop(message.payload).catch((err) => {
+          console.error('[BNBOT] Failed to forward source capture:', err instanceof Error ? err.message : String(err));
+        });
+        break;
+    }
+  }
+
+  private async forwardSourceCaptureToDesktop(payload: Record<string, unknown>): Promise<void> {
+    const response = await fetch('http://127.0.0.1:27421/api/remix-jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: payload }),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`desktop remix endpoint returned ${response.status}${text ? `: ${text.slice(0, 200)}` : ''}`);
     }
   }
 

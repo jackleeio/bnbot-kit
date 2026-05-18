@@ -48,6 +48,43 @@ export interface TweetContent {
     user: { username: string; name: string; avatar: string };
 }
 
+export interface TweetDetailCaptureTweet {
+    id: string;
+    url: string;
+    text: string;
+    createdAt: string;
+    lang?: string;
+    author: {
+        id: string;
+        handle: string;
+        name: string;
+        avatar: string;
+        verified: boolean;
+        followers: number;
+    };
+    metrics: {
+        replies: number;
+        retweets: number;
+        quotes: number;
+        likes: number;
+        views: number;
+        bookmarks: number;
+    };
+    media: Array<{ type: 'photo' | 'video' | 'gif'; url: string; thumbnail?: string; alt?: string }>;
+    urls: Array<{ url: string; expandedUrl: string; displayUrl: string }>;
+    conversationId?: string;
+    inReplyToStatusId?: string;
+    inReplyToHandle?: string;
+    quotedTweet?: TweetDetailCaptureTweet;
+}
+
+export interface TweetDetailCapture {
+    mainTweet: TweetDetailCaptureTweet;
+    threadTweets: TweetDetailCaptureTweet[];
+    replies: TweetDetailCaptureTweet[];
+    allTweets: TweetDetailCaptureTweet[];
+}
+
 export interface UserTweetsResult {
     tweetIds: string[];           // All tweet IDs
     tweets: TweetContent[];       // Tweet content (text, metrics, etc.)
@@ -545,6 +582,98 @@ export class TwitterClient {
 
         } catch (e) {
             console.error('[TwitterClient] fetchTweetDetailFull error:', e);
+            return null;
+        }
+    }
+
+    /**
+     * Fetch the currently logged-in X web client's TweetDetail payload once and
+     * normalize the main tweet plus the first response page of conversation data.
+     */
+    public static async fetchTweetDetailCapture(tweetId: string): Promise<TweetDetailCapture | null> {
+        await this.init();
+
+        const variables = {
+            focalTweetId: tweetId,
+            referrer: 'tweet',
+            with_rux_injections: false,
+            includePromotedContent: false,
+            rankingMode: 'Relevance',
+            withCommunity: true,
+            withQuickPromoteEligibilityTweetFields: true,
+            withBirdwatchNotes: true,
+            withVoice: true,
+        };
+        const features = {
+            responsive_web_graphql_exclude_directive_enabled: true,
+            verified_phone_label_enabled: false,
+            creator_subscriptions_tweet_preview_api_enabled: true,
+            responsive_web_graphql_timeline_navigation_enabled: true,
+            responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
+            longform_notetweets_consumption_enabled: true,
+            longform_notetweets_rich_text_read_enabled: true,
+            longform_notetweets_inline_media_enabled: true,
+            view_counts_everywhere_api_enabled: true,
+            freedom_of_speech_not_reach_fetch_enabled: true,
+            tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true,
+            responsive_web_enhance_cards_enabled: false,
+        };
+        const fieldToggles = {
+            withArticleRichContentState: true,
+            withArticlePlainText: false,
+        };
+        const url = `https://x.com/i/api/graphql/${this.TWEET_DETAIL_QUERY_ID}/TweetDetail?variables=${encodeURIComponent(JSON.stringify(variables))}&features=${encodeURIComponent(JSON.stringify(features))}&fieldToggles=${encodeURIComponent(JSON.stringify(fieldToggles))}`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: this.getHeaders(),
+                credentials: 'include',
+            });
+            if (!response.ok) {
+                console.error('[TwitterClient] fetchTweetDetailCapture failed:', response.status);
+                return null;
+            }
+
+            const data = await response.json();
+            const instructions = data?.data?.threaded_conversation_with_injections_v2?.instructions || [];
+            const allTweets: TweetDetailCaptureTweet[] = [];
+            const seen = new Set<string>();
+
+            const pushResult = (result: any) => {
+                const parsed = this.parseTweetDetailCaptureResult(result);
+                if (!parsed || seen.has(parsed.id)) return;
+                seen.add(parsed.id);
+                allTweets.push(parsed);
+            };
+
+            for (const instruction of instructions) {
+                for (const entry of instruction.entries || []) {
+                    const content = entry.content;
+                    pushResult(content?.itemContent?.tweet_results?.result);
+                    for (const item of content?.items || []) {
+                        pushResult(item.item?.itemContent?.tweet_results?.result);
+                    }
+                }
+            }
+
+            const mainTweet = allTweets.find((tweet) => tweet.id === tweetId);
+            if (!mainTweet) return null;
+
+            const threadTweets = allTweets.filter((tweet) =>
+                tweet.id !== tweetId &&
+                tweet.author.handle === mainTweet.author.handle &&
+                tweet.conversationId === mainTweet.conversationId
+            );
+            const replies = allTweets.filter((tweet) =>
+                tweet.id !== tweetId &&
+                tweet.conversationId === mainTweet.conversationId &&
+                tweet.author.handle !== mainTweet.author.handle
+            );
+
+            return { mainTweet, threadTweets, replies, allTweets };
+        } catch (e) {
+            console.error('[TwitterClient] fetchTweetDetailCapture error:', e);
             return null;
         }
     }
@@ -1669,6 +1798,84 @@ export class TwitterClient {
             };
         } catch (e) {
             console.error('[TwitterClient] Error parsing tweet result:', e);
+            return null;
+        }
+    }
+
+    private static parseTweetDetailCaptureResult(tweetResult: any): TweetDetailCaptureTweet | null {
+        try {
+            const tweet = tweetResult?.tweet || tweetResult;
+            const legacy = tweet?.legacy;
+            const restId = tweet?.rest_id;
+            const userResult = tweet?.core?.user_results?.result;
+            const userLegacy = userResult?.legacy || {};
+            const userCore = userResult?.core || {};
+            if (!restId || !legacy || !userResult) return null;
+
+            const handle = userCore.screen_name || userLegacy.screen_name || '';
+            const media: TweetDetailCaptureTweet['media'] = [];
+            const entitiesMedia = legacy.extended_entities?.media || legacy.entities?.media || [];
+            for (const item of entitiesMedia) {
+                if (item.type === 'photo') {
+                    media.push({
+                        type: 'photo',
+                        url: item.media_url_https || '',
+                        alt: item.ext_alt_text || '',
+                    });
+                    continue;
+                }
+                if (item.type === 'video' || item.type === 'animated_gif') {
+                    const variants = item.video_info?.variants || [];
+                    const best = variants
+                        .filter((variant: any) => variant.content_type === 'video/mp4')
+                        .sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+                    media.push({
+                        type: item.type === 'animated_gif' ? 'gif' : 'video',
+                        url: best?.url || item.media_url_https || '',
+                        thumbnail: item.media_url_https || '',
+                        alt: item.ext_alt_text || '',
+                    });
+                }
+            }
+
+            const urls = (legacy.entities?.urls || []).map((u: any) => ({
+                url: u.url || '',
+                expandedUrl: u.expanded_url || '',
+                displayUrl: u.display_url || '',
+            })).filter((u: { url: string; expandedUrl: string; displayUrl: string }) => u.url || u.expandedUrl || u.displayUrl);
+
+            const quoted = this.parseTweetDetailCaptureResult(tweet.quoted_status_result?.result);
+            return {
+                id: restId,
+                url: `https://x.com/${handle}/status/${restId}`,
+                text: tweet.note_tweet?.note_tweet_results?.result?.text || legacy.full_text || '',
+                createdAt: legacy.created_at || '',
+                lang: legacy.lang || '',
+                author: {
+                    id: userResult.rest_id || '',
+                    handle,
+                    name: userCore.name || userLegacy.name || '',
+                    avatar: userResult.avatar?.image_url || userLegacy.profile_image_url_https || '',
+                    verified: Boolean(userResult.is_blue_verified || userLegacy.verified),
+                    followers: userLegacy.followers_count || 0,
+                },
+                metrics: {
+                    replies: legacy.reply_count || 0,
+                    retweets: legacy.retweet_count || 0,
+                    quotes: legacy.quote_count || 0,
+                    likes: legacy.favorite_count || 0,
+                    views: Number.parseInt(tweet.views?.count || '0', 10) || 0,
+                    bookmarks: legacy.bookmark_count || 0,
+                },
+                media: media.filter((item) => item.url),
+                urls,
+                conversationId: legacy.conversation_id_str || '',
+                inReplyToStatusId: legacy.in_reply_to_status_id_str || '',
+                inReplyToHandle: legacy.in_reply_to_screen_name || '',
+                quotedTweet: quoted || undefined,
+            };
+        } catch (e) {
+            console.error('[TwitterClient] Error parsing TweetDetail capture result:', e);
             return null;
         }
     }

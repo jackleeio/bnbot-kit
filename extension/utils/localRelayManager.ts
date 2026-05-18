@@ -36,6 +36,12 @@ export interface LocalActionResult {
   retryAfter?: number;
 }
 
+export interface LocalSourceCapture {
+  type: 'source_capture';
+  requestId: string;
+  payload: Record<string, unknown>;
+}
+
 interface LocalHeartbeat {
   type: 'heartbeat';
   timestamp: number;
@@ -47,7 +53,7 @@ interface LocalStatusResponse {
   version: string;
 }
 
-type LocalOutgoingMessage = LocalActionResult | LocalHeartbeat | LocalStatusResponse;
+type LocalOutgoingMessage = LocalActionResult | LocalHeartbeat | LocalStatusResponse | LocalSourceCapture;
 
 class LocalRelayManager {
   private ws: WebSocket | null = null;
@@ -212,6 +218,14 @@ class LocalRelayManager {
    */
   sendActionResult(result: LocalActionResult): boolean {
     return this.send(result);
+  }
+
+  sendSourceCapture(payload: Record<string, unknown>): boolean {
+    return this.send({
+      type: 'source_capture',
+      requestId: crypto.randomUUID(),
+      payload,
+    });
   }
 
   /**

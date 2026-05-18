@@ -9,6 +9,49 @@ import { useXUser } from '../../hooks/useXUsername';
 // Module-level cache: persists across component mounts/unmounts and shared between all BoostPanel instances
 const taskStatusCache: Record<string, { liked: boolean; retweeted: boolean; replied: boolean; followed: boolean }> = {};
 
+/**
+ * Pagination indicator for the boost carousel. Two display modes so a
+ * tweet with 30+ active boosts doesn't render 30 tiny dots that overflow
+ * the panel width (and stretch the parent flex container, which in turn
+ * pushes the `>` next-boost arrow off the right edge of the sidebar).
+ *
+ * - `total <= 6` → dots, current highlighted in accent.
+ * - `total > 6`  → compact `current/total` pill that always fits.
+ */
+function BoostPaginationIndicator({
+    total, current, isEnded,
+}: {
+    total: number;
+    current: number;
+    isEnded: boolean;
+}) {
+    if (total <= 1) return null;
+
+    const accent = isEnded ? 'text-[var(--text-primary)]' : 'text-[var(--accent-text)]';
+    const accentBg = isEnded ? 'bg-[var(--text-primary)]' : 'bg-[var(--accent-color)]';
+
+    if (total > 6) {
+        return (
+            <div className={`flex items-center gap-1 mt-4 px-2.5 py-1 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-color)] text-xs font-medium ${accent}`}>
+                <span className="font-bold">{current + 1}</span>
+                <span className="opacity-60">/</span>
+                <span className="opacity-80">{total}</span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex items-center gap-1.5 mt-4 max-w-full">
+            {Array.from({ length: total }).map((_, idx) => (
+                <div
+                    key={idx}
+                    className={`w-1.5 h-1.5 rounded-full transition-colors ${idx === current ? accentBg : 'bg-[var(--border-color)]'}`}
+                />
+            ))}
+        </div>
+    );
+}
+
 function getCachedStatus(tweetId: string) {
     if (!taskStatusCache[tweetId]) {
         taskStatusCache[tweetId] = { liked: false, retweeted: false, replied: false, followed: false };
@@ -50,6 +93,14 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+    // True while we're fetching the clicked boost's tweet siblings.
+    // While true, the pagination indicator and nav arrows in the detail
+    // hero are suppressed — without this, the carousel briefly shows the
+    // optimistic `1 / 1` (or worse, `1 / <feed-count>` on slow networks)
+    // before expanding to the real per-tweet count, which reads as a
+    // glitchy number-flash. Cleaner to render nothing for ~300ms and
+    // then fade the final count in.
+    const [siblingsLoading, setSiblingsLoading] = useState(false);
 
     // Search and filter state
     const [searchQuery, setSearchQuery] = useState('');
@@ -379,23 +430,37 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
         }
         savedBoostList.current = [...boosts];
 
-        // Immediately show detail with current boost (no waiting)
+        // Optimistically narrow the carousel to the clicked boost and
+        // suppress the pagination chrome while we fetch siblings. This
+        // avoids the visible number flip (`1 / 1` → `1 / 8` or worse)
+        // when the user reaches detail view before the network call
+        // resolves — the indicator stays hidden for the ~200-800ms it
+        // takes the API to respond, then fades in with the final count.
+        setBoosts([boost]);
         setCurrentBoostIndex(0);
         setSelectedBoost(boost);
+        setSiblingsLoading(true);
 
         // Navigate to the tweet URL so user can interact
         if (tweetUrl) {
             navigateToUrl(tweetUrl);
         }
 
-        // Fetch all boosts for this tweet in background, update if more found
-        boostService.getBoostsByTweet(boost.tweet_id).then(tweetBoosts => {
-            if (tweetBoosts.length > 1) {
+        // Fetch all boosts for this tweet in background and expand the
+        // carousel scope to include any siblings on the same tweet.
+        // `savedBoostList` already holds the unfiltered feed so going
+        // back via the header < arrow restores the original list.
+        boostService.getBoostsByTweet(boost.tweet_id)
+            .then(tweetBoosts => {
+                if (tweetBoosts.length === 0) return; // network glitch — keep [boost]
                 const clickedIndex = tweetBoosts.findIndex(b => b.id === boost.id);
-                setCurrentBoostIndex(clickedIndex >= 0 ? clickedIndex : 0);
-                setSelectedBoost(tweetBoosts[clickedIndex >= 0 ? clickedIndex : 0]);
-            }
-        }).catch(() => { /* keep current boost on error */ });
+                const safeIndex = clickedIndex >= 0 ? clickedIndex : 0;
+                setBoosts(tweetBoosts);
+                setCurrentBoostIndex(safeIndex);
+                setSelectedBoost(tweetBoosts[safeIndex]);
+            })
+            .catch(() => { /* keep [boost] on error */ })
+            .finally(() => { setSiblingsLoading(false); });
     };
 
 
@@ -745,13 +810,16 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
 
         return (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: 'transparent', position: 'relative' }}>
-                <div style={{ flex: 1, overflowY: 'auto', padding: '20px', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="[&::-webkit-scrollbar]:hidden">
+                <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '20px', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="[&::-webkit-scrollbar]:hidden">
 
-                    {/* Reward Hero */}
-                    <div className="flex flex-col items-center justify-center py-6 mb-6 relative select-none">
+                    {/* Reward Hero — `w-full max-w-full overflow-hidden` keeps the
+                        center column from being stretched by a long dots row,
+                        which would push the absolutely positioned `>` arrow
+                        past the panel's right edge. */}
+                    <div className="w-full max-w-full overflow-hidden flex flex-col items-center justify-center py-6 mb-6 relative select-none">
                         <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 opacity-20 blur-[40px] rounded-full ${isEnded ? 'bg-gray-400' : 'bg-[var(--accent-color)]'}`} />
 
-                        <div className="relative z-10 flex flex-col items-center">
+                        <div className="relative z-10 flex flex-col items-center max-w-full">
                             <div className="flex items-center gap-2 mb-2 px-3 py-1 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-color)]">
                                 <Trophy size={14} className={isEnded ? 'text-[var(--text-secondary)]' : 'text-[var(--accent-color)]'} />
                                 <span className={`text-xs font-bold ${isEnded ? 'text-[var(--text-secondary)]' : 'text-[var(--accent-text)]'}`}>{t.boost.rewardPool}</span>
@@ -772,26 +840,21 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
                                 </div>
                             )}
 
-                            {/* Pagination Dots */}
-                            {boosts.length > 1 && (
-                                <div className="flex items-center gap-1.5 mt-4">
-                                    {boosts.map((_, idx) => (
-                                        <div
-                                            key={idx}
-                                            className={`w-1.5 h-1.5 rounded-full transition-colors ${idx === currentBoostIndex ? (isEnded ? 'bg-[var(--text-primary)]' : 'bg-[var(--accent-color)]') : 'bg-[var(--border-color)]'}`}
-                                        />
-                                    ))}
-                                </div>
-                            )}
+                            <BoostPaginationIndicator
+                                total={boosts.length}
+                                current={currentBoostIndex}
+                                isEnded={isEnded}
+                            />
                         </div>
 
-                        {/* Navigation Arrows */}
+                        {/* Navigation Arrows — inset from edges so they stay
+                            inside the panel even on narrow sidebars. */}
                         {boosts.length > 1 && (
                             <>
                                 {currentBoostIndex > 0 && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handlePrevBoost(); }}
-                                        className="absolute left-0 top-1/2 -translate-y-1/2 p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded-full transition-all z-20 cursor-pointer"
+                                        className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded-full transition-all z-20 cursor-pointer"
                                     >
                                         <ChevronLeft size={24} />
                                     </button>
@@ -799,7 +862,7 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
                                 {currentBoostIndex < boosts.length - 1 && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleNextBoost(); }}
-                                        className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded-full transition-all z-20 cursor-pointer"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded-full transition-all z-20 cursor-pointer"
                                     >
                                         <ChevronLeft size={24} className="rotate-180" />
                                     </button>
@@ -1015,12 +1078,12 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
                 )}
 
                 {/* Scrollable Content */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '96px', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="[&::-webkit-scrollbar]:hidden">
-                    {/* Reward Hero */}
-                    <div className="flex flex-col items-center justify-center py-6 mb-6 relative select-none">
+                <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px', paddingBottom: '96px', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="[&::-webkit-scrollbar]:hidden">
+                    {/* Reward Hero — same overflow guard as the list view above. */}
+                    <div className="w-full max-w-full overflow-hidden flex flex-col items-center justify-center py-6 mb-6 relative select-none">
                         <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 opacity-20 blur-[40px] rounded-full ${isEnded ? 'bg-gray-400' : 'bg-[var(--accent-color)]'}`} />
 
-                        <div className="relative z-10 flex flex-col items-center">
+                        <div className="relative z-10 flex flex-col items-center max-w-full">
                             <div className="flex items-center gap-2 mb-2 px-3 py-1 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-color)]">
                                 <Trophy size={14} className={isEnded ? 'text-[var(--text-secondary)]' : 'text-[var(--accent-color)]'} />
                                 <span className={`text-xs font-bold ${isEnded ? 'text-[var(--text-secondary)]' : 'text-[var(--accent-text)]'}`}>{t.boost.rewardPool}</span>
@@ -1041,26 +1104,26 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
                                 </div>
                             )}
 
-                            {/* Pagination Dots */}
-                            {showPagination && (
-                                <div className="flex items-center gap-1.5 mt-4">
-                                    {boosts.map((_, idx) => (
-                                        <div
-                                            key={idx}
-                                            className={`w-1.5 h-1.5 rounded-full transition-colors ${idx === currentBoostIndex ? (isEnded ? 'bg-[var(--text-primary)]' : 'bg-[var(--accent-color)]') : 'bg-[var(--border-color)]'}`}
-                                        />
-                                    ))}
-                                </div>
+                            {/* Hide pagination chrome until the sibling
+                                fetch resolves — otherwise the count flashes
+                                from the optimistic `1 / 1` to the real
+                                tweet count, which reads as a glitch. */}
+                            {!siblingsLoading && (
+                                <BoostPaginationIndicator
+                                    total={boosts.length}
+                                    current={currentBoostIndex}
+                                    isEnded={isEnded}
+                                />
                             )}
                         </div>
 
-                        {/* Navigation Arrows */}
-                        {showPagination && (
+                        {/* Navigation Arrows — also gated by !siblingsLoading. */}
+                        {!siblingsLoading && showPagination && (
                             <>
                                 {currentBoostIndex > 0 && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handlePrevBoost(); }}
-                                        className="absolute left-0 top-1/2 -translate-y-1/2 p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded-full transition-all z-20 cursor-pointer"
+                                        className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded-full transition-all z-20 cursor-pointer"
                                     >
                                         <ChevronLeft size={24} />
                                     </button>
@@ -1068,7 +1131,7 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
                                 {currentBoostIndex < boosts.length - 1 && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleNextBoost(); }}
-                                        className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded-full transition-all z-20 cursor-pointer"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded-full transition-all z-20 cursor-pointer"
                                     >
                                         <ChevronLeft size={24} className="rotate-180" />
                                     </button>

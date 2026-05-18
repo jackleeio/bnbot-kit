@@ -14,6 +14,9 @@ export interface XiaohongshuSearchResult {
   likes: string;
   published_at: string;
   url: string;
+  /** Cover image URL on `sns-webpic-qc.xhscdn.com`. Empty string when
+   *  the lazy-load placeholder hasn't resolved yet. */
+  cover: string;
 }
 
 /**
@@ -36,6 +39,28 @@ export async function searchXiaohongshu(query: string, limit = 20): Promise<Xiao
   await new Promise(r => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'Xiaohongshu');
 
+  // Trigger lazy-load: XHS only resolves cover `<img src>` once the card
+  // intersects the viewport. Without this nudge the first ~6 cards have
+  // real images and the rest stay on data-src placeholders, leaving most
+  // results with empty `cover` fields.
+  await executeInPage(tabId, () => {
+    return new Promise<void>(resolve => {
+      const start = Date.now();
+      const stepMs = 300;
+      const totalMs = 3500;
+      const tick = () => {
+        window.scrollBy({ top: window.innerHeight * 0.9, behavior: 'auto' });
+        if (Date.now() - start >= totalMs) {
+          window.scrollTo({ top: 0, behavior: 'auto' });
+          setTimeout(resolve, 250);
+          return;
+        }
+        setTimeout(tick, stepMs);
+      };
+      tick();
+    });
+  }, []);
+
   const data = await executeInPage(tabId, (lim: number) => {
       try {
         const normalizeUrl = (href: string) => {
@@ -48,6 +73,36 @@ export async function searchXiaohongshu(query: string, limit = 20): Promise<Xiao
 
         const results: any[] = [];
         const seen = new Set<string>();
+
+        // Pull the highest-resolution cover URL we can find on the card.
+        // Strategy:
+        //   1) Prefer an explicit `src` on the cover-anchor's <img> (set
+        //      after lazy-load completes).
+        //   2) Fall back to common XHS lazy-load attributes used before
+        //      hydration: `data-src`, `data-xhs-cover`, then any
+        //      background-image on `.cover` / `.lazy-img`.
+        //   3) `srcset` (when present) gives a higher-density variant —
+        //      pick the last entry which is typically the largest.
+        const extractCover = (el: Element): string => {
+          const img = el.querySelector('a.cover img, .cover img, img.cover-image, .note-img img, .lazy-img');
+          if (img instanceof HTMLImageElement) {
+            const ss = img.getAttribute('srcset') || '';
+            if (ss) {
+              const last = ss.split(',').map(s => s.trim().split(' ')[0]).filter(Boolean).pop();
+              if (last) return normalizeUrl(last);
+            }
+            if (img.src && !img.src.startsWith('data:')) return normalizeUrl(img.src);
+            const ds = img.getAttribute('data-src') || img.getAttribute('data-xhs-cover') || '';
+            if (ds) return normalizeUrl(ds);
+          }
+          const bgEl = el.querySelector('.cover, .lazy-img, .note-cover');
+          if (bgEl instanceof HTMLElement) {
+            const bg = getComputedStyle(bgEl).backgroundImage || '';
+            const m = bg.match(/url\(["']?([^"')]+)["']?\)/);
+            if (m && m[1] && !m[1].startsWith('data:')) return normalizeUrl(m[1]);
+          }
+          return '';
+        };
 
         document.querySelectorAll('section.note-item').forEach(el => {
           if ((el as HTMLElement).classList.contains('query-note-item')) return;
@@ -71,6 +126,7 @@ export async function searchXiaohongshu(query: string, limit = 20): Promise<Xiao
             author: cleanText(nameEl?.textContent || ''),
             likes: cleanText(likesEl?.textContent || '0'),
             url,
+            cover: extractCover(el),
           });
         });
 
@@ -98,5 +154,6 @@ export async function searchXiaohongshu(query: string, limit = 20): Promise<Xiao
     likes: item.likes,
     published_at: noteIdToDate(item.url),
     url: item.url,
+    cover: item.cover || '',
   }));
 }

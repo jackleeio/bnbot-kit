@@ -33,4 +33,11 @@ export interface HeartbeatMessage {
   timestamp: number;
 }
 
-export type IncomingMessage = ActionResult | ExtensionStatus | HeartbeatMessage;
+/** Source material captured from a browser page and forwarded to desktop. */
+export interface SourceCaptureMessage {
+  type: 'source_capture';
+  requestId: string;
+  payload: Record<string, unknown>;
+}
+
+export type IncomingMessage = ActionResult | ExtensionStatus | HeartbeatMessage | SourceCaptureMessage;

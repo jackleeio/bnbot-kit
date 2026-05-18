@@ -17,6 +17,8 @@ declare const chrome: any;
 
 const FAB_ID = 'bnbot-fab-trigger';
 const FAB_CSS_ID = 'bnbot-fab-styles';
+const LIGHT_THEME_LOGO_PATH = 'assets/banana-icon.svg';
+const DARK_THEME_LOGO_PATH = 'assets/bnbot-mark-on-dark.svg';
 const GAP_ABOVE_GROK = 8;
 const FALLBACK_BOTTOM = 90;
 // Grok drawer height threshold — collapsed (button only) is ~50px;
@@ -65,6 +67,7 @@ export class BnbotFabInjector {
   private bodyObserver: MutationObserver | null = null;
   private alignTimer: number | null = null;
   private hideClickListener: ((e: Event) => void) | null = null;
+  private lastWhiteTheme: boolean | null = null;
   // Pending visible state when page hasn't finished loading yet — applied
   // after `window.load`. Pre-load we keep the FAB hidden so it doesn't
   // flash in over a half-rendered X UI.
@@ -160,16 +163,16 @@ export class BnbotFabInjector {
         position: fixed;
         right: 20px;
         bottom: ${FALLBACK_BOTTOM}px;
-        width: 54px;
-        height: 54px;
-        border-radius: 14px;
-        background: #ffffff;
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        background: transparent;
+        border: 0;
+        box-shadow: none;
         cursor: pointer;
         display: flex;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-end;
         padding: 0;
         z-index: 9998;
         opacity: 1;
@@ -180,8 +183,7 @@ export class BnbotFabInjector {
          * doesn't want. Only opacity/transform animate (fade + scale). */
         transition:
           opacity 0.22s ease,
-          transform 0.18s ease,
-          box-shadow 0.15s ease;
+          transform 0.18s ease;
       }
       #${FAB_ID}.bnbot-fab-hidden {
         opacity: 0;
@@ -191,16 +193,22 @@ export class BnbotFabInjector {
       }
       #${FAB_ID}:hover {
         transform: scale(1.04);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
       }
       #${FAB_ID}.bnbot-fab-hidden:hover {
         transform: scale(0.92);
       }
       #${FAB_ID} img {
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        display: block;
+        filter: drop-shadow(0 8px 22px rgba(15, 23, 42, 0.18)) drop-shadow(0 1px 2px rgba(15, 23, 42, 0.14));
         pointer-events: none;
+      }
+      #${FAB_ID}.bnbot-fab-white-theme img {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
       }
     `;
     document.head.appendChild(style);
@@ -218,7 +226,7 @@ export class BnbotFabInjector {
     // (or immediately if already loaded), giving us a smooth fade-in.
     btn.classList.add('bnbot-fab-hidden');
 
-    const logo = chrome.runtime?.getURL?.('assets/images/bnbot-rounded-logo-5.png') || '';
+    const logo = chrome.runtime?.getURL?.(LIGHT_THEME_LOGO_PATH) || '';
     btn.innerHTML = `<img src="${logo}" alt="BNBot" />`;
 
     btn.addEventListener('click', (e) => {
@@ -229,6 +237,7 @@ export class BnbotFabInjector {
 
     document.body.appendChild(btn);
     this.btn = btn;
+    this.syncTheme();
     // Align immediately after mount so the button doesn't flash at the
     // fallback position.
     this.alignToGrok();
@@ -249,6 +258,7 @@ export class BnbotFabInjector {
   private alignToGrok(): void {
     const btn = this.btn ?? (document.getElementById(FAB_ID) as HTMLButtonElement | null);
     if (!btn) return;
+    this.syncTheme();
 
     // Prefer the header (the circular part that's always visible), fall
     // back to the drawer root.
@@ -307,10 +317,11 @@ export class BnbotFabInjector {
     const desiredBottom = grokBottomToViewportBottom + GAP_ABOVE_GROK;
     btn.style.bottom = `${desiredBottom}px`;
 
-    // Right-align with Grok header so FAB and Grok share a vertical axis.
+    // Right-align with Grok header so the smaller logo's right edge
+    // matches Grok's right edge.
     // Use the right-edge gap: (viewport right) - (grok right).
     const grokRightGap = Math.max(0, window.innerWidth - rect.right);
-    const desiredRight = grokRightGap + (rect.width - 54) / 2;
+    const desiredRight = grokRightGap;
     btn.style.right = `${desiredRight}px`;
 
     // Broadcast FAB position so the React popup can anchor itself above
@@ -379,6 +390,50 @@ export class BnbotFabInjector {
     btn.classList.toggle('bnbot-fab-hidden', !visible);
   }
 
+  private syncTheme(): void {
+    const btn = this.btn ?? (document.getElementById(FAB_ID) as HTMLButtonElement | null);
+    if (!btn) return;
+    const isWhiteTheme = this.isPageWhiteTheme();
+    if (this.lastWhiteTheme === isWhiteTheme) return;
+    this.lastWhiteTheme = isWhiteTheme;
+
+    const img = btn.querySelector('img');
+    if (img) {
+      const path = isWhiteTheme ? DARK_THEME_LOGO_PATH : LIGHT_THEME_LOGO_PATH;
+      img.src = chrome.runtime?.getURL?.(path) || '';
+    }
+    btn.classList.toggle('bnbot-fab-white-theme', isWhiteTheme);
+  }
+
+  private isPageWhiteTheme(): boolean {
+    const candidates = [
+      document.body,
+      document.documentElement,
+      document.querySelector('[data-testid="primaryColumn"]'),
+      document.querySelector('main[role="main"]'),
+    ];
+
+    for (const node of candidates) {
+      if (!node) continue;
+      const rgb = this.parseRgb(getComputedStyle(node as Element).backgroundColor);
+      if (!rgb || rgb.a === 0) continue;
+      const luma = rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114;
+      return luma > 200;
+    }
+
+    return window.matchMedia?.('(prefers-color-scheme: light)').matches ?? true;
+  }
+
+  private parseRgb(value: string): { r: number; g: number; b: number; a: number } | null {
+    const match = value.match(/rgba?\(([^)]+)\)/i);
+    if (!match) return null;
+    const parts = match[1].split(',').map((part) => part.trim());
+    const [r, g, b] = parts.slice(0, 3).map(Number);
+    const a = parts[3] === undefined ? 1 : Number(parts[3]);
+    if ([r, g, b, a].some((part) => Number.isNaN(part))) return null;
+    return { r, g, b, a };
+  }
+
   private lastGrokExpanded: boolean | null = null;
   private broadcastGrokExpanded(expanded: boolean): void {
     if (this.lastGrokExpanded === expanded) return;
@@ -401,7 +456,7 @@ export class BnbotFabInjector {
     this.lastBroadcast = { bottom, right };
     window.dispatchEvent(
       new CustomEvent('bnbot-fab-aligned', {
-        detail: { bottom, right, height: 54 },
+        detail: { bottom, right, height: 40 },
       }),
     );
   }

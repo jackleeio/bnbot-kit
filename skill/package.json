@@ -1,7 +1,7 @@
 {
   "name": "bnbot",
   "version": "0.4.0",
-  "description": "AI social media editor - discovers trending topics and generates tweet drafts",
+  "description": "AI Growth Agent for social platforms - find trends, create content, and automate growth",
   "type": "module",
   "scripts": {
     "crawl": "node scripts/crawl-all.js",

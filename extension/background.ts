@@ -902,6 +902,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message.type === 'BNBOT_SOURCE_CAPTURE') {
+    void (async () => {
+      try {
+        const response = await fetch('http://localhost:27421/api/remix-jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: message.payload || {} }),
+        });
+        if (!response.ok) {
+          const text = await response.text().catch(() => '');
+          throw new Error(`BNBot desktop returned ${response.status}${text ? `: ${text.slice(0, 160)}` : ''}`);
+        }
+        sendResponse({ ok: true });
+      } catch (error) {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'BNBot desktop is not connected',
+        });
+      }
+    })();
+    return true;
+  }
+
   // bnbot bridge control messages
   if (message.type === 'BNBOT_BRIDGE_SET_ENABLED') {
     const { enabled, port } = message;

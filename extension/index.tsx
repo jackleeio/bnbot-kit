@@ -9,6 +9,7 @@ import { BoostChecker } from './utils/BoostChecker';
 import { xUserStore } from './stores/xUserStore';
 import { HomeBoostChecker } from './utils/HomeBoostChecker';
 import { BnbotFabInjector } from './utils/BnbotFabInjector';
+import { XShareMenuInjector } from './utils/XShareMenuInjector';
 // VideoDownloadManager removed — old "download tweet video" share-menu
 // injection was part of the abandoned cross-post / republish flow.
 // 初始化 commandService 消息监听器，确保 LOCAL_ACTION（bnbot 本地桥）在内容脚本加载时就能处理
@@ -472,6 +473,12 @@ const mount = () => {
   // Start the floating BNBot FAB (right-bottom, above X's Grok drawer)
   const bnbotFab = new BnbotFabInjector();
   bnbotFab.start();
+
+  // Add a BNBot action to X's native share menu. This stays invisible
+  // during normal reading and only mounts inside the menu after the user
+  // explicitly opens it.
+  const xShareMenu = new XShareMenuInjector();
+  xShareMenu.start();
 
   // Initialize Ad Blocker
   initAdBlocker();
