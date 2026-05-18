@@ -15,11 +15,18 @@ export default defineConfig(({ mode }) => {
   const manifest = {
     ...manifestJson,
     name: isDev ? `${manifestJson.name} (Dev)` : manifestJson.name,
-    // Production: remove localhost from host_permissions (Chrome Web Store rejects it)
-    // WebSocket connections still work via content_security_policy connect-src
+    // Production: strip dev-only host patterns from host_permissions.
+    // Chrome Web Store rejects both `localhost` and `127.0.0.1` patterns
+    // here — they're treated as "invalid url". The CLI bridge
+    // (ws://localhost:18900) still works at runtime because content
+    // _security_policy's connect-src allows them; Chrome doesn't require
+    // host_permissions for WebSocket connections initiated from the
+    // extension's own pages.
     host_permissions: isDev
       ? manifestJson.host_permissions
-      : manifestJson.host_permissions.filter((p: string) => !p.includes('localhost'))
+      : manifestJson.host_permissions.filter(
+          (p: string) => !p.includes('localhost') && !p.includes('127.0.0.1')
+        )
   };
 
   // Build offscreen.ts separately
