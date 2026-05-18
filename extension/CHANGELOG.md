@@ -3,6 +3,21 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.12.6] - 2026-05-18
+
+### Removed
+- **`offscreen` permission + wss://api.bnbot.ai push channel 整链清除** — cross-check 完 bnbot-api 后端，push 这条 WS 的只有 telegram.py 和 ai/agent-v2 两条入口，对应的 ChatPanel / AnalysisPanel / Telegram 集成在 v0.12.0 都已删，desktop BNBot agent 走的是本地 CLI bridge `ws://127.0.0.1:18900`（见 `bnbot/packages/desktop/src/lib/bnbotClient.ts`），不依赖这条 push channel。改动：
+  - `manifest.json`：删 `offscreen` permission + `web_accessible_resources` 的 `offscreen.html`。
+  - 删 `offscreen.html` / `offscreen.ts`。
+  - `vite.config.ts`：删第二条 build（生产 `dist/offscreen.js`）+ 未用的 `build` import。
+  - `background.ts`：删 `firefoxWsManager` / `WebSocketManager`、`ensureOffscreenDocument` + 整段 WS_CONNECT/DISCONNECT/SEND/STATUS + OFFSCREEN_WS_* + REQUEST_FRESH_TOKEN handler block（~200 行），LOGOUT handler 里的 OFFSCREEN_WS_DISCONNECT 调用也清。`handleFreshTokenRequest` 注释掉（仅这两条 WS 重连 hook 调过，authService 自带 fetchWithAuth 的 token refresh）。
+  - `services/commandService.ts`：删 `WS_CONNECTED` / `WS_DISCONNECTED` / `WS_MESSAGE` 三条 message listener 分支，保留 `LOCAL_ACTION`（CLI bridge 入口仍然活）。`handleMessage` / `handleChatMessage` / `handleCommand` / `handleAction` 等 dead methods 留在源码，vite tree-shake 已经把 production bundle 里抹掉（bundle 体积 ~245K → ~203K）。
+- **Permissions 从 4 → 3**：留 `storage` / `tabs` / `debugger`，砍 `offscreen`。Chrome Web Store reviewer 不再需要单独看 `offscreen` 的 Permission Justification。
+
+### Changed
+- **X 分享菜单注入按钮文案缩短**：发送成功状态从 "Sent to BNBot / 已发送到BNBot" 改成 "Sent / 发送成功"，菜单项不抢眼。
+
+
 ## [0.12.5] - 2026-05-16
 
 ### Changed

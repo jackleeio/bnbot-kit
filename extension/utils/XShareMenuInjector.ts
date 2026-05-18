@@ -250,7 +250,7 @@ export class XShareMenuInjector {
     const locale = item.dataset.bnbotLocale === 'en' ? 'en' : 'zh';
     const text =
       state === 'sending' ? (locale === 'en' ? 'Sending...' : '发送中...')
-        : state === 'done' ? (locale === 'en' ? 'Sent to BNBot' : '已发送到BNBot')
+        : state === 'done' ? (locale === 'en' ? 'Sent' : '发送成功')
           : state === 'error' ? message || '发送失败'
             : locale === 'en' ? MENU_LABEL_EN : MENU_LABEL;
     if (label) label.textContent = text;
