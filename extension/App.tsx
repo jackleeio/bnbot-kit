@@ -9,8 +9,7 @@ import { BoostPanel } from './components/panels/BoostPanel';
 // (skills/kol-pulse/SKILL.md). Extension no longer hosts the trends UI.
 // CreditsPanel removed — subscription / credits managed via CLI / desktop app
 // (extension is a thin browser executor, no account UI).
-// LoginPanel / LoginModal removed — login flow owned by CLI (`bnbot login`).
-// Extension consumes tokens pushed via inject_auth_tokens (background.ts).
+// LoginPanel / LoginModal removed — extension is auth-free.
 // SchedulePanel removed — scheduling lives in `bnbot calendar` + macOS launchd
 // (skill: /schedule). Extension no longer hosts the calendar UI.
 // AutoPilotPanel removed — autopilot lives in bnbot CLI /auto-reply + /inbox-watch skills.
@@ -20,11 +19,7 @@ import { XBalancePanel } from './components/panels/XBalancePanel';
 import { Tab } from './types';
 // twitterUtils sidebar mutators removed — popup is a floating card now,
 // no need to mutate X's right column / left nav layout.
-import { authService, User } from './services/authService';
-import { chatService } from './services/chatService';
-import { commandService } from './services/commandService';
 import { TweetObserver } from './utils/TweetObserver';
-import { NativeBoostModal } from './components/modals/NativeBoostModal';
 
 import { ThemeProvider, useTheme } from './components/ThemeContext';
 import { LanguageProvider, useLanguage } from './components/LanguageContext';
@@ -40,15 +35,8 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.BOOST);
   const [tabInitialized, setTabInitialized] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
-  // Show "run bnbot login" hint instead of an in-extension login UI when
-  // a backend-dependent action is requested without auth.
-  const [showLoginHint, setShowLoginHint] = useState(false);
   const [currentTweetId, setCurrentTweetId] = useState<string | null>(null);
-  const [pendingAgentMessage, setPendingAgentMessage] = useState<string | null>(null);
   const [previousTab, setPreviousTab] = useState<Tab | null>(null);
-  const [chatResetKey, setChatResetKey] = useState(0);
-  const [globalChatResetTrigger, setGlobalChatResetTrigger] = useState(0); // Add reset trigger for global Chat
   const [tweetHighlightEnabled, setTweetHighlightEnabled] = useState(true);
   // Popup bottom/right follow the FAB's dynamic position. Updated via
   // `bnbot-fab-aligned` event broadcast by BnbotFabInjector. Defaults
@@ -62,10 +50,6 @@ function AppContent() {
   const [pendingContextAction, setPendingContextAction] = useState<string | null>(null);
 
   const [boostPanelTweetId, setBoostPanelTweetId] = useState<string | null>(null);
-  const [showBoostModal, setShowBoostModal] = useState(false);
-  const [boostModalTweetText, setBoostModalTweetText] = useState<string>('');
-  const [boostModalTweetId, setBoostModalTweetId] = useState<string>('');
-  const [boostModalTweetUrl, setBoostModalTweetUrl] = useState<string>('');
   // Use ref with timestamp to track "stay on page" - valid for 1 second after being set
   const chatStayOnPageTimestampRef = useRef<number>(0);
   const tweetObserverRef = useRef<TweetObserver | null>(null);
@@ -356,84 +340,6 @@ function AppContent() {
     }
   }, [isCollapsed]);
 
-  // Check for saved user on mount and restore access token.
-  //
-  // Stale-data guard: with the OAuth UI gone (login is CLI-driven now),
-  // there's no in-extension Sign Out button users can easily reach to
-  // clear leftover state from a previous account. So on startup, if we
-  // see a saved user but no valid token (and refresh fails), wipe the
-  // stale data so the UI doesn't show a phantom avatar / wrong email.
-  useEffect(() => {
-    const restoreUser = async () => {
-      const savedUser = await authService.getUser();
-      if (!savedUser) return;
-
-      const accessToken = await authService.getAccessToken();
-      const refreshToken = await authService.getRefreshToken();
-
-      // No tokens at all — definitely stale (e.g. user data from before
-      // the OAuth UI was removed). Clear and bail.
-      if (!accessToken && !refreshToken) {
-        console.log('[BNBot] Saved user has no tokens — clearing stale state. Run `bnbot login` in CLI to re-auth.');
-        await authService.logout();
-        return;
-      }
-
-      // Have refresh token but no access token — try to refresh once.
-      // If that fails, the session is dead; wipe.
-      if (!accessToken && refreshToken) {
-        const ok = await authService.refreshAccessToken();
-        if (!ok) {
-          console.log('[BNBot] Refresh failed on startup — clearing stale state.');
-          await authService.logout();
-          return;
-        }
-      }
-
-      setUser(savedUser);
-    };
-    restoreUser();
-  }, []);
-
-  // Listen for auth events (session expired, logout)
-  useEffect(() => {
-    const handleAuthEvent = (event: CustomEvent) => {
-      const { type } = event.detail || {};
-      console.log('[BNBot] Auth event received:', type);
-
-      if (type === 'session_expired') {
-        // Session expired, clear user state only
-        // Don't auto-show login modal - it will be triggered when user tries to use a feature
-        setUser(null);
-        // Reset chat to clear any stale state
-        setChatResetKey(prev => prev + 1);
-      }
-    };
-
-    window.addEventListener('bnbot:auth', handleAuthEvent as EventListener);
-    return () => {
-      window.removeEventListener('bnbot:auth', handleAuthEvent as EventListener);
-    };
-  }, []);
-
-  // Listen for AUTH_INJECTED from background (agent login via MCP)
-  useEffect(() => {
-    const listener = (message: any) => {
-      if (message?.type === 'AUTH_INJECTED') {
-        console.log('[BNBot] Auth tokens injected by agent, refreshing user state');
-        authService.getUser().then(savedUser => {
-          if (savedUser) {
-            setUser(savedUser);
-          }
-        });
-      }
-    };
-    chrome.runtime?.onMessage?.addListener(listener);
-    return () => {
-      chrome.runtime?.onMessage?.removeListener(listener);
-    };
-  }, []);
-
   // Pop-out is a 420×640 floating card now (not the old full-height panel),
   // so we no longer need to hide X's right column or collapse its left nav.
   // Keep the article-editor / focus-mode page detection — other handlers
@@ -594,35 +500,6 @@ function AppContent() {
     }
   };
 
-  const handleLogin = (loggedInUser: User) => {
-    // Clear all previous chat history for privacy/fresh start
-    chatService.clearAllSessions();
-    setUser(loggedInUser);
-    setShowLoginHint(false);
-    setShowLoginHint(false);
-    // Reset chat to clear any error messages from expired session
-    setChatResetKey(prev => prev + 1);
-    setGlobalChatResetTrigger(prev => prev + 1);
-    if (pendingAgentMessage) {
-      setActiveTab(Tab.BOOST);
-    }
-
-    // Note: WebSocket connection is owned by the background service worker.
-  };
-
-  const handleLogout = async () => {
-    // Disconnect from WebSocket
-    commandService.disconnect();
-
-    // Clear all chat history on logout
-    chatService.clearAllSessions();
-    await authService.logout();
-    setUser(null);
-    setShowLoginHint(true);
-    setChatResetKey(prev => prev + 1);
-    setGlobalChatResetTrigger(prev => prev + 1);
-  };
-
   // handleProfileClick / handleRefreshCredits removed — profile button +
   // credits panel are gone. CLI owns account state.
 
@@ -659,10 +536,6 @@ function AppContent() {
           const shouldPreserveChat = shouldStayOnCurrentTab;
 
           // Only reset chat when switching to a new tweet from a non-chat page (e.g., from BOOST or ANALYSIS)
-          if (!shouldPreserveChat) {
-            setChatResetKey(prev => prev + 1);
-          }
-
           if (shouldStayOnCurrentTab) {
             console.log('[BNBot] Stay on current tab, preserving chat state');
             return;
@@ -717,26 +590,6 @@ function AppContent() {
       history.replaceState = originalReplaceState;
     };
   }, [activeTab, currentTweetId, previousTab, tweetHighlightEnabled]);
-
-  // Listen for X Boost button clicks from injected DOM
-  useEffect(() => {
-    const handleBoostEvent = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const { tweetText, tweetId, tweetUrl } = customEvent.detail;
-      console.log('[BNBot] Handling X Boost event for tweet:', tweetId);
-
-      // NEW: Show Boost Modal overlay
-      setBoostModalTweetText(tweetText || '');
-      setBoostModalTweetId(tweetId || '');
-      setBoostModalTweetUrl(tweetUrl || '');
-      setShowBoostModal(true);
-    };
-
-    window.addEventListener('bnbot-open-boost', handleBoostEvent);
-    return () => {
-      window.removeEventListener('bnbot-open-boost', handleBoostEvent);
-    };
-  }, []);
 
   // Listen for specific Boost Panel Open requests
   useEffect(() => {
@@ -813,18 +666,6 @@ function AppContent() {
     };
   }, []);
 
-  // ... existing handlers
-
-  const handleBoostGenerate = (taskText: string) => {
-    const prompt = `Please help me write a tweet about: ${taskText}. Use English.`;
-    setPendingAgentMessage(prompt);
-    if (!user) {
-      setShowLoginHint(true);
-    } else {
-      setActiveTab(Tab.BOOST);
-    }
-  };
-
   const handleSwitchToContext = (options: { mode: 'agent' | 'boost', tweetId?: string }) => {
     if (options.tweetId) {
       setCurrentTweetId(options.tweetId);
@@ -834,28 +675,6 @@ function AppContent() {
 
   // Render non-persistent panels (conditional rendering)
   const renderActivePanel = () => {
-    // Login flow lives in CLI now. When backend-dependent UI requests
-    // auth (e.g. user clicks Boost without being logged in), show a
-    // hint instead of an in-extension login form.
-    if (showLoginHint && !user) {
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '32px', textAlign: 'center', gap: '16px' }}>
-          <div style={{ fontSize: '17px', fontWeight: 600, color: 'var(--text-primary)' }}>
-            登录从命令行管理
-          </div>
-          <div style={{ fontSize: '14px', color: 'var(--text-secondary)', maxWidth: '320px', lineHeight: 1.6 }}>
-            在终端运行 <code style={{ background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'ui-monospace, monospace' }}>bnbot login</code> 完成登录，token 会自动同步到扩展。
-          </div>
-          <button
-            onClick={() => setShowLoginHint(false)}
-            style={{ marginTop: '12px', padding: '8px 16px', borderRadius: '9999px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '13px' }}
-          >
-            知道了
-          </button>
-        </div>
-      );
-    }
-
     switch (activeTab) {
       case Tab.BOOST: return null; // BoostPanel is now persistent
       // Tab.CREDITS case removed — CreditsPanel deleted with the
@@ -948,14 +767,12 @@ function AppContent() {
                 style={{
                   position: 'absolute',
                   inset: 0,
-                  display: activeTab === Tab.BOOST && !showLoginHint ? 'flex' : 'none',
+                  display: activeTab === Tab.BOOST ? 'flex' : 'none',
                   flexDirection: 'column',
                 }}
               >
                 <BoostPanel
                   initialTweetId={boostPanelTweetId || undefined}
-                  onGenerate={handleBoostGenerate}
-                  onLogin={() => setShowLoginHint(true)}
                   onSwitchToContext={handleSwitchToContext}
                   onOpenWallet={() => setActiveTab(Tab.X_BALANCE)}
                 />
@@ -966,22 +783,14 @@ function AppContent() {
                 style={{
                   position: 'absolute',
                   inset: 0,
-                  display: (showLoginHint && !user) || activeTab !== Tab.BOOST ? 'flex' : 'none',
+                  display: activeTab !== Tab.BOOST ? 'flex' : 'none',
                   flexDirection: 'column',
                   zIndex: 20,
                 }}
               >
                 {renderActivePanel()}
               </div>
-              {/* LoginModal removed — login flow lives in CLI (`bnbot login`). */}
-              {showBoostModal && (
-                <NativeBoostModal
-                  tweetText={boostModalTweetText}
-                  tweetId={boostModalTweetId}
-                  tweetUrl={boostModalTweetUrl}
-                  onClose={() => setShowBoostModal(false)}
-                />
-              )}
+              {/* Login and create-boost modals removed — extension is read-only for Money Vision. */}
             </div>
           </main>
 

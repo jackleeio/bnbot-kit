@@ -1,7 +1,5 @@
-// Boost API Service
+// Read-only Boost API Service
 // Endpoint: /api/v1/engage
-
-import { authService } from './authService';
 
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8000';
 
@@ -69,36 +67,6 @@ export interface BoostPluginSummary {
   status: string;
   ends_at: string | null;
   hours_remaining: number | null;
-}
-
-export interface BoostCreate {
-  tweet_id: string;
-  tweet_url?: string;
-  sponsor_address: string;
-  total_budget: string;
-  token_type?: 'NATIVE' | 'ERC20';
-  token_address?: string;
-  token_symbol?: string;
-  chain_id?: number;
-  quoter_pool_percentage?: number;
-  retweeter_pool_percentage?: number;
-  replier_pool_percentage?: number;
-  verified_user_weight?: number;
-  unverified_user_weight?: number;
-  min_quality_score?: number;
-  duration_days?: number;
-}
-
-export interface BoostListResponse {
-  data: Boost[];
-  count: number;
-}
-
-export interface BoostListParams {
-  skip?: number;
-  limit?: number;
-  status?: 'pending' | 'active' | 'distributing' | 'completed';
-  mine_only?: boolean;
 }
 
 // Search API Types
@@ -169,22 +137,6 @@ export function weiToToken(wei: string, decimals: number = 18): string {
     return `${integerPart}.${decimalPart}`;
   }
   return integerPart.toString();
-}
-
-/**
- * Convert human-readable token amount to wei string
- */
-export function tokenToWei(amount: string, decimals: number = 18): string {
-  const parts = amount.split('.');
-  const integerPart = parts[0] || '0';
-  let decimalPart = parts[1] || '';
-
-  // Pad or truncate decimal part to match decimals
-  decimalPart = decimalPart.padEnd(decimals, '0').slice(0, decimals);
-
-  const combined = integerPart + decimalPart;
-  // Remove leading zeros but keep at least one digit
-  return combined.replace(/^0+/, '') || '0';
 }
 
 /**
@@ -288,174 +240,13 @@ class BoostService {
   }
 
   /**
-   * Get boost list (requires auth)
-   */
-  /**
-   * Get boost list (requires auth)
-   */
-  async listBoosts(params: BoostListParams = {}): Promise<BoostListResponse> {
-    const queryParams = new URLSearchParams();
-    if (params.skip !== undefined) queryParams.set('skip', params.skip.toString());
-    if (params.limit !== undefined) queryParams.set('limit', params.limit.toString());
-    if (params.status) queryParams.set('status', params.status);
-    if (params.mine_only) queryParams.set('mine_only', 'true');
-
-    const response = await authService.fetchWithAuth(
-      `${API_BASE_URL}/api/v1/engage/?${queryParams.toString()}`,
-      { method: 'GET' }
-    );
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    return await response.json();
-  }
-
-  /**
-   * Create a new boost (requires auth)
-   */
-  async createBoost(data: BoostCreate): Promise<Boost | null> {
-    try {
-      const response = await authService.fetchWithAuth(
-        `${API_BASE_URL}/api/v1/engage/`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(data),
-        }
-      );
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.detail || `HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('[BoostService] Error creating boost:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Activate a boost after on-chain deposit (no auth required - webhook)
-   */
-  async activateBoost(boostId: string, contractBoostId: string, depositTxHash: string): Promise<Boost | null> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/engage/${boostId}/activate`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contract_boost_id: contractBoostId,
-          deposit_tx_hash: depositTxHash,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('[BoostService] Error activating boost:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Add budget to an existing boost (requires auth)
-   */
-  async addBudget(boostId: string, additionalBudget: string, txHash: string): Promise<Boost | null> {
-    try {
-      const response = await authService.fetchWithAuth(
-        `${API_BASE_URL}/api/v1/engage/${boostId}/add-budget`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            additional_budget: additionalBudget,
-            tx_hash: txHash,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('[BoostService] Error adding budget:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Complete a boost (requires auth - creator only)
-   */
-  async completeBoost(boostId: string): Promise<Boost | null> {
-    try {
-      const response = await authService.fetchWithAuth(
-        `${API_BASE_URL}/api/v1/engage/${boostId}/complete`,
-        { method: 'PATCH' }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('[BoostService] Error completing boost:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Create Stripe Checkout Session for a boost (requires auth)
-   * Returns checkout_url to redirect user to Stripe payment page
-   */
-  async createCheckoutSession(boostId: string, amountUsd: number): Promise<{ checkout_url: string; session_id: string }> {
-    const response = await authService.fetchWithAuth(
-      `${API_BASE_URL}/api/v1/engage/${boostId}/checkout?amount_usd=${amountUsd}`,
-      { method: 'POST' }
-    );
-
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      throw new Error(errorBody.detail || `HTTP error! status: ${response.status}`);
-    }
-
-    return await response.json();
-  }
-
-  /**
    * Get all active boosts (for discovery/list view)
    */
   async getActiveBoosts(limit: number = 20): Promise<Boost[]> {
-    const result = await this.listBoosts({ status: 'active', limit });
+    const result = await this.searchBoosts({ status: 'active', limit });
     return result.data;
   }
 
-  /**
-   * Get my boosts (requires auth)
-   */
-  async getMyBoosts(status?: 'pending' | 'active' | 'distributing' | 'completed'): Promise<Boost[]> {
-    try {
-      const result = await this.listBoosts({ mine_only: true, status });
-      return result.data;
-    } catch (error) {
-      console.error('[BoostService] Error fetching my boosts:', error);
-      return [];
-    }
-  }
   /**
    * Search boosts with filters (no auth required - public API)
    */

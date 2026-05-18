@@ -1,5 +1,3 @@
-import { authService } from './authService';
-
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8000';
 
 export interface KolDataParams {
@@ -60,7 +58,7 @@ export const analysisService = {
         searchParams.append('cursor', params.cursor || '1');
         searchParams.append('page_size', (params.page_size || 100).toString());
 
-        const response = await authService.fetchWithAuth(`${API_BASE_URL}/api/v1/ai/kol-recent-data?${searchParams.toString()}`, {
+        const response = await fetch(`${API_BASE_URL}/api/v1/ai/kol-recent-data?${searchParams.toString()}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',

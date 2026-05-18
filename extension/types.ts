@@ -41,10 +41,9 @@ export interface ChatMessage {
 export type {
   Boost,
   BoostPluginSummary,
-  BoostCreate,
   TweetSnapshot,
-  BoostListResponse,
-  BoostListParams,
+  BoostSearchResponse,
+  BoostSearchParams,
 } from './services/boostService';
 
 // Legacy BoostTask interface (deprecated - use Boost instead)

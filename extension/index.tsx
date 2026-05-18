@@ -2,7 +2,6 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import cssText from './styles.css?inline';
-import { TwitterInjector } from './utils/TwitterInjector';
 import { initAdBlocker } from './utils/adBlocker';
 import { MarkdownPasteProcessor } from './utils/MarkdownPasteProcessor';
 import { BoostChecker } from './utils/BoostChecker';
@@ -465,10 +464,6 @@ const mount = () => {
       }
     }
   }, true);
-
-  // Start the Twitter Injector
-  const injector = new TwitterInjector();
-  injector.start();
 
   // Start the floating BNBot FAB (right-bottom, above X's Grok drawer)
   const bnbotFab = new BnbotFabInjector();

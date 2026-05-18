@@ -3,6 +3,18 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.12.8] - 2026-05-18
+
+### Removed
+- **Extension auth/token chain removed**: extension no longer stores or consumes BNBot access/refresh tokens. `inject_auth_tokens` is kept only as a backwards-compatible no-op and clears legacy token keys from `chrome.storage.local`.
+- **Money Vision create/checkout flow removed**: removed the X Boost create button injection, boost creation modals, checkout/add-budget/write API helpers, and related dead locale strings. Money Vision is now read-only in the extension: timeline detection, badges, details, and public boost discovery remain.
+- **Dead remote service files removed**: deleted unused `authService`, `chatService`, `mediaService`, and `reportService` sources after the offscreen/remote push channel retirement.
+
+### Changed
+- **Local bridge stays local-only**: `commandService` now only handles `LOCAL_ACTION` messages from the background/local relay and does not import auth or chat services.
+- **KOL pulse query no longer uses extension auth**: `/kol-pulse` action data fetch uses the public BNBot API path directly instead of `fetchWithAuth`.
+
+
 ## [0.12.7] - 2026-05-18
 
 ### Fixed

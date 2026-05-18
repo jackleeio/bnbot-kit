@@ -674,50 +674,18 @@ localRelayManager.init({
   onAction: async (message: LocalActionRequest) => {
     console.log(`[Background] Local relay action: ${message.actionType} (${message.requestId}) payload:`, JSON.stringify(message.actionPayload));
 
-    // Handle inject_auth_tokens directly in background (no content script needed)
+    // Auth is no longer owned by the extension. Keep this action as a
+    // backwards-compatible no-op so older CLI clients do not fail if they
+    // still send it, but never persist API tokens in chrome.storage.
     if (message.actionType === 'inject_auth_tokens') {
       try {
-        const { access_token, refresh_token, user } = message.actionPayload as {
-          access_token?: string;
-          refresh_token?: string;
-          user?: Record<string, unknown>;
-        };
-
-        if (!access_token || !refresh_token) {
-          localRelayManager.sendActionResult({
-            type: 'action_result',
-            requestId: message.requestId,
-            success: false,
-            error: 'Missing access_token or refresh_token in payload',
-          });
-          return;
-        }
-
-        // Write tokens directly to chrome.storage.local
-        const storageData: Record<string, unknown> = {
-          'accessToken.bnbot': access_token,
-          'refreshToken.bnbot': refresh_token,
-        };
-        if (user) {
-          storageData['userData.bnbot'] = user;
-        }
-        await chrome.storage.local.set(storageData);
-        console.log('[Background] Auth tokens injected via local relay');
-
-        // Notify all X tabs to refresh auth state
-        chrome.tabs.query({ url: ['*://twitter.com/*', '*://x.com/*'] }, (tabs) => {
-          for (const tab of tabs ?? []) {
-            if (tab.id) {
-              chrome.tabs.sendMessage(tab.id, { type: 'AUTH_INJECTED' }).catch(() => {});
-            }
-          }
-        });
-
+        await clearExtensionAuthStorage();
+        console.log('[Background] Ignored inject_auth_tokens; extension is auth-free');
         localRelayManager.sendActionResult({
           type: 'action_result',
           requestId: message.requestId,
           success: true,
-          data: { message: 'Auth tokens injected successfully' },
+          data: { message: 'Extension auth is disabled; token payload ignored' },
         });
       } catch (error) {
         console.error('[Background] inject_auth_tokens error:', error);
@@ -839,6 +807,22 @@ localRelayManager.init({
       setXTabsKeepAlive(false);
     }
   },
+});
+
+async function clearExtensionAuthStorage(): Promise<void> {
+  await chrome.storage.local.remove([
+    'accessToken.bnbot',
+    'refreshToken.bnbot',
+    'userData.bnbot',
+    'bnbot_user',
+  ]);
+}
+
+// Clean up tokens left by older releases. This is intentionally repeated on
+// startup so upgrading users do not keep stale auth material in extension
+// storage.
+clearExtensionAuthStorage().catch((error) => {
+  console.warn('[Background] Failed to clear legacy auth storage:', error);
 });
 
 // Load local relay settings from storage on startup
@@ -1090,8 +1074,7 @@ async function sendToOneXTab(message: object): Promise<boolean> {
 
 // Listen for messages from content script
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-  // GOOGLE_LOGIN handler removed — login flow lives in CLI (`bnbot login`),
-  // tokens arrive via the `inject_auth_tokens` WS action.
+  // GOOGLE_LOGIN handler removed — the extension is auth-free.
 
   if (request.type === 'LOGOUT') {
     // (Offscreen WS disconnect dropped — no offscreen channel remains.)
@@ -1151,12 +1134,11 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   // the User Data Privacy review surface.
 });
 
-// handleGoogleLogin removed — login flow lives in CLI (`bnbot login`).
-// CLI authenticates against bnbot.ai (clawmoney key or email OTP) and
-// pushes resulting tokens via inject_auth_tokens action.
+// handleGoogleLogin removed — the extension is auth-free. `inject_auth_tokens`
+// remains only as a backwards-compatible no-op for older local CLI clients.
 
 async function handleLogout() {
-  await chrome.storage.local.remove(['bnbot_user']);
+  await clearExtensionAuthStorage();
   // chrome.identity.clearAllCachedAuthTokens removed — extension no longer
   // touches Google identity (CLI owns login). `identity` permission can be
   // dropped from manifest now.
@@ -1497,81 +1479,6 @@ Object.assign(self, {
   search36Kr, fetch36KrHot, fetch36KrNews,
   fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote,
 });
-
-// handleFreshTokenRequest removed — its two callers (the firefoxWsManager
-// requestFreshToken hook and the REQUEST_FRESH_TOKEN onMessage handler)
-// were both part of the offscreen / wss://api.bnbot.ai push channel
-// that v0.12.6 retired. Token refresh for live extension API calls
-// (Money Vision boostService etc.) is handled inside authService's
-// fetchWithAuth wrapper, not from background.ts.
-
-/* dead function previously here — see notes above:
-async function handleFreshTokenRequest(): Promise<string | null> {
-  try {
-    // Get current access token
-    const result = await chrome.storage.local.get(['accessToken.bnbot', 'refreshToken.bnbot']);
-    const accessToken = result['accessToken.bnbot'] as string | undefined;
-    const refreshToken = result['refreshToken.bnbot'] as string | undefined;
-
-    if (!accessToken) {
-      console.log('[Background] No access token available');
-      return null;
-    }
-
-    // Validate token by making a simple API call
-    const validateResponse = await fetch(`${API_BASE_URL}/api/v1/payments/credits`, {
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-
-    if (validateResponse.ok) {
-      console.log('[Background] Current access token is valid');
-      return accessToken;
-    }
-
-    // Token expired, try to refresh
-    if (validateResponse.status === 401 && refreshToken) {
-      console.log('[Background] Access token expired, refreshing...');
-
-      const refreshResponse = await fetch(`${API_BASE_URL}/api/v1/refresh`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${refreshToken}` }
-      });
-
-      if (refreshResponse.ok) {
-        const data = await refreshResponse.json();
-        if (data.access_token) {
-          // Save new tokens
-          await chrome.storage.local.set({
-            'accessToken.bnbot': data.access_token,
-            'refreshToken.bnbot': data.refresh_token || refreshToken
-          });
-          console.log('[Background] Token refreshed successfully');
-
-          // Also update WS manager with new token
-          if (isFirefox && firefoxWsManager) {
-            firefoxWsManager.updateToken(data.access_token);
-          } else {
-            chrome.runtime.sendMessage({
-              type: 'OFFSCREEN_WS_UPDATE_TOKEN',
-              accessToken: data.access_token
-            }).catch(() => {});
-          }
-
-          return data.access_token;
-        }
-      }
-
-      console.log('[Background] Token refresh failed');
-    }
-
-    return null;
-  } catch (error) {
-    console.error('[Background] Error getting fresh token:', error);
-    return null;
-  }
-}
-*/
 
 // fetchVideoAsDataUrl / fetchImageAsBase64 / fetchBlobAsDataUrl removed —
 // the FETCH_VIDEO / FETCH_IMAGE / FETCH_BLOB message handlers that drove

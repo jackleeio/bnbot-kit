@@ -73,13 +73,11 @@ function mergeCachedStatus(tweetId: string, detected: { liked: boolean; retweete
 interface BoostPanelProps {
     initialTweetId?: string;
     isContextMode?: boolean;
-    onGenerate?: (taskText: string) => void;
-    onLogin?: () => void;
     onSwitchToContext?: (options: { mode: 'boost' | 'agent', tweetId?: string }) => void;
     onOpenWallet?: () => void;
 }
 
-export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContextMode = false, onGenerate, onLogin, onSwitchToContext, onOpenWallet }) => {
+export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContextMode = false, onSwitchToContext, onOpenWallet }) => {
     const { t } = useLanguage();
     const { username: currentUsername } = useXUser();
 

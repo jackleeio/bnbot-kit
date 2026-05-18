@@ -260,7 +260,7 @@ export class BoostChecker {
         }
     }
 
-    // Render "X Boost" badges on active tweets
+    // Render Money Vision badges on active tweets
     private renderBadges(requestedIds: string[], response: CheckTweetsResponse): void {
         const activeSet = new Set(response.active_tweet_ids);
 
