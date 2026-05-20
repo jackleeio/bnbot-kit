@@ -438,14 +438,19 @@ export async function getTwitterProfile(username: string, queryIds: QueryIds = {
       const result = d.data?.user?.result;
       if (!result) return { error: 'User @' + screenName + ' not found' };
       const l = result.legacy || {};
+      const core = result.core || {};
       return {
-        screen_name: l.screen_name || screenName, name: l.name || '',
-        bio: l.description || '', location: l.location || '',
+        rest_id: result.rest_id || '',
+        screen_name: core.screen_name || l.screen_name || screenName,
+        name: core.name || l.name || '',
+        bio: result.profile_bio?.description || l.description || '',
+        location: result.location?.location || l.location || '',
         followers: l.followers_count || 0, following: l.friends_count || 0,
         tweets: l.statuses_count || 0, likes: l.favourites_count || 0,
         verified: result.is_blue_verified || l.verified || false,
-        created_at: l.created_at || '',
-        url: 'https://x.com/' + (l.screen_name || screenName),
+        created_at: core.created_at || l.created_at || '',
+        profile_image_url: (result.avatar?.image_url || l.profile_image_url_https || '').replace('_normal', '_400x400'),
+        url: 'https://x.com/' + (core.screen_name || l.screen_name || screenName),
       };
     } catch (e: any) { return { error: e.message || 'Twitter profile scraper failed' }; }
   }, [BEARER, queryIds, uname]);
