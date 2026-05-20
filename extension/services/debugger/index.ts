@@ -64,6 +64,7 @@ export const debuggerWriteHandlers: Record<string, (payload: Payload) => Promise
       text: str(payload, 'text'),
       mediaPaths: strArrayOrUndef(payload, 'mediaPaths'),
       visible: bool(payload, 'visible'),
+      draftOnly: bool(payload, 'draftOnly'),
     }),
 
   like_tweet_debugger: async (payload) =>
@@ -100,6 +101,7 @@ export const debuggerWriteHandlers: Record<string, (payload: Payload) => Promise
       text: str(payload, 'text'),
       mediaPaths: strArrayOrUndef(payload, 'mediaPaths'),
       visible: bool(payload, 'visible'),
+      draftOnly: bool(payload, 'draftOnly'),
     }),
 
   delete_tweet_debugger: async (payload) =>

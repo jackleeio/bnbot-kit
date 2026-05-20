@@ -261,6 +261,11 @@ export interface ReplyArgs {
   /** Kept for CLI signature compatibility — pool visibility is managed
    *  by scraperService (minimized window) regardless. */
   visible?: boolean
+  /** Fill reply composer + attach media but do NOT click submit. Pool
+   *  window is left un-minimized so the user can audit and either click
+   *  Reply themselves or hit `bnbot x close` to discard. Mirrors
+   *  PostArgs.draftOnly / QuoteArgs.draftOnly. */
+  draftOnly?: boolean
 }
 
 export async function replyViaDebugger(args: ReplyArgs): Promise<WriteResult> {
@@ -292,6 +297,14 @@ export async function replyViaDebugger(args: ReplyArgs): Promise<WriteResult> {
       await readyPromise
       await waitForSelector(target.targetId, SEL.attachmentsReady, 10_000)
       await jitter(400, 800)
+    }
+
+    if (args.draftOnly) {
+      // Skip submit. Leave the pool window foregrounded so the user can
+      // audit the reply text + the reply target before deciding to post
+      // or discard. Symmetric with postViaDebugger / quoteViaDebugger.
+      restore = null
+      return { success: true, draftOnly: true, durationMs: Date.now() - started }
     }
 
     // Arm response listener before clicking submit.
@@ -523,6 +536,12 @@ export interface QuoteArgs {
   text: string
   mediaPaths?: string[]
   visible?: boolean
+  /** Fill composer (with the quoted tweet embedded) + attach media but
+   *  do NOT click submit. Pool window is left un-minimized so the user
+   *  can audit and either click Post themselves, hit `bnbot x close` to
+   *  discard, or `bnbot x close --save` to keep as an X draft. Mirrors
+   *  PostArgs.draftOnly. */
+  draftOnly?: boolean
 }
 
 /** Quote tweet flow:
@@ -578,6 +597,14 @@ export async function quoteViaDebugger(args: QuoteArgs): Promise<WriteResult> {
       await readyPromise
       await waitForSelector(target.targetId, SEL.attachmentsReady, 10_000)
       await jitter(400, 800)
+    }
+
+    if (args.draftOnly) {
+      // Skip submit. Leave the pool window foregrounded so the user can
+      // audit the quote embed + text before deciding to click Post or
+      // discard. Symmetric with postViaDebugger's draft path.
+      restore = null
+      return { success: true, draftOnly: true, durationMs: Date.now() - started }
     }
 
     const responsePromise = waitForJsonResponse<CreateTweetResponse>(

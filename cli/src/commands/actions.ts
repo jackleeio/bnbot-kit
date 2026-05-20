@@ -147,33 +147,47 @@ export async function threadCommand(tweetsJson: string, options: { engine?: stri
   return runCliAction('post_thread', { tweets }, getPort());
 }
 
-export async function replyCommand(url: string, text: string, options: { media?: string | string[]; engine?: string; visible?: boolean; as?: string }): Promise<void> {
-  const engine = normEngine(options.engine);
+export async function replyCommand(url: string, text: string, options: { media?: string | string[]; draft?: boolean; engine?: string; visible?: boolean; as?: string }): Promise<void> {
+  const isDraft = options.draft || false;
+  const engine = normEngine(options.engine, { draft: isDraft });
   await ensureAccount({ expected: options.as, engine, port: getPort() });
-  console.error(`Replying to: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
+  console.error(isDraft ? `Drafting reply to: ${url}` : `Replying to: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
 
   if (engine === 'debugger') {
     const sources = toSourceList(options.media);
     const mediaPaths = sources.length > 0 ? await resolveMediaListAsPaths(sources) : undefined;
-    return runCliAction('reply_tweet_debugger', { tweetUrl: url, text, mediaPaths, visible: !!options.visible }, getPort());
+    return runCliAction('reply_tweet_debugger', {
+      tweetUrl: url,
+      text,
+      mediaPaths,
+      visible: !!options.visible,
+      draftOnly: isDraft,
+    }, getPort());
   }
 
-  const params: Record<string, unknown> = { tweetUrl: url, text };
+  const params: Record<string, unknown> = { tweetUrl: url, text, draftOnly: isDraft };
   const media = await resolveMedia(options.media);
   if (media) params.media = media;
   return runCliAction('submit_reply', params, getPort());
 }
 
-export async function quoteCommand(url: string, text: string, options?: { media?: string | string[]; engine?: string; visible?: boolean; as?: string }): Promise<void> {
-  const engine = normEngine(options?.engine);
+export async function quoteCommand(url: string, text: string, options?: { media?: string | string[]; draft?: boolean; engine?: string; visible?: boolean; as?: string }): Promise<void> {
+  const isDraft = options?.draft || false;
+  const engine = normEngine(options?.engine, { draft: isDraft });
   await ensureAccount({ expected: options?.as, engine, port: getPort() });
-  console.error(`Quoting: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
+  console.error(isDraft ? `Drafting quote of: ${url}` : `Quoting: ${url}` + (engine === 'debugger' ? ' [engine=debugger]' : ''));
   if (engine === 'debugger') {
     const sources = toSourceList(options?.media);
     const mediaPaths = sources.length > 0 ? await resolveMediaListAsPaths(sources) : undefined;
-    return runCliAction('quote_tweet_debugger', { tweetUrl: url, text, mediaPaths, visible: !!options?.visible }, getPort());
+    return runCliAction('quote_tweet_debugger', {
+      tweetUrl: url,
+      text,
+      mediaPaths,
+      visible: !!options?.visible,
+      draftOnly: isDraft,
+    }, getPort());
   }
-  return runCliAction('quote_tweet', { tweetUrl: url, text }, getPort());
+  return runCliAction('quote_tweet', { tweetUrl: url, text, draftOnly: isDraft }, getPort());
 }
 
 // ── Engagement ───────────────────────────────────────────────

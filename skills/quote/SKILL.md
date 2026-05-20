@@ -76,26 +76,94 @@ no generic openers).
 
 ### 4. Present
 
+Output the three candidates as `bnbot_tweet_draft` JSON cards so the
+desktop preview can render each one with the original tweet embedded
+below the comment. **Every card must carry the `quote` field with the
+full source tweet data** — text, author, avatar, URL, media — pulled
+verbatim from step 1's scrape. Without `quote` the UI shows a bare
+comment with no context.
+
+For each candidate, emit a fenced JSON block:
+
+````
+```json
+{
+  "type": "bnbot_tweet_draft",
+  "text": "<my short comment, ≤220 chars>",
+  "media": [],
+  "quote": {
+    "type": "bnbot_source_tweet",
+    "text": "<full source tweet text>",
+    "authorName": "<source author display name>",
+    "authorHandle": "<source author handle, no leading @>",
+    "authorAvatar": "<source avatar URL if scraped>",
+    "tweetUrl": "<canonical https://x.com/.../status/... URL>",
+    "media": [
+      { "type": "photo|video|gif", "url": "<media URL>", "thumbnail": "<optional poster>", "alt": "<optional>" }
+    ]
+  }
+}
 ```
-📎 Source · @alice · 2h · 142 L / 18 RT / 9 RP
-  > "<first 180 chars of source>"
+````
 
-[1/3] Endorse + extend
-  voice: ✓ lowercase, ✓ no em-dash, 168 chars
-  > "<draft>"
-  reason: picks up the "X beats Y" line and extends to Z
+Rules:
 
-[2/3] Challenge specific point
-  ...
+- `text` only carries MY commentary — never paste the source body into
+  it, the embed shows the original below.
+- **`quote.tweetUrl` is mandatory** — must be the canonical
+  `https://x.com/<handle>/status/<id>` URL. `bnbot x quote` and the
+  desktop publish path both fail with "missing tweetUrl" without it.
+  Use the URL the user passed in / the one returned by
+  `bnbot x scrape thread`. Never empty, never a placeholder.
+- **`quote.text` and `quote.authorHandle` are mandatory** — original
+  tweet body verbatim, handle without leading `@`. If the scraper
+  returns `author: "unknown"`, extract the handle from the source URL
+  path instead; never leave "unknown".
+- `quote.media` carries the source's media (charts, screenshots, video
+  preview). Skip when source has none; do not invent.
+- All three candidates share the same `quote` object — only `text`
+  differs across stances.
+- After the three JSON blocks, append a one-line summary:
+  `Pick [1|2|3], [edit N], [redraft], or [skip]?`
 
-Pick [1|2|3], [edit N], [redraft], or [skip]?
-```
+Per-candidate voice annotation (lowercase / em-dash / char count) stays
+out of the JSON — it goes in a short prose line **above** each fence,
+not inside the payload.
 
-### 5. Post
+### 5. Post (or stage)
+
+If the user picks a candidate and says publish / send / 发出去:
 
 ```bash
 bnbot x quote --engine debugger -- "<source-url>" "<picked draft>"
 ```
+
+If the user says 先写入计划 / 加入草稿 / 不要发, call `SaveDraftToPlan`
+with the picked candidate **including its `quote` object** (the
+desktop card reads it back from the markdown frontmatter):
+
+```
+SaveDraftToPlan({
+  project: "<slug>",
+  platform: "twitter",
+  status: "scheduled",  // or "draft" if user said 草稿
+  time: "<HH:MM>",
+  title: "<short title>",
+  body: "<picked text — only my commentary, no source body>",
+  source: "<source tweet URL>",
+  quote: {
+    text: "<source tweet text>",
+    authorName: "...",
+    authorHandle: "...",
+    authorAvatar: "...",
+    tweetUrl: "...",
+    media: [...]
+  }
+})
+```
+
+Do NOT inline the source tweet into `body` — `quote` is the structured
+field the desktop UI reads to render the embedded original.
 
 **Verify the command's stdout before claiming success.** `bnbot x quote`
 returns JSON like `{"success": true, "tweetId": "...", "durationMs": N}`
