@@ -483,9 +483,6 @@ export async function getYouTubeTrending(limit = 30): Promise<YouTubeTrendingVid
     try {
       const d = (window as any).ytInitialData;
       if (!d) return { error: 'ytInitialData missing on trending feed' };
-      const tabs = d.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
-      const sectionContents = tabs[0]?.tabRenderer?.content?.sectionListRenderer?.contents || [];
-      const out: any[] = [];
 
       const parseHumanCount = (s: string): number => {
         if (!s) return 0;
@@ -503,42 +500,101 @@ export async function getYouTubeTrending(limit = 30): Promise<YouTubeTrendingVid
         return parts[0] || 0;
       };
 
-      for (const section of sectionContents) {
-        if (out.length >= lim) break;
-        const items = section.itemSectionRenderer?.contents || [];
-        for (const it of items) {
-          if (out.length >= lim) break;
-          // shelfRenderer holds the actual list
-          const shelf = it.shelfRenderer;
-          const expandedItems =
-            shelf?.content?.expandedShelfContentsRenderer?.items
-            || shelf?.content?.horizontalListRenderer?.items
-            || [it]; // sometimes videoRenderer is the direct child
-          for (const ex of expandedItems) {
-            if (out.length >= lim) break;
-            const v = ex.videoRenderer;
-            if (!v?.videoId) continue;
-            const thumbs = v.thumbnail?.thumbnails || [];
-            const viewText = v.viewCountText?.simpleText || v.shortViewCountText?.simpleText || '';
-            const dur = v.lengthText?.simpleText || '';
-            out.push({
-              rank: out.length + 1,
-              id: v.videoId,
-              title: v.title?.runs?.[0]?.text || '',
-              url: 'https://www.youtube.com/watch?v=' + v.videoId,
-              channel_id: v.ownerText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId || '',
-              channel_title: v.ownerText?.runs?.[0]?.text || '',
-              description: (v.descriptionSnippet?.runs || []).map((r: any) => r.text || '').join('') || '',
-              duration: dur,
-              duration_seconds: parseDuration(dur),
-              view_count_text: viewText,
-              view_count: parseHumanCount(viewText),
-              published: v.publishedTimeText?.simpleText || '',
-              thumbnail: thumbs.length ? thumbs[thumbs.length - 1].url : '',
-            });
-          }
+      // Trending now uses richGridRenderer with richItemRenderer / richSectionRenderer.
+      // Older shape (shelfRenderer → expandedShelfContentsRenderer → videoRenderer) still
+      // appears regionally. Walk both shapes and dedupe by videoId.
+      const out: any[] = [];
+      const seen = new Set<string>();
+
+      const pushVideoRenderer = (v: any) => {
+        if (!v?.videoId || seen.has(v.videoId)) return;
+        const thumbs = v.thumbnail?.thumbnails || [];
+        const viewText = v.viewCountText?.simpleText || v.shortViewCountText?.simpleText || '';
+        const dur = v.lengthText?.simpleText || '';
+        seen.add(v.videoId);
+        out.push({
+          rank: out.length + 1,
+          id: v.videoId,
+          title: v.title?.runs?.[0]?.text || v.title?.simpleText || '',
+          url: 'https://www.youtube.com/watch?v=' + v.videoId,
+          channel_id: v.ownerText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId
+            || v.longBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId
+            || v.shortBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId
+            || '',
+          channel_title: v.ownerText?.runs?.[0]?.text
+            || v.longBylineText?.runs?.[0]?.text
+            || v.shortBylineText?.runs?.[0]?.text
+            || '',
+          description: (v.descriptionSnippet?.runs || []).map((r: any) => r.text || '').join('')
+            || (v.detailedMetadataSnippets?.[0]?.snippetText?.runs || []).map((r: any) => r.text || '').join('')
+            || '',
+          duration: dur,
+          duration_seconds: parseDuration(dur),
+          view_count_text: viewText,
+          view_count: parseHumanCount(viewText),
+          published: v.publishedTimeText?.simpleText || '',
+          thumbnail: thumbs.length ? thumbs[thumbs.length - 1].url : '',
+        });
+      };
+
+      const pushLockup = (lvm: any) => {
+        if (!lvm || lvm.contentType !== 'LOCKUP_CONTENT_TYPE_VIDEO') return;
+        const vid = lvm.contentId;
+        if (!vid || seen.has(vid)) return;
+        const meta = lvm.metadata?.lockupMetadataViewModel;
+        const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows || [];
+        const parts = rows.flatMap((row: any) =>
+          (row.metadataParts || []).map((p: any) => p.text?.content || '').filter(Boolean),
+        );
+        const thumbs = lvm.contentImage?.thumbnailViewModel?.image?.sources || [];
+        const overlays = lvm.contentImage?.thumbnailViewModel?.overlays || [];
+        let dur = '';
+        for (const o of overlays) {
+          const t = o.thumbnailOverlayBadgeViewModel?.thumbnailBadges?.[0]?.thumbnailBadgeViewModel?.text;
+          if (t) { dur = t; break; }
         }
-      }
+        seen.add(vid);
+        out.push({
+          rank: out.length + 1,
+          id: vid,
+          title: meta?.title?.content || '',
+          url: 'https://www.youtube.com/watch?v=' + vid,
+          channel_id: '',
+          channel_title: parts[0] || '',
+          description: '',
+          duration: dur,
+          duration_seconds: parseDuration(dur),
+          view_count_text: parts[1] || '',
+          view_count: parseHumanCount(parts[1] || ''),
+          published: parts[2] || '',
+          thumbnail: thumbs.length ? thumbs[thumbs.length - 1].url : '',
+        });
+      };
+
+      const walk = (node: any): void => {
+        if (!node || typeof node !== 'object' || out.length >= lim) return;
+        if (Array.isArray(node)) {
+          for (const item of node) {
+            if (out.length >= lim) return;
+            walk(item);
+          }
+          return;
+        }
+        if (node.videoRenderer?.videoId) {
+          pushVideoRenderer(node.videoRenderer);
+        }
+        if (node.gridVideoRenderer?.videoId) {
+          pushVideoRenderer(node.gridVideoRenderer);
+        }
+        if (node.lockupViewModel) {
+          pushLockup(node.lockupViewModel);
+        }
+        for (const k of Object.keys(node)) {
+          if (out.length >= lim) return;
+          walk(node[k]);
+        }
+      };
+      walk(d.contents);
       return out.slice(0, lim);
     } catch (e: any) {
       return { error: e?.message || 'YouTube trending scraper failed' };
@@ -758,8 +814,17 @@ export async function getYouTubeRelatedVideos(videoIdOrUrl: string, limit = 20):
     try {
       const d = (window as any).ytInitialData;
       if (!d) return { error: 'ytInitialData missing on watch page' };
-      const results =
-        d.contents?.twoColumnWatchNextResults?.secondaryResults?.secondaryResults?.results || [];
+
+      // Path drifts: results may live at
+      //   secondaryResults.secondaryResults.results[]
+      //   secondaryResults.secondaryResults.results[].itemSectionRenderer.contents[]
+      //   secondaryResults.results[] (mobile / experiments)
+      // Inside, items use compactVideoRenderer (classic) OR lockupViewModel
+      // (LOCKUP_CONTENT_TYPE_VIDEO). Walk all shapes and dedupe.
+      const secondary =
+        d.contents?.twoColumnWatchNextResults?.secondaryResults
+        || d.contents?.singleColumnWatchNextResults?.secondaryResults
+        || {};
 
       const parseHumanCount = (s: string): number => {
         if (!s) return 0;
@@ -778,63 +843,84 @@ export async function getYouTubeRelatedVideos(videoIdOrUrl: string, limit = 20):
       };
 
       const out: any[] = [];
-      for (const r of results) {
-        if (out.length >= lim) break;
+      const seen = new Set<string>();
 
-        // Classic layout
-        const c = r.compactVideoRenderer;
-        if (c?.videoId) {
-          const thumbs = c.thumbnail?.thumbnails || [];
-          const viewText = c.viewCountText?.simpleText || c.shortViewCountText?.simpleText || '';
-          const dur = c.lengthText?.simpleText || '';
-          out.push({
-            rank: out.length + 1,
-            id: c.videoId,
-            title: c.title?.simpleText || c.title?.runs?.[0]?.text || '',
-            url: 'https://www.youtube.com/watch?v=' + c.videoId,
-            channel_id: c.shortBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId || '',
-            channel_title: c.shortBylineText?.runs?.[0]?.text || c.longBylineText?.runs?.[0]?.text || '',
-            duration: dur,
-            duration_seconds: parseDuration(dur),
-            view_count_text: viewText,
-            view_count: parseHumanCount(viewText),
-            published: c.publishedTimeText?.simpleText || '',
-            thumbnail: thumbs.length ? thumbs[thumbs.length - 1].url : '',
-          });
-          continue;
+      const pushCompact = (c: any) => {
+        if (!c?.videoId || seen.has(c.videoId)) return;
+        const thumbs = c.thumbnail?.thumbnails || [];
+        const viewText = c.viewCountText?.simpleText || c.shortViewCountText?.simpleText || '';
+        const dur = c.lengthText?.simpleText || '';
+        seen.add(c.videoId);
+        out.push({
+          rank: out.length + 1,
+          id: c.videoId,
+          title: c.title?.simpleText || c.title?.runs?.[0]?.text || '',
+          url: 'https://www.youtube.com/watch?v=' + c.videoId,
+          channel_id: c.shortBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId
+            || c.longBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId
+            || '',
+          channel_title: c.shortBylineText?.runs?.[0]?.text
+            || c.longBylineText?.runs?.[0]?.text
+            || '',
+          duration: dur,
+          duration_seconds: parseDuration(dur),
+          view_count_text: viewText,
+          view_count: parseHumanCount(viewText),
+          published: c.publishedTimeText?.simpleText || '',
+          thumbnail: thumbs.length ? thumbs[thumbs.length - 1].url : '',
+        });
+      };
+
+      const pushLockup = (lvm: any) => {
+        if (!lvm || lvm.contentType !== 'LOCKUP_CONTENT_TYPE_VIDEO') return;
+        const vid = lvm.contentId;
+        if (!vid || seen.has(vid)) return;
+        const meta = lvm.metadata?.lockupMetadataViewModel;
+        const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows || [];
+        const parts = rows.flatMap((row: any) =>
+          (row.metadataParts || []).map((p: any) => p.text?.content || '').filter(Boolean),
+        );
+        const thumbs = lvm.contentImage?.thumbnailViewModel?.image?.sources || [];
+        const overlays = lvm.contentImage?.thumbnailViewModel?.overlays || [];
+        let dur = '';
+        for (const o of overlays) {
+          const t = o.thumbnailOverlayBadgeViewModel?.thumbnailBadges?.[0]?.thumbnailBadgeViewModel?.text;
+          if (t) { dur = t; break; }
         }
+        seen.add(vid);
+        out.push({
+          rank: out.length + 1,
+          id: vid,
+          title: meta?.title?.content || '',
+          url: 'https://www.youtube.com/watch?v=' + vid,
+          channel_id: '',
+          channel_title: parts[0] || '',
+          duration: dur,
+          duration_seconds: parseDuration(dur),
+          view_count_text: parts[1] || '',
+          view_count: parseHumanCount(parts[1] || ''),
+          published: parts[2] || '',
+          thumbnail: thumbs.length ? thumbs[thumbs.length - 1].url : '',
+        });
+      };
 
-        // Newer lockupViewModel layout
-        const lvm = r.lockupViewModel;
-        if (lvm && lvm.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO') {
-          const meta = lvm.metadata?.lockupMetadataViewModel;
-          const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows || [];
-          const parts = rows.flatMap((row: any) =>
-            (row.metadataParts || []).map((p: any) => p.text?.content || '').filter(Boolean),
-          );
-          const thumbs = lvm.contentImage?.thumbnailViewModel?.image?.sources || [];
-          const overlays = lvm.contentImage?.thumbnailViewModel?.overlays || [];
-          let dur = '';
-          for (const o of overlays) {
-            const t = o.thumbnailOverlayBadgeViewModel?.thumbnailBadges?.[0]?.thumbnailBadgeViewModel?.text;
-            if (t) { dur = t; break; }
+      const walk = (node: any): void => {
+        if (!node || typeof node !== 'object' || out.length >= lim) return;
+        if (Array.isArray(node)) {
+          for (const item of node) {
+            if (out.length >= lim) return;
+            walk(item);
           }
-          out.push({
-            rank: out.length + 1,
-            id: lvm.contentId,
-            title: meta?.title?.content || '',
-            url: 'https://www.youtube.com/watch?v=' + lvm.contentId,
-            channel_id: '',
-            channel_title: parts[0] || '',
-            duration: dur,
-            duration_seconds: parseDuration(dur),
-            view_count_text: parts[1] || '',
-            view_count: parseHumanCount(parts[1] || ''),
-            published: parts[2] || '',
-            thumbnail: thumbs.length ? thumbs[thumbs.length - 1].url : '',
-          });
+          return;
         }
-      }
+        if (node.compactVideoRenderer) pushCompact(node.compactVideoRenderer);
+        if (node.lockupViewModel) pushLockup(node.lockupViewModel);
+        for (const k of Object.keys(node)) {
+          if (out.length >= lim) return;
+          walk(node[k]);
+        }
+      };
+      walk(secondary);
       return out.slice(0, lim);
     } catch (e: any) {
       return { error: e?.message || 'YouTube related-contents scraper failed' };
@@ -868,39 +954,82 @@ export async function getYouTubeComments(videoIdOrUrl: string, limit = 50): Prom
   await new Promise((r) => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'YouTube');
 
-  // Scroll until comments hydrate. Comments live below the player and are
-  // lazy-loaded — without a scroll the comments tree never renders.
+  // STEP 1: Install a fetch interceptor BEFORE we scroll. YouTube fires
+  // POST /youtubei/v1/next (a.k.a. browse continuation) when the user scrolls
+  // far enough for comments to hydrate. We capture every response body that
+  // contains commentThreadRenderer items and stash them on window for later.
+  await executeInPage(tabId, () => {
+    try {
+      const w = window as any;
+      if (w.__bnbotYTCommentHook) return true;
+      w.__bnbotYTCommentFrames = [];
+      const origFetch = w.fetch.bind(w);
+      w.fetch = async (...args: any[]) => {
+        const res = await origFetch(...args);
+        try {
+          let url = '';
+          if (typeof args[0] === 'string') url = args[0];
+          else if (args[0] instanceof Request) url = args[0].url;
+          else if (args[0]?.url) url = args[0].url;
+          if (/\/youtubei\/v1\/next/.test(url)) {
+            // Clone so the page's own consumer still gets the body.
+            const clone = res.clone();
+            clone.json().then((body: any) => {
+              w.__bnbotYTCommentFrames.push(body);
+            }).catch(() => { /* ignore */ });
+          }
+        } catch { /* ignore */ }
+        return res;
+      };
+      w.__bnbotYTCommentHook = true;
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  // STEP 2: Scroll until comments hydrate AND we collect enough captured frames.
   await executeInPage(tabId, async (target: number) => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const w = window as any;
     let lastCount = 0;
     let stable = 0;
-    for (let i = 0; i < 12; i++) {
-      // Comments live in #comments — once present, scroll it into view.
+    for (let i = 0; i < 20; i++) {
       const root = document.querySelector('#comments');
       if (root) (root as HTMLElement).scrollIntoView({ block: 'start' });
-      window.scrollBy(0, 1200);
+      window.scrollBy(0, 1500);
       await sleep(700);
-      const threads = document.querySelectorAll('ytd-comment-thread-renderer').length;
-      if (threads >= target) break;
-      if (threads === lastCount) {
+
+      // Count captured comments across all frames so far.
+      let captured = 0;
+      const frames = w.__bnbotYTCommentFrames || [];
+      const stack: any[] = [...frames];
+      while (stack.length) {
+        const n = stack.pop();
+        if (!n || typeof n !== 'object') continue;
+        if (Array.isArray(n)) { for (const x of n) stack.push(x); continue; }
+        if (n.commentThreadRenderer || n.commentViewModel) captured += 1;
+        for (const k of Object.keys(n)) stack.push(n[k]);
+      }
+      const threadsDom = document.querySelectorAll('ytd-comment-thread-renderer').length;
+      const tally = Math.max(captured, threadsDom);
+
+      if (tally >= target) break;
+      if (tally === lastCount) {
         stable += 1;
-        if (stable >= 3) break;
+        if (stable >= 4) break;
       } else {
         stable = 0;
-        lastCount = threads;
+        lastCount = tally;
       }
     }
     return true;
   }, [limit]);
 
+  // STEP 3: Extract from captured frames first (cleaner data), fall back to DOM.
   const data = await executeInPage(tabId, (lim: number) => {
     try {
-      const threads = document.querySelectorAll('ytd-comment-thread-renderer');
-      if (!threads.length) {
-        const root = document.querySelector('#comments');
-        if (!root) return { error: 'Comments container not found — video may have comments disabled' };
-        return [];
-      }
+      const w = window as any;
 
       const parseHumanCount = (s: string): number => {
         if (!s) return 0;
@@ -910,55 +1039,178 @@ export async function getYouTubeComments(videoIdOrUrl: string, limit = 50): Prom
         const u = (m[2] || '').toUpperCase();
         return Math.round(n * (u === 'K' ? 1e3 : u === 'M' ? 1e6 : u === 'B' ? 1e9 : 1));
       };
-      const getText = (el: Element | null) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
 
+      const runsText = (node: any): string => {
+        if (!node) return '';
+        if (node.simpleText) return String(node.simpleText);
+        if (Array.isArray(node.runs)) return node.runs.map((r: any) => r.text || '').join('');
+        if (typeof node === 'string') return node;
+        if (node.content) return String(node.content);
+        return '';
+      };
+
+      // Collect commentRenderer + commentEntityPayload (new layout) from captured frames.
       const out: any[] = [];
-      for (let i = 0; i < threads.length && out.length < lim; i++) {
-        const t = threads[i] as any;
-        // ytd-comment-view-model is the new comment node; ytd-comment-renderer is the old one
-        const view =
-          t.querySelector('ytd-comment-view-model') ||
-          t.querySelector('ytd-comment-renderer') ||
-          t;
-        const data = view.__data?.data || view.data || {};
+      const seen = new Set<string>();
+      const frames: any[] = w.__bnbotYTCommentFrames || [];
 
-        const id = data.commentId || view.getAttribute?.('id') || '';
-        const text = data.contentText?.simpleText
-          || (data.contentText?.runs || []).map((r: any) => r.text || '').join('')
-          || getText(view.querySelector('#content-text')) || '';
-        const author = data.authorText?.simpleText
-          || getText(view.querySelector('#author-text')) || '';
-        const authorChannelId = data.authorEndpoint?.browseEndpoint?.browseId
-          || (view.querySelector('#author-text') as HTMLAnchorElement | null)?.href?.match(/channel\/([^/?#]+)/)?.[1]
-          || '';
-        const thumbs = data.authorThumbnail?.thumbnails || [];
-        const authorThumb = thumbs.length ? thumbs[thumbs.length - 1].url : '';
-        const publishedTime = data.publishedTimeText?.runs?.[0]?.text
-          || getText(view.querySelector('.published-time-text')) || '';
-        const likeText = data.voteCount?.simpleText || data.voteCount?.accessibility?.accessibilityData?.label || '';
-        const likeCount = parseHumanCount(String(likeText));
-        const replyText = getText(view.querySelector('#replies #more-text'))
-          || (data.replyCount ? String(data.replyCount) : '');
-        const replyCount = parseHumanCount(replyText);
-        const isPinned = Boolean(data.pinnedCommentBadge) || Boolean(view.querySelector('#pinned-comment-badge'));
-        const isHearted = Boolean(data.actionButtons?.commentActionButtonsRenderer?.creatorHeart)
-          || Boolean(view.querySelector('#creator-heart'));
+      // The new YouTubei layout stores comment data in two parallel records:
+      //   frameworkUpdates.entityBatchUpdate.mutations[].payload.commentEntityPayload
+      //   frameworkUpdates.entityBatchUpdate.mutations[].payload.engagementToolbarStateEntityPayload
+      // commentThreadRenderer references them by entityKey. We index payloads by key
+      // and then iterate threads in document order.
+      const entityById: Record<string, any> = {};
+      const toolbarById: Record<string, any> = {};
+      const threadsList: any[] = [];
 
-        if (!text && !author) continue;
-        out.push({
-          id,
-          text,
-          author,
-          author_channel_id: authorChannelId,
-          author_thumbnail: authorThumb,
-          published_time: publishedTime,
-          like_count: likeCount,
-          reply_count: replyCount,
-          is_pinned: isPinned,
-          is_hearted: isHearted,
-        });
+      const collectEntities = (node: any) => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { for (const x of node) collectEntities(x); return; }
+        if (node.commentEntityPayload && node.commentEntityPayload.key) {
+          entityById[node.commentEntityPayload.key] = node.commentEntityPayload;
+        }
+        if (node.engagementToolbarStateEntityPayload && node.engagementToolbarStateEntityPayload.key) {
+          toolbarById[node.engagementToolbarStateEntityPayload.key] = node.engagementToolbarStateEntityPayload;
+        }
+        if (node.commentThreadRenderer) threadsList.push(node.commentThreadRenderer);
+        for (const k of Object.keys(node)) collectEntities(node[k]);
+      };
+      for (const f of frames) collectEntities(f);
+
+      // --- A. Process commentThreadRenderer items via entityPayload (new layout) ---
+      for (const t of threadsList) {
+        if (out.length >= lim) break;
+        const cvm = t.commentViewModel?.commentViewModel;
+        const ctr = t.comment?.commentRenderer;
+
+        if (cvm) {
+          const key = cvm.commentKey || cvm.commentId;
+          const payload = entityById[key] || {};
+          const cid = payload.commentId || cvm.commentId || key || '';
+          if (cid && seen.has(cid)) continue;
+          const text = runsText(payload.properties?.content);
+          const author = payload.author?.displayName || '';
+          const authorChannelId = payload.author?.channelId || '';
+          const thumbs = payload.author?.avatarThumbnailUrl
+            ? [{ url: payload.author.avatarThumbnailUrl }]
+            : (payload.author?.avatar?.image?.sources || []);
+          const authorThumb = thumbs.length ? (thumbs[thumbs.length - 1].url || '') : '';
+          const publishedTime = payload.properties?.publishedTime || '';
+          const likeText = payload.toolbar?.likeCountNotliked
+            || payload.toolbar?.likeCountLiked
+            || payload.toolbar?.likeCountA11y
+            || '';
+          const replyText = payload.toolbar?.replyCount || '';
+          const isHearted = !!toolbarById[cvm.toolbarStateKey]?.heartState
+            && toolbarById[cvm.toolbarStateKey].heartState !== 'TOOLBAR_HEART_STATE_UNHEARTED';
+          const isPinned = !!cvm.pinnedText;
+          if (!text && !author) continue;
+          seen.add(cid);
+          out.push({
+            id: cid,
+            text,
+            author,
+            author_channel_id: authorChannelId,
+            author_thumbnail: authorThumb,
+            published_time: publishedTime,
+            like_count: parseHumanCount(String(likeText)),
+            reply_count: parseHumanCount(String(replyText)),
+            is_pinned: isPinned,
+            is_hearted: isHearted,
+          });
+          continue;
+        }
+
+        if (ctr) {
+          const cid = ctr.commentId || '';
+          if (cid && seen.has(cid)) continue;
+          const text = runsText(ctr.contentText);
+          const author = runsText(ctr.authorText);
+          const authorChannelId = ctr.authorEndpoint?.browseEndpoint?.browseId || '';
+          const thumbs = ctr.authorThumbnail?.thumbnails || [];
+          const authorThumb = thumbs.length ? thumbs[thumbs.length - 1].url : '';
+          const publishedTime = runsText(ctr.publishedTimeText);
+          const likeText = ctr.voteCount?.simpleText
+            || ctr.voteCount?.accessibility?.accessibilityData?.label
+            || '';
+          const replyCount = ctr.replyCount || 0;
+          const isPinned = !!ctr.pinnedCommentBadge;
+          const isHearted = !!ctr.actionButtons?.commentActionButtonsRenderer?.creatorHeart;
+          if (!text && !author) continue;
+          if (cid) seen.add(cid);
+          out.push({
+            id: cid,
+            text,
+            author,
+            author_channel_id: authorChannelId,
+            author_thumbnail: authorThumb,
+            published_time: publishedTime,
+            like_count: parseHumanCount(String(likeText)),
+            reply_count: Number(replyCount) || 0,
+            is_pinned: isPinned,
+            is_hearted: isHearted,
+          });
+        }
       }
-      return out;
+
+      // --- B. DOM fallback: pick up anything the interceptor missed ---
+      if (out.length < lim) {
+        const getText = (el: Element | null) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
+        const threads = document.querySelectorAll('ytd-comment-thread-renderer');
+        for (let i = 0; i < threads.length && out.length < lim; i++) {
+          const tEl = threads[i] as any;
+          const view =
+            tEl.querySelector('ytd-comment-view-model') ||
+            tEl.querySelector('ytd-comment-renderer') ||
+            tEl;
+          const d = view.__data?.data || view.data || {};
+
+          const cid = d.commentId || view.getAttribute?.('id') || '';
+          if (cid && seen.has(cid)) continue;
+          const text = d.contentText?.simpleText
+            || (d.contentText?.runs || []).map((r: any) => r.text || '').join('')
+            || getText(view.querySelector('#content-text')) || '';
+          const author = d.authorText?.simpleText
+            || getText(view.querySelector('#author-text')) || '';
+          if (!text && !author) continue;
+          const authorChannelId = d.authorEndpoint?.browseEndpoint?.browseId
+            || (view.querySelector('#author-text') as HTMLAnchorElement | null)?.href?.match(/channel\/([^/?#]+)/)?.[1]
+            || '';
+          const dthumbs = d.authorThumbnail?.thumbnails || [];
+          const authorThumb = dthumbs.length
+            ? dthumbs[dthumbs.length - 1].url
+            : (view.querySelector('#author-thumbnail img') as HTMLImageElement | null)?.src || '';
+          const publishedTime = d.publishedTimeText?.runs?.[0]?.text
+            || getText(view.querySelector('.published-time-text')) || '';
+          const likeText = d.voteCount?.simpleText
+            || d.voteCount?.accessibility?.accessibilityData?.label
+            || getText(view.querySelector('#vote-count-middle')) || '';
+          const replyText = getText(view.querySelector('#replies #more-text'))
+            || (d.replyCount ? String(d.replyCount) : '');
+          const isPinned = Boolean(d.pinnedCommentBadge) || Boolean(view.querySelector('#pinned-comment-badge'));
+          const isHearted = Boolean(d.actionButtons?.commentActionButtonsRenderer?.creatorHeart)
+            || Boolean(view.querySelector('#creator-heart'));
+          if (cid) seen.add(cid);
+          out.push({
+            id: cid,
+            text,
+            author,
+            author_channel_id: authorChannelId,
+            author_thumbnail: authorThumb,
+            published_time: publishedTime,
+            like_count: parseHumanCount(String(likeText)),
+            reply_count: parseHumanCount(replyText),
+            is_pinned: isPinned,
+            is_hearted: isHearted,
+          });
+        }
+      }
+
+      if (!out.length) {
+        const root = document.querySelector('#comments');
+        if (!root) return { error: 'Comments container not found — video may have comments disabled' };
+      }
+      return out.slice(0, lim);
     } catch (e: any) {
       return { error: e?.message || 'YouTube comments scraper failed' };
     }
@@ -1011,27 +1263,82 @@ export async function getYouTubeTranscript(
       if (!track) track = tracks[0];
       if (!track?.baseUrl) return { error: 'no caption baseUrl' };
 
-      const res = await fetch(track.baseUrl, { credentials: 'include' });
-      if (!res.ok) return { error: 'Caption fetch failed: HTTP ' + res.status };
-      const xml = await res.text();
-
-      // Parse XML <text start="..." dur="...">…</text> entries.
       const lines: any[] = [];
-      const re = /<text\s+([^>]*)>([\s\S]*?)<\/text>/g;
-      let m: RegExpExecArray | null;
       const decodeEntities = (s: string) =>
         s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&#(\d+);/g, (_: string, n: string) => String.fromCharCode(parseInt(n, 10)));
-      while ((m = re.exec(xml)) !== null) {
-        const attrs = m[1];
-        const inner = m[2];
-        const startMatch = /start="([^"]+)"/.exec(attrs);
-        const durMatch = /dur="([^"]+)"/.exec(attrs);
-        const start = startMatch ? parseFloat(startMatch[1]) : 0;
-        const duration = durMatch ? parseFloat(durMatch[1]) : 0;
-        const text = decodeEntities(inner.replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
-        if (!text) continue;
-        lines.push({ start, duration, text });
+          .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+          .replace(/&#(\d+);/g, (_: string, n: string) => String.fromCharCode(parseInt(n, 10)));
+
+      // Strategy: request fmt=json3 first — current YouTube returns clean JSON with
+      // {events: [{tStartMs, dDurationMs, segs: [{utf8}]}]}. Fall back to the raw
+      // baseUrl (XML <text start dur>...</text>) if JSON is empty or rejected.
+      const ensureFmt = (u: string, fmt: string): string => {
+        try {
+          const url = new URL(u, location.origin);
+          url.searchParams.set('fmt', fmt);
+          return url.toString();
+        } catch {
+          return u + (u.includes('?') ? '&' : '?') + 'fmt=' + fmt;
+        }
+      };
+
+      const jsonUrl = ensureFmt(track.baseUrl, 'json3');
+      let usedJson = false;
+      try {
+        const res = await fetch(jsonUrl, { credentials: 'include' });
+        if (res.ok) {
+          const body = await res.json();
+          const events = body?.events || [];
+          for (const ev of events) {
+            if (!ev || !Array.isArray(ev.segs)) continue;
+            const text = ev.segs.map((s: any) => s.utf8 || '').join('').replace(/\s+/g, ' ').trim();
+            if (!text) continue;
+            const start = (ev.tStartMs || 0) / 1000;
+            const duration = (ev.dDurationMs || 0) / 1000;
+            lines.push({ start, duration, text });
+          }
+          usedJson = lines.length > 0;
+        }
+      } catch { /* fall through to XML */ }
+
+      if (!usedJson) {
+        // XML fallback. Accept both legacy <text start="" dur=""> and the newer
+        // <p t="" d=""> shapes (the latter appears when fmt is unset on auto-
+        // generated tracks).
+        const xmlRes = await fetch(track.baseUrl, { credentials: 'include' });
+        if (!xmlRes.ok) return { error: 'Caption fetch failed: HTTP ' + xmlRes.status };
+        const xml = await xmlRes.text();
+
+        const reText = /<text\s+([^>]*)>([\s\S]*?)<\/text>/g;
+        let m: RegExpExecArray | null;
+        while ((m = reText.exec(xml)) !== null) {
+          const attrs = m[1];
+          const inner = m[2];
+          const startMatch = /start="([^"]+)"/.exec(attrs);
+          const durMatch = /dur="([^"]+)"/.exec(attrs);
+          const start = startMatch ? parseFloat(startMatch[1]) : 0;
+          const duration = durMatch ? parseFloat(durMatch[1]) : 0;
+          const text = decodeEntities(inner.replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+          if (!text) continue;
+          lines.push({ start, duration, text });
+        }
+
+        if (!lines.length) {
+          const reP = /<p\s+([^>]*)>([\s\S]*?)<\/p>/g;
+          while ((m = reP.exec(xml)) !== null) {
+            const attrs = m[1];
+            const inner = m[2];
+            const tMatch = /\bt="([^"]+)"/.exec(attrs);
+            const dMatch = /\bd="([^"]+)"/.exec(attrs);
+            const start = tMatch ? parseFloat(tMatch[1]) / 1000 : 0;
+            const duration = dMatch ? parseFloat(dMatch[1]) / 1000 : 0;
+            // Inside <p> there can be <s ac="...">word</s> segments.
+            const text = decodeEntities(inner.replace(/<[^>]+>/g, ' '))
+              .replace(/\s+/g, ' ').trim();
+            if (!text) continue;
+            lines.push({ start, duration, text });
+          }
+        }
       }
 
       return {
