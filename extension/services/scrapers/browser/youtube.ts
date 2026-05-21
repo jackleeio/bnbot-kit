@@ -740,15 +740,92 @@ export interface YouTubeStreamingData {
 export async function getYouTubeStreamingData(videoIdOrUrl: string): Promise<YouTubeStreamingData> {
   const id = parseYouTubeVideoId(videoIdOrUrl);
   const tabId = await getTab(`https://www.youtube.com/watch?v=${id}`);
-  await new Promise((r) => setTimeout(r, 3000));
+  await new Promise((r) => setTimeout(r, 1500));
   await checkLoginRedirect(tabId, 'YouTube');
 
-  const data = await executeInPage(tabId, () => {
+  // Why INTERCEPT mode:
+  //   Modern YouTube strips the actual streaming URLs (.url, signatureCipher,
+  //   hlsManifestUrl, dashManifestUrl) from the page-load ytInitialPlayerResponse.
+  //   The real URLs are fetched lazily by the SPA via POST /youtubei/v1/player
+  //   (the same endpoint the watch page hits to bootstrap playback). To get
+  //   them we monkey-patch window.fetch inside the page, capture that response,
+  //   and return its streamingData.
+  //
+  // Trigger strategy:
+  //   1. Install fetch hook.
+  //   2. Re-fire the player request by reloading the tab (the hook gets wiped
+  //      on reload, so we re-install it as fast as possible after navigation).
+  //   3. Wait for at least one captured /youtubei/v1/player response.
+  //   4. Fall back to ytInitialPlayerResponse if interception yields nothing
+  //      (some restricted / DRM / age-gated videos never expose real URLs).
+
+  // STEP 1: install hook + capture array on window
+  const installHook = async () => {
+    await executeInPage(tabId, () => {
+      try {
+        const w = window as any;
+        if (!Array.isArray(w.__bnbotYTPlayerFrames)) w.__bnbotYTPlayerFrames = [];
+        if (w.__bnbotYTPlayerHook) return true;
+        const origFetch = w.fetch.bind(w);
+        w.fetch = async (...args: any[]) => {
+          const res = await origFetch(...args);
+          try {
+            let url = '';
+            if (typeof args[0] === 'string') url = args[0];
+            else if (args[0] instanceof Request) url = args[0].url;
+            else if (args[0]?.url) url = args[0].url;
+            if (/\/youtubei\/v1\/player(\?|$)/.test(url)) {
+              const clone = res.clone();
+              clone.json().then((body: any) => {
+                w.__bnbotYTPlayerFrames.push(body);
+              }).catch(() => { /* ignore */ });
+            }
+          } catch { /* ignore */ }
+          return res;
+        };
+        w.__bnbotYTPlayerHook = true;
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  };
+
+  await installHook();
+
+  // STEP 2: re-fire the player API. Reloading the tab is the most reliable
+  // trigger — YouTube's SPA always calls /youtubei/v1/player during init.
+  try {
+    await chrome.tabs.reload(tabId);
+  } catch { /* tab gone — fall through */ }
+  // Wait briefly for the page to start loading, then re-install the hook ASAP
+  // (the previous hook was wiped by the reload).
+  await new Promise((r) => setTimeout(r, 800));
+  await installHook();
+
+  // STEP 3: wait for capture
+  await executeInPage(tabId, async (targetId: string) => {
+    const w = window as any;
+    const start = Date.now();
+    while (Date.now() - start < 15000) {
+      const frames: any[] = w.__bnbotYTPlayerFrames || [];
+      // Prefer the player response matching the target videoId
+      if (frames.some((p: any) => p?.videoDetails?.videoId === targetId && p?.streamingData)) return true;
+      if (frames.some((p: any) => p?.streamingData)) return true;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    return false;
+  }, [id]);
+
+  const data = await executeInPage(tabId, (targetId: string) => {
     try {
-      const pr = (window as any).ytInitialPlayerResponse;
-      if (!pr) return { error: 'ytInitialPlayerResponse missing' };
-      const sd = pr.streamingData;
-      if (!sd) return { error: 'streamingData missing — video may be restricted, private, or DRM-protected' };
+      const w = window as any;
+      const frames: any[] = w.__bnbotYTPlayerFrames || [];
+
+      // Prefer the player response whose videoDetails.videoId matches — some
+      // responses are for the next video (autoplay preload).
+      let match = frames.find((p: any) => p?.videoDetails?.videoId === targetId && p?.streamingData);
+      if (!match) match = frames.find((p: any) => p?.streamingData);
 
       const mapFormat = (f: any) => ({
         itag: f.itag || 0,
@@ -765,12 +842,36 @@ export async function getYouTubeStreamingData(videoIdOrUrl: string): Promise<You
         audio_channels: f.audioChannels || 0,
         approx_duration_ms: f.approxDurationMs || '',
         content_length: f.contentLength || '',
+        // Some videos return cipher instead of plain url; the buyer can decrypt.
         signature_cipher: f.signatureCipher || f.cipher || '',
         has_audio: Boolean(f.audioQuality || f.audioSampleRate),
         has_video: Boolean(f.width && f.height),
       });
 
+      // Path A: intercepted player response (preferred)
+      if (match?.streamingData) {
+        const sd = match.streamingData;
+        return {
+          source: 'intercept',
+          id: match.videoDetails?.videoId || targetId || '',
+          expires_in_seconds: sd.expiresInSeconds || '',
+          formats: (sd.formats || []).map(mapFormat),
+          adaptive_formats: (sd.adaptiveFormats || []).map(mapFormat),
+          hls_manifest_url: sd.hlsManifestUrl || '',
+          dash_manifest_url: sd.dashManifestUrl || '',
+        };
+      }
+
+      // Path B: fall back to the page-load ytInitialPlayerResponse. Will most
+      // likely have empty .url fields (that's why we tried intercept first)
+      // but at least gives the buyer the format list.
+      const pr = w.ytInitialPlayerResponse;
+      if (!pr) return { error: 'ytInitialPlayerResponse missing and /youtubei/v1/player not captured' };
+      const sd = pr.streamingData;
+      if (!sd) return { error: 'streamingData missing — video may be restricted, private, or DRM-protected' };
+
       return {
+        source: 'fallback',
         id: pr.videoDetails?.videoId || '',
         expires_in_seconds: sd.expiresInSeconds || '',
         formats: (sd.formats || []).map(mapFormat),
@@ -781,9 +882,13 @@ export async function getYouTubeStreamingData(videoIdOrUrl: string): Promise<You
     } catch (e: any) {
       return { error: e?.message || 'YouTube streaming-data scraper failed' };
     }
-  });
+  }, [id]);
 
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  // Strip internal 'source' field before returning
+  if (data && typeof data === 'object') {
+    delete (data as any).source;
+  }
   return data as YouTubeStreamingData;
 }
 
@@ -954,15 +1059,21 @@ export async function getYouTubeComments(videoIdOrUrl: string, limit = 50): Prom
   await new Promise((r) => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'YouTube');
 
-  // STEP 1: Install a fetch interceptor BEFORE we scroll. YouTube fires
-  // POST /youtubei/v1/next (a.k.a. browse continuation) when the user scrolls
-  // far enough for comments to hydrate. We capture every response body that
-  // contains commentThreadRenderer items and stash them on window for later.
+  // Why INTERCEPT mode:
+  //   Comments are NOT in the page-load ytInitialData. The SPA lazy-loads them
+  //   via POST /youtubei/v1/next once the user scrolls the comments section
+  //   into view (or close to it). We monkey-patch window.fetch to capture
+  //   every /youtubei/v1/next response body and harvest commentEntityPayload
+  //   mutations from frameworkUpdates.
+
+  // STEP 1: Install a fetch interceptor BEFORE we scroll.
   await executeInPage(tabId, () => {
     try {
       const w = window as any;
-      if (w.__bnbotYTCommentHook) return true;
+      // Always reset captured frames per scrape so different videoIds don't
+      // bleed into each other when the tab is reused.
       w.__bnbotYTCommentFrames = [];
+      if (w.__bnbotYTCommentHook) return true;
       const origFetch = w.fetch.bind(w);
       w.fetch = async (...args: any[]) => {
         const res = await origFetch(...args);
@@ -988,10 +1099,43 @@ export async function getYouTubeComments(videoIdOrUrl: string, limit = 50): Prom
     }
   });
 
-  // STEP 2: Scroll until comments hydrate AND we collect enough captured frames.
+  // STEP 2: Aggressive scroll to trigger comments lazy-load. Comments are
+  // below the player + description, so we need to scroll multiple screens.
   await executeInPage(tabId, async (target: number) => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     const w = window as any;
+
+    const countCaptured = () => {
+      let captured = 0;
+      const frames = w.__bnbotYTCommentFrames || [];
+      const stack: any[] = [...frames];
+      while (stack.length) {
+        const n = stack.pop();
+        if (!n || typeof n !== 'object') continue;
+        if (Array.isArray(n)) { for (const x of n) stack.push(x); continue; }
+        if (n.commentEntityPayload) captured += 1;
+        if (n.commentThreadRenderer) captured += 1;
+        for (const k of Object.keys(n)) stack.push(n[k]);
+      }
+      return captured;
+    };
+
+    // First — slam-scroll to bottom several times to force YouTube to
+    // initiate the comments lazy-load even if the player is still buffering.
+    for (let i = 0; i < 6; i++) {
+      window.scrollTo(0, document.body.scrollHeight);
+      await sleep(800);
+    }
+
+    // Try to scroll the #comments header into view explicitly — some
+    // viewports park us past it.
+    const commentsHeader = document.querySelector('#comments #title h2, #comments #count, #comments');
+    if (commentsHeader) {
+      (commentsHeader as HTMLElement).scrollIntoView({ block: 'start' });
+      await sleep(1500);
+    }
+
+    // Now scroll progressively to hydrate more comments + replies.
     let lastCount = 0;
     let stable = 0;
     for (let i = 0; i < 20; i++) {
@@ -1000,17 +1144,7 @@ export async function getYouTubeComments(videoIdOrUrl: string, limit = 50): Prom
       window.scrollBy(0, 1500);
       await sleep(700);
 
-      // Count captured comments across all frames so far.
-      let captured = 0;
-      const frames = w.__bnbotYTCommentFrames || [];
-      const stack: any[] = [...frames];
-      while (stack.length) {
-        const n = stack.pop();
-        if (!n || typeof n !== 'object') continue;
-        if (Array.isArray(n)) { for (const x of n) stack.push(x); continue; }
-        if (n.commentThreadRenderer || n.commentViewModel) captured += 1;
-        for (const k of Object.keys(n)) stack.push(n[k]);
-      }
+      const captured = countCaptured();
       const threadsDom = document.querySelectorAll('ytd-comment-thread-renderer').length;
       const tally = Math.max(captured, threadsDom);
 
@@ -1208,7 +1342,14 @@ export async function getYouTubeComments(videoIdOrUrl: string, limit = 50): Prom
 
       if (!out.length) {
         const root = document.querySelector('#comments');
-        if (!root) return { error: 'Comments container not found — video may have comments disabled' };
+        const framesCount = (w.__bnbotYTCommentFrames || []).length;
+        if (!root) {
+          return { error: 'comments_unavailable: comments container not found — video may have comments disabled' };
+        }
+        if (framesCount === 0) {
+          return { error: 'comments_unavailable: /youtubei/v1/next never fired — page may be unreachable or YT pushed a new API path' };
+        }
+        return { error: 'comments_unavailable: ' + framesCount + ' frames captured but no commentEntityPayload — comments may be disabled or YT changed the schema' };
       }
       return out.slice(0, lim);
     } catch (e: any) {
@@ -1247,14 +1388,203 @@ export async function getYouTubeTranscript(
   await new Promise((r) => setTimeout(r, 3000));
   await checkLoginRedirect(tabId, 'YouTube');
 
+  // Why INTERCEPT mode (Approach A):
+  //   The legacy /api/timedtext?v=... URL embedded in ytInitialPlayerResponse
+  //   now requires a `pot` (proof-of-token) signature that's only valid for
+  //   the player session — fetching it from a different context returns no
+  //   parseable body. The reliable alternative is the modern endpoint
+  //   POST /youtubei/v1/get_transcript, which the SPA hits when the user
+  //   clicks the "Show transcript" button under the video's "..." menu. We
+  //   install a fetch hook, programmatically click the menu items, capture
+  //   the response, and parse cueGroups out of it. Falls back to the legacy
+  //   timedtext URL if the button isn't available.
+
+  // STEP 1: install fetch hook for /youtubei/v1/get_transcript
+  await executeInPage(tabId, () => {
+    try {
+      const w = window as any;
+      w.__bnbotYTTranscriptFrames = [];
+      if (w.__bnbotYTTranscriptHook) return true;
+      const origFetch = w.fetch.bind(w);
+      w.fetch = async (...args: any[]) => {
+        const res = await origFetch(...args);
+        try {
+          let url = '';
+          if (typeof args[0] === 'string') url = args[0];
+          else if (args[0] instanceof Request) url = args[0].url;
+          else if (args[0]?.url) url = args[0].url;
+          if (/\/youtubei\/v1\/get_transcript/.test(url)) {
+            const clone = res.clone();
+            clone.json().then((body: any) => {
+              w.__bnbotYTTranscriptFrames.push(body);
+            }).catch(() => { /* ignore */ });
+          }
+        } catch { /* ignore */ }
+        return res;
+      };
+      w.__bnbotYTTranscriptHook = true;
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  // STEP 2: click "More actions" (...) → "Show transcript". If the button
+  // chain isn't there (no transcript / mobile layout / region-blocked) we'll
+  // fall through to Plan B.
+  await executeInPage(tabId, async () => {
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    // First, scroll the description into view so the "..." button is mounted.
+    // On a fresh watch page, the meta row sometimes lazy-renders.
+    const meta = document.querySelector('ytd-watch-metadata, #above-the-fold');
+    if (meta) (meta as HTMLElement).scrollIntoView({ block: 'start' });
+    await sleep(500);
+
+    // Approach 1: try the dedicated "Show transcript" button that appears
+    // inline under the description (it's a primary button in some layouts).
+    const inlineBtn = Array.from(document.querySelectorAll('ytd-video-description-transcript-section-renderer button, button[aria-label*="transcript" i], button[aria-label*="Transcript" i]')) as HTMLButtonElement[];
+    for (const b of inlineBtn) {
+      if (/transcript/i.test(b.textContent || '') || /transcript/i.test(b.getAttribute('aria-label') || '')) {
+        b.click();
+        await sleep(800);
+        return true;
+      }
+    }
+
+    // Approach 2: open the "..." menu and click the transcript item.
+    const moreSelectors = [
+      'ytd-watch-metadata #button-shape button',
+      'ytd-watch-metadata tp-yt-paper-button#expand',
+      'ytd-menu-renderer #button button',
+      'button[aria-label="More actions"]',
+      'button[aria-label*="More" i]',
+    ];
+    let moreBtn: HTMLElement | null = null;
+    for (const sel of moreSelectors) {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (el) { moreBtn = el; break; }
+    }
+    if (moreBtn) {
+      moreBtn.click();
+      await sleep(600);
+
+      const menuItems = Array.from(document.querySelectorAll(
+        'ytd-menu-service-item-renderer, tp-yt-paper-item, yt-dropdown-menu tp-yt-paper-item, [role="menuitem"]',
+      )) as HTMLElement[];
+      const transcriptBtn = menuItems.find((el) => /transcript/i.test(el.textContent || ''));
+      if (transcriptBtn) {
+        transcriptBtn.click();
+        await sleep(1000);
+        return true;
+      }
+
+      // Close the menu if we opened it but found nothing useful.
+      document.body.click();
+    }
+    return false;
+  });
+
+  // STEP 3: wait for capture
+  await executeInPage(tabId, async () => {
+    const w = window as any;
+    const start = Date.now();
+    while (Date.now() - start < 10000) {
+      if ((w.__bnbotYTTranscriptFrames || []).length > 0) return true;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    return false;
+  });
+
   const data = await executeInPage(tabId, async (preferLang: string) => {
     try {
-      const pr = (window as any).ytInitialPlayerResponse;
-      if (!pr) return { error: 'ytInitialPlayerResponse missing' };
-      const tracks = pr.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-      if (!tracks.length) return { error: 'no captions available' };
+      const w = window as any;
+      const pr = w.ytInitialPlayerResponse;
+      const frames: any[] = w.__bnbotYTTranscriptFrames || [];
 
-      // Prefer requested lang; otherwise English; otherwise the first track.
+      // PATH A: parse intercepted get_transcript response
+      if (frames.length > 0) {
+        // Walk the response and collect transcriptSegmentRenderer / cueGroups.
+        // YouTube has shipped both shapes in different rollouts:
+        //   actions[].updateEngagementPanelAction.content.transcriptRenderer
+        //     .content.transcriptSearchPanelRenderer.body.transcriptSegmentListRenderer
+        //     .initialSegments[].transcriptSegmentRenderer
+        //       { startMs, endMs, startTimeText, snippet: { runs } }
+        //   actions[].updateEngagementPanelAction.content.transcriptRenderer.body
+        //     .transcriptBodyRenderer.cueGroups[].transcriptCueGroupRenderer
+        //     .cues[0].transcriptCueRenderer { startOffsetMs, durationMs, cue: { simpleText } }
+        const lines: any[] = [];
+        const runsText = (n: any): string => {
+          if (!n) return '';
+          if (n.simpleText) return String(n.simpleText);
+          if (Array.isArray(n.runs)) return n.runs.map((r: any) => r.text || '').join('');
+          return '';
+        };
+
+        const walk = (node: any): void => {
+          if (!node || typeof node !== 'object') return;
+          if (Array.isArray(node)) { for (const x of node) walk(x); return; }
+          if (node.transcriptSegmentRenderer) {
+            const seg = node.transcriptSegmentRenderer;
+            const start = parseFloat(seg.startMs || '0') / 1000;
+            const end = parseFloat(seg.endMs || '0') / 1000;
+            const text = runsText(seg.snippet).replace(/\s+/g, ' ').trim();
+            if (text) lines.push({ start, duration: Math.max(0, end - start), text });
+            return;
+          }
+          if (node.transcriptCueRenderer) {
+            const cue = node.transcriptCueRenderer;
+            const start = parseFloat(cue.startOffsetMs || '0') / 1000;
+            const duration = parseFloat(cue.durationMs || '0') / 1000;
+            const text = runsText(cue.cue).replace(/\s+/g, ' ').trim();
+            if (text) lines.push({ start, duration, text });
+            return;
+          }
+          for (const k of Object.keys(node)) walk(node[k]);
+        };
+        for (const f of frames) walk(f);
+
+        if (lines.length) {
+          // Dig out language metadata if available. The footer often has it.
+          let language = '';
+          let languageCode = preferLang || '';
+          const findLangMenu = (node: any): void => {
+            if (!node || typeof node !== 'object' || language) return;
+            if (Array.isArray(node)) { for (const x of node) findLangMenu(x); return; }
+            if (node.languageMenu?.sortFilterSubMenuRenderer) {
+              const sel = (node.languageMenu.sortFilterSubMenuRenderer.subMenuItems || [])
+                .find((it: any) => it.selected);
+              if (sel) {
+                language = sel.title || language;
+              }
+            }
+            for (const k of Object.keys(node)) findLangMenu(node[k]);
+          };
+          for (const f of frames) findLangMenu(f);
+
+          // Best-effort language code from playerCaptionsTracklistRenderer
+          if (pr && !languageCode) {
+            const tracks = pr.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+            const en = tracks.find((t: any) => (t.languageCode || '').startsWith('en')) || tracks[0];
+            languageCode = en?.languageCode || '';
+            if (!language) language = en?.name?.simpleText || en?.name?.runs?.[0]?.text || '';
+          }
+
+          return {
+            id: pr?.videoDetails?.videoId || '',
+            language,
+            language_code: languageCode,
+            is_translatable: false,
+            lines,
+          };
+        }
+      }
+
+      // PATH B: legacy timedtext fallback (kept as Plan B)
+      if (!pr) return { error: 'ytInitialPlayerResponse missing and get_transcript not captured' };
+      const tracks = pr.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+      if (!tracks.length) return { error: 'no captions available — video may not have a transcript' };
+
       let track = null as any;
       if (preferLang) {
         track = tracks.find((t: any) => (t.languageCode || '').toLowerCase().startsWith(preferLang.toLowerCase()));
@@ -1269,9 +1599,6 @@ export async function getYouTubeTranscript(
           .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
           .replace(/&#(\d+);/g, (_: string, n: string) => String.fromCharCode(parseInt(n, 10)));
 
-      // Strategy: request fmt=json3 first — current YouTube returns clean JSON with
-      // {events: [{tStartMs, dDurationMs, segs: [{utf8}]}]}. Fall back to the raw
-      // baseUrl (XML <text start dur>...</text>) if JSON is empty or rejected.
       const ensureFmt = (u: string, fmt: string): string => {
         try {
           const url = new URL(u, location.origin);
@@ -1302,9 +1629,6 @@ export async function getYouTubeTranscript(
       } catch { /* fall through to XML */ }
 
       if (!usedJson) {
-        // XML fallback. Accept both legacy <text start="" dur=""> and the newer
-        // <p t="" d=""> shapes (the latter appears when fmt is unset on auto-
-        // generated tracks).
         const xmlRes = await fetch(track.baseUrl, { credentials: 'include' });
         if (!xmlRes.ok) return { error: 'Caption fetch failed: HTTP ' + xmlRes.status };
         const xml = await xmlRes.text();
@@ -1332,7 +1656,6 @@ export async function getYouTubeTranscript(
             const dMatch = /\bd="([^"]+)"/.exec(attrs);
             const start = tMatch ? parseFloat(tMatch[1]) / 1000 : 0;
             const duration = dMatch ? parseFloat(dMatch[1]) / 1000 : 0;
-            // Inside <p> there can be <s ac="...">word</s> segments.
             const text = decodeEntities(inner.replace(/<[^>]+>/g, ' '))
               .replace(/\s+/g, ' ').trim();
             if (!text) continue;
