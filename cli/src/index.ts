@@ -45,6 +45,12 @@ import {
   scrapeUserTweetsCommand,
   scrapeUserProfileCommand,
   scrapeThreadCommand,
+  scrapeTrendsCommand,
+  scrapeUserFollowersCommand,
+  scrapeUserFollowingCommand,
+  scrapeTweetLikersCommand,
+  scrapeTweetRetweetersCommand,
+  scrapeTweetArticleCommand,
   analyticsCommand,
   navigateUrlCommand,
   navigateSearchCommand,
@@ -571,6 +577,51 @@ function buildProgram(): Command {
     .command('thread <url>')
     .description('Scrape a tweet thread')
     .action(scrapeThreadCommand);
+
+  // ── Tier-3 X scrapers (followers / following / likers / retweeters / trends / article) ──
+  // These feed spareai-hub's buyer-facing Tier-3 endpoints. Output shape
+  // is intentionally flat (array or single object) — hub does any nested
+  // envelope mapping it needs.
+
+  xScrape
+    .command('trends')
+    .description('Scrape current X trending topics')
+    .option('-l, --limit <n>', 'Max trends', '20')
+    .option('--woeid <n>', 'WOEID for regional trends (best-effort; default is worldwide / personalized)')
+    .action(scrapeTrendsCommand);
+
+  xScrape
+    .command('user-followers <username>')
+    .description("Scrape a user's followers list")
+    .option('-l, --limit <n>', 'Max followers per page', '20')
+    .option('-c, --cursor <c>', 'Pagination cursor from a previous next_cursor')
+    .action(scrapeUserFollowersCommand);
+
+  xScrape
+    .command('user-following <username>')
+    .description('Scrape the accounts a user follows')
+    .option('-l, --limit <n>', 'Max users per page', '20')
+    .option('-c, --cursor <c>', 'Pagination cursor from a previous next_cursor')
+    .action(scrapeUserFollowingCommand);
+
+  xScrape
+    .command('tweet-likers <url>')
+    .description('Scrape users who liked a tweet')
+    .option('-l, --limit <n>', 'Max users per page', '20')
+    .option('-c, --cursor <c>', 'Pagination cursor from a previous next_cursor')
+    .action(scrapeTweetLikersCommand);
+
+  xScrape
+    .command('tweet-retweeters <url>')
+    .description('Scrape users who retweeted a tweet')
+    .option('-l, --limit <n>', 'Max users per page', '20')
+    .option('-c, --cursor <c>', 'Pagination cursor from a previous next_cursor')
+    .action(scrapeTweetRetweetersCommand);
+
+  xScrape
+    .command('tweet-article <url>')
+    .description("Scrape the long-form Article attached to a tweet (title, content, author)")
+    .action(scrapeTweetArticleCommand);
 
   // ── x navigate subgroup ────────────────────────────────
 

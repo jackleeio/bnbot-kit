@@ -651,7 +651,7 @@ async function debugEvalInTab(args: {
   }
   return { tabId, url: tab.url || '', result: res?.result?.value ?? null };
 }
-import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications } from './services/scrapers/browser';
+import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications, getTwitterTrends, getTwitterUserFollowers, getTwitterUserFollowing, getTwitterTweetLikers, getTwitterTweetRetweeters, getTwitterTweetArticle } from './services/scrapers/browser';
 
 // GOOGLE_CLIENT_ID / OAUTH_REDIRECT_URI removed — see handleGoogleLogin
 // removal note. chrome.identity.getRedirectURL() also no longer needed.
@@ -1390,6 +1390,13 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   scrape_user_profile: (m) => getTwitterProfile(m.username, m.queryIds),
   scrape_thread: (m) => getTwitterThread(m.tweetUrl || m.tweetId, m.limit, m.queryIds),
   scrape_notifications: (m) => getTwitterNotifications(m.limit || 40),
+  // Tier-3 scrapers (added for spareai-hub buyer-facing endpoints).
+  scrape_trends: (m) => getTwitterTrends(m.woeid, m.limit, m.queryIds),
+  scrape_user_followers: (m) => getTwitterUserFollowers(m.username, m.limit, m.cursor, m.queryIds),
+  scrape_user_following: (m) => getTwitterUserFollowing(m.username, m.limit, m.cursor, m.queryIds),
+  scrape_tweet_likers: (m) => getTwitterTweetLikers(m.tweetUrl, m.limit, m.cursor, m.queryIds),
+  scrape_tweet_retweeters: (m) => getTwitterTweetRetweeters(m.tweetUrl, m.limit, m.cursor, m.queryIds),
+  scrape_tweet_article: (m) => getTwitterTweetArticle(m.tweetUrl, m.queryIds),
   screenshot: (m) => captureTabScreenshot({ url: m.url, tabId: m.tabId, fullPage: m.fullPage }),
   navigate_to_url: (m) => navigateTabViaCdp({ url: m.url, tabId: m.tabId }),
   debug_eval: (m) => debugEvalInTab({

@@ -371,6 +371,54 @@ export async function scrapeThreadCommand(url: string): Promise<void> {
   return runCliAction('scrape_thread', { tweetUrl: url, queryIds: await getXQueryIds() }, getPort());
 }
 
+// ── Tier-3 scrapers ──────────────────────────────────────────
+
+export async function scrapeTrendsCommand(options: { woeid?: string; limit?: string }): Promise<void> {
+  const limit = parseInt(options.limit || '20', 10);
+  const woeid = options.woeid ? parseInt(options.woeid, 10) : undefined;
+  console.error(`Scraping trends${woeid ? ` (woeid: ${woeid})` : ''} (limit: ${limit})...`);
+  const params: Record<string, unknown> = { limit, queryIds: await getXQueryIds() };
+  if (typeof woeid === 'number' && !Number.isNaN(woeid)) params.woeid = woeid;
+  return runCliAction('scrape_trends', params, getPort());
+}
+
+export async function scrapeUserFollowersCommand(username: string, options: { limit?: string; cursor?: string }): Promise<void> {
+  const limit = parseInt(options.limit || '20', 10);
+  console.error(`Scraping @${username} followers (limit: ${limit})...`);
+  const params: Record<string, unknown> = { username, limit, queryIds: await getXQueryIds() };
+  if (options.cursor) params.cursor = options.cursor;
+  return runCliAction('scrape_user_followers', params, getPort());
+}
+
+export async function scrapeUserFollowingCommand(username: string, options: { limit?: string; cursor?: string }): Promise<void> {
+  const limit = parseInt(options.limit || '20', 10);
+  console.error(`Scraping @${username} following (limit: ${limit})...`);
+  const params: Record<string, unknown> = { username, limit, queryIds: await getXQueryIds() };
+  if (options.cursor) params.cursor = options.cursor;
+  return runCliAction('scrape_user_following', params, getPort());
+}
+
+export async function scrapeTweetLikersCommand(url: string, options: { limit?: string; cursor?: string }): Promise<void> {
+  const limit = parseInt(options.limit || '20', 10);
+  console.error(`Scraping likers of: ${url} (limit: ${limit})...`);
+  const params: Record<string, unknown> = { tweetUrl: url, limit, queryIds: await getXQueryIds() };
+  if (options.cursor) params.cursor = options.cursor;
+  return runCliAction('scrape_tweet_likers', params, getPort());
+}
+
+export async function scrapeTweetRetweetersCommand(url: string, options: { limit?: string; cursor?: string }): Promise<void> {
+  const limit = parseInt(options.limit || '20', 10);
+  console.error(`Scraping retweeters of: ${url} (limit: ${limit})...`);
+  const params: Record<string, unknown> = { tweetUrl: url, limit, queryIds: await getXQueryIds() };
+  if (options.cursor) params.cursor = options.cursor;
+  return runCliAction('scrape_tweet_retweeters', params, getPort());
+}
+
+export async function scrapeTweetArticleCommand(url: string): Promise<void> {
+  console.error(`Scraping article from: ${url}`);
+  return runCliAction('scrape_tweet_article', { tweetUrl: url, queryIds: await getXQueryIds() }, getPort());
+}
+
 // ── Analytics ────────────────────────────────────────────────
 
 export async function analyticsCommand(options: { as?: string } = {}): Promise<void> {

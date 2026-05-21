@@ -1050,3 +1050,474 @@ export async function getTwitterNotifications(limit = 40): Promise<any[]> {
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return (data as any[]) || [];
 }
+
+// ─── Tier-3 scrapers: trends, followers/following, likers/retweeters, article ───
+
+/**
+ * Trending topics from X's Explore page. Uses the GraphQL `ExplorePage`
+ * operation (queryId in fa0311 map). Default WOEID is X's "worldwide" /
+ * personalized trends — pass `--woeid` for a regional trend list.
+ *
+ * Returns an array of `{ name, tweet_volume, url, category? }`.
+ *
+ * Note: as of writing, ExplorePage is the live route x.com uses for
+ * /explore/tabs/trending. The earlier `GuideV2` operation has been
+ * retired client-side. ExploreSidebar is a sibling op (smaller payload)
+ * that's only used as a homepage right-rail; not what we want here.
+ */
+export async function getTwitterTrends(woeid?: number, limit = 20, queryIds: QueryIds = {}): Promise<any[]> {
+  const tabId = await getTab('https://x.com/explore/tabs/trending');
+  await new Promise(r => setTimeout(r, 3000));
+  await checkLoginRedirect(tabId, 'Twitter');
+
+  const data = await executeInPage(tabId, async (bearer: string, fallbacks: QueryIds, w: number | null, lim: number) => {
+    try {
+      const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
+      if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
+
+      const resolveQueryId = async (operationName: string): Promise<string> => {
+        try {
+          const cached = JSON.parse(sessionStorage.getItem('__bnbot_x_qids') || 'null');
+          if (cached?.ts && Date.now() - cached.ts < 3600_000 && cached.ids?.[operationName]) {
+            return cached.ids[operationName];
+          }
+        } catch {}
+        const ops = ['ExplorePage','ExploreSidebar'];
+        const ids: Record<string, string> = {};
+        try {
+          const wpChunks: any = (window as any).webpackChunk_twitter_responsive_web;
+          if (Array.isArray(wpChunks)) {
+            for (const entry of wpChunks) {
+              if (!Array.isArray(entry) || entry.length < 2) continue;
+              const modules = entry[1];
+              if (!modules || typeof modules !== 'object') continue;
+              for (const fn of Object.values(modules) as Function[]) {
+                try {
+                  const src = fn.toString();
+                  for (const op of ops) {
+                    if (ids[op]) continue;
+                    const m = src.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + op + '"'));
+                    if (m) ids[op] = m[1];
+                  }
+                } catch {}
+              }
+              if (ids[operationName]) break;
+            }
+          }
+        } catch {}
+        if (ids[operationName]) {
+          try { sessionStorage.setItem('__bnbot_x_qids', JSON.stringify({ ts: Date.now(), ids })); } catch {}
+          return ids[operationName];
+        }
+        const fb = fallbacks[operationName];
+        if (fb) return fb;
+        throw new Error('queryId for ' + operationName + ' missing — bundle scrape failed and no caller fallback supplied');
+      };
+
+      const queryId = await resolveQueryId('ExplorePage');
+      const headers: Record<string, string> = {
+        'Authorization': 'Bearer ' + decodeURIComponent(bearer),
+        'X-Csrf-Token': ct0, 'X-Twitter-Auth-Type': 'OAuth2Session', 'X-Twitter-Active-User': 'yes',
+      };
+      const variables: Record<string, any> = { count: Math.min(40, lim), includePromotedContent: false };
+      // Treating woeid as best-effort: X's ExplorePage variable name has
+      // historically been `explorePageContext` (JSON-encoded) rather than
+      // a raw woeid; if the caller passes one we pack it into a context
+      // object that ExplorePage accepts on most recent client builds. If
+      // it's ignored, the result falls back to the user's personalized
+      // worldwide feed — better than 503.
+      if (typeof w === 'number') variables.explorePageContext = JSON.stringify({ woeid: w });
+      const FEATURES = { rweb_video_screen_enabled: false, profile_label_improvements_pcf_label_in_post_enabled: true, responsive_web_profile_redirect_enabled: false, rweb_tipjar_consumption_enabled: false, verified_phone_label_enabled: false, responsive_web_graphql_timeline_navigation_enabled: true, rweb_cashtags_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true, premium_content_api_read_enabled: false, communities_web_enable_tweet_community_results_fetch: true, c9s_tweet_anatomy_moderator_badge_enabled: true, responsive_web_grok_analyze_button_fetch_trends_enabled: false, responsive_web_grok_analyze_post_followups_enabled: true, rweb_cashtags_composer_attachment_enabled: true, responsive_web_jetfuel_frame: true, responsive_web_grok_share_attachment_enabled: true, responsive_web_grok_annotations_enabled: true, articles_preview_enabled: true, responsive_web_edit_tweet_api_enabled: true, rweb_conversational_replies_downvote_enabled: false, graphql_is_translatable_rweb_tweet_is_translatable_enabled: true, view_counts_everywhere_api_enabled: true, longform_notetweets_consumption_enabled: true, responsive_web_twitter_article_tweet_consumption_enabled: true, content_disclosure_indicator_enabled: true, content_disclosure_ai_generated_indicator_enabled: true, responsive_web_grok_show_grok_translated_post: true, responsive_web_grok_analysis_button_from_backend: true, post_ctas_fetch_enabled: true, freedom_of_speech_not_reach_fetch_enabled: true, standardized_nudges_misinfo: true, tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true, longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: false, responsive_web_grok_image_annotation_enabled: true, responsive_web_grok_imagine_annotation_enabled: true, responsive_web_grok_community_note_auto_translation_is_enabled: true, responsive_web_enhance_cards_enabled: false };
+      const url = `/i/api/graphql/${queryId}/ExplorePage?variables=${encodeURIComponent(JSON.stringify(variables))}&features=${encodeURIComponent(JSON.stringify(FEATURES))}`;
+      const res = await fetch(url, { headers, credentials: 'include' });
+      if (!res.ok) return { error: 'Twitter trends HTTP ' + res.status };
+      const d = await res.json();
+
+      // ExplorePage response: data.explore_page.body.initialTimelines[].timeline.timeline.instructions
+      // contains TimelineAddEntries with content.itemContent.trend or content.items[].item.content.trend
+      const trends: any[] = [];
+      const seen = new Set<string>();
+      function pushTrend(t: any) {
+        if (!t) return;
+        const name = t.name || t.trend?.name || t.trend_name || '';
+        if (!name || seen.has(name)) return;
+        seen.add(name);
+        const meta = t.trend_metadata || t.trendMetadata || {};
+        const vol = meta.meta_description?.match(/[\d,]+/)?.[0]?.replace(/,/g, '') || meta.tweetCount || null;
+        trends.push({
+          name,
+          tweet_volume: vol ? parseInt(vol, 10) || null : null,
+          url: t.url?.url || `https://x.com/search?q=${encodeURIComponent(name)}`,
+          ...(meta.domain_context ? { category: meta.domain_context } : {}),
+        });
+      }
+
+      const candidates: any[] = [];
+      const initialTimelines = d?.data?.explore_page?.body?.initialTimelines || d?.data?.explore_page?.body?.timelines || [];
+      for (const t of initialTimelines) {
+        const insts = t?.timeline?.timeline?.instructions || t?.timeline?.instructions || [];
+        for (const inst of insts) {
+          for (const entry of inst.entries || []) {
+            candidates.push(entry.content);
+            for (const item of entry.content?.items || []) candidates.push(item.item?.content || item.item);
+          }
+        }
+      }
+      // Legacy fallback: GuideV2/UnifiedExplore shape, in case bundle uses an older route.
+      const legacy = d?.data?.unified_explore_page?.timeline?.timeline?.instructions
+        || d?.data?.trending?.timeline?.timeline?.instructions || [];
+      for (const inst of legacy) {
+        for (const entry of inst.entries || []) {
+          candidates.push(entry.content);
+          for (const item of entry.content?.items || []) candidates.push(item.item?.content || item.item);
+        }
+      }
+      for (const c of candidates) {
+        if (c?.trend) pushTrend(c.trend);
+        if (c?.itemContent?.trend) pushTrend(c.itemContent.trend);
+        if (c?.trendContent) pushTrend(c.trendContent);
+      }
+      return trends.slice(0, lim);
+    } catch (e: any) { return { error: e.message || 'Twitter trends scraper failed' }; }
+  }, [BEARER, queryIds, typeof woeid === 'number' ? woeid : null, limit]);
+
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return (data as any[]) || [];
+}
+
+/**
+ * Shared user-list scraper for Followers / Following / Favoriters / Retweeters.
+ *
+ * `subjectKind` controls how the subject id is resolved:
+ *   - 'user'  → input is a @screen_name, resolve via UserByScreenName
+ *   - 'tweet' → input is a tweet URL or id, parse out the numeric id
+ *
+ * Data root differs per op:
+ *   Followers/Following → data.user.result.timeline.timeline
+ *   Favoriters/Retweeters → data.favoriters_timeline / data.retweeters_timeline
+ */
+async function scrapeUserList(opts: {
+  operationName: 'Followers' | 'Following' | 'Favoriters' | 'Retweeters';
+  subjectKind: 'user' | 'tweet';
+  subject: string;
+  limit: number;
+  cursor?: string;
+  queryIds: QueryIds;
+  tabUrl: string;
+}): Promise<{ users: any[]; next_cursor: string | null }> {
+  const { operationName, subjectKind, subject, limit, cursor, queryIds, tabUrl } = opts;
+  const tabId = await getTab(tabUrl);
+  await new Promise(r => setTimeout(r, 3000));
+  await checkLoginRedirect(tabId, 'Twitter');
+
+  const data = await executeInPage(tabId, async (bearer: string, fallbacks: QueryIds, op: string, kind: string, subj: string, lim: number, cur: string | null) => {
+    try {
+      const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
+      if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
+
+      const resolveQueryId = async (operationName: string): Promise<string> => {
+        try {
+          const cached = JSON.parse(sessionStorage.getItem('__bnbot_x_qids') || 'null');
+          if (cached?.ts && Date.now() - cached.ts < 3600_000 && cached.ids?.[operationName]) {
+            return cached.ids[operationName];
+          }
+        } catch {}
+        const ops = ['UserByScreenName','Followers','Following','Favoriters','Retweeters'];
+        const ids: Record<string, string> = {};
+        try {
+          const wpChunks: any = (window as any).webpackChunk_twitter_responsive_web;
+          if (Array.isArray(wpChunks)) {
+            for (const entry of wpChunks) {
+              if (!Array.isArray(entry) || entry.length < 2) continue;
+              const modules = entry[1];
+              if (!modules || typeof modules !== 'object') continue;
+              for (const fn of Object.values(modules) as Function[]) {
+                try {
+                  const src = fn.toString();
+                  for (const o of ops) {
+                    if (ids[o]) continue;
+                    const m = src.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + o + '"'));
+                    if (m) ids[o] = m[1];
+                  }
+                } catch {}
+              }
+              if (ids[operationName] && (kind !== 'user' || ids['UserByScreenName'])) break;
+            }
+          }
+        } catch {}
+        // HTTP fallback for any still-missing op
+        if (!ids[operationName] || (kind === 'user' && !ids['UserByScreenName'])) {
+          const _startedAt = Date.now();
+          let scriptUrls: string[] = [];
+          while (Date.now() - _startedAt < 6000) {
+            scriptUrls = (Array.from(document.querySelectorAll('script[src]')) as HTMLScriptElement[])
+              .map(s => s.src)
+              .filter(src => src.endsWith('.js') && (src.includes('abs.twimg.com') || src.includes('client-web') || src.startsWith('/')));
+            if (scriptUrls.length > 0) break;
+            await new Promise(r => setTimeout(r, 300));
+          }
+          for (const url of scriptUrls.slice(0, 20)) {
+            try {
+              const code = await (await fetch(url)).text();
+              for (const o of ops) {
+                if (ids[o]) continue;
+                const m = code.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + o + '"'));
+                if (m) ids[o] = m[1];
+              }
+              if (ids[operationName]) break;
+            } catch {}
+          }
+        }
+        if (Object.keys(ids).length) {
+          try { sessionStorage.setItem('__bnbot_x_qids', JSON.stringify({ ts: Date.now(), ids })); } catch {}
+          if (ids[operationName]) return ids[operationName];
+        }
+        const fb = fallbacks[operationName];
+        if (fb) return fb;
+        throw new Error('queryId for ' + operationName + ' missing — bundle scrape failed and no caller fallback supplied');
+      };
+
+      const headers: Record<string, string> = {
+        'Authorization': 'Bearer ' + decodeURIComponent(bearer),
+        'X-Csrf-Token': ct0, 'X-Twitter-Auth-Type': 'OAuth2Session', 'X-Twitter-Active-User': 'yes',
+      };
+
+      // Resolve numeric subject id
+      let subjectId = subj;
+      if (kind === 'user') {
+        const uname = subj.replace(/^@/, '');
+        const userQid = await resolveQueryId('UserByScreenName');
+        const uVars = JSON.stringify({ screen_name: uname, withSafetyModeUserFields: true });
+        const uFeat = JSON.stringify({ hidden_profile_subscriptions_enabled: true, rweb_tipjar_consumption_enabled: true, responsive_web_graphql_exclude_directive_enabled: true, verified_phone_label_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, responsive_web_graphql_timeline_navigation_enabled: true });
+        const uRes = await fetch(`/i/api/graphql/${userQid}/UserByScreenName?variables=${encodeURIComponent(uVars)}&features=${encodeURIComponent(uFeat)}`, { headers, credentials: 'include' });
+        if (!uRes.ok) return { error: 'Failed to resolve user @' + uname + ': HTTP ' + uRes.status };
+        const uD = await uRes.json();
+        const rid = uD?.data?.user?.result?.rest_id;
+        if (!rid) return { error: 'User @' + uname + ' not found' };
+        subjectId = rid;
+      } else {
+        const m = subj.match(/\/status(?:es)?\/(\d+)/) || subj.match(/^(\d+)$/);
+        if (!m) return { error: 'Invalid tweet URL or id: ' + subj };
+        subjectId = m[1];
+      }
+
+      const qid = await resolveQueryId(op);
+      const vars: Record<string, any> = { count: Math.min(40, lim), includePromotedContent: false };
+      if (op === 'Followers' || op === 'Following') vars.userId = subjectId;
+      else vars.tweetId = subjectId;
+      if (cur) vars.cursor = cur;
+      const FEATURES = { rweb_video_screen_enabled: false, rweb_cashtags_enabled: true, profile_label_improvements_pcf_label_in_post_enabled: true, responsive_web_profile_redirect_enabled: false, rweb_tipjar_consumption_enabled: false, verified_phone_label_enabled: false, creator_subscriptions_tweet_preview_api_enabled: true, responsive_web_graphql_timeline_navigation_enabled: true, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, premium_content_api_read_enabled: false, communities_web_enable_tweet_community_results_fetch: true, c9s_tweet_anatomy_moderator_badge_enabled: true, responsive_web_grok_analyze_button_fetch_trends_enabled: false, responsive_web_grok_analyze_post_followups_enabled: true, rweb_cashtags_composer_attachment_enabled: true, responsive_web_jetfuel_frame: true, responsive_web_grok_share_attachment_enabled: true, responsive_web_grok_annotations_enabled: true, articles_preview_enabled: true, responsive_web_edit_tweet_api_enabled: true, rweb_conversational_replies_downvote_enabled: false, graphql_is_translatable_rweb_tweet_is_translatable_enabled: true, view_counts_everywhere_api_enabled: true, longform_notetweets_consumption_enabled: true, responsive_web_twitter_article_tweet_consumption_enabled: true, content_disclosure_indicator_enabled: true, content_disclosure_ai_generated_indicator_enabled: true, responsive_web_grok_show_grok_translated_post: true, responsive_web_grok_analysis_button_from_backend: true, post_ctas_fetch_enabled: true, freedom_of_speech_not_reach_fetch_enabled: true, standardized_nudges_misinfo: true, tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true, longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: false, responsive_web_grok_image_annotation_enabled: true, responsive_web_grok_imagine_annotation_enabled: true, responsive_web_grok_community_note_auto_translation_is_enabled: true, responsive_web_enhance_cards_enabled: false };
+      const url = `/i/api/graphql/${qid}/${op}?variables=${encodeURIComponent(JSON.stringify(vars))}&features=${encodeURIComponent(JSON.stringify(FEATURES))}`;
+      const res = await fetch(url, { headers, credentials: 'include' });
+      if (!res.ok) return { error: op + ' HTTP ' + res.status };
+      const d = await res.json();
+
+      const timeline = d?.data?.user?.result?.timeline?.timeline
+        || d?.data?.favoriters_timeline?.timeline
+        || d?.data?.retweeters_timeline?.timeline
+        || d?.data?.timeline_response?.timeline
+        || null;
+      const instructions = timeline?.instructions || [];
+
+      const users: any[] = [];
+      const seen = new Set<string>();
+      let nextCursor: string | null = null;
+
+      function pushUser(result: any) {
+        const u = result?.tweet || result;
+        if (!u?.rest_id || seen.has(u.rest_id)) return;
+        seen.add(u.rest_id);
+        const l = u.legacy || {};
+        const core = u.core || {};
+        users.push({
+          rest_id: u.rest_id,
+          screen_name: core.screen_name || l.screen_name || '',
+          name: core.name || l.name || '',
+          bio: u.profile_bio?.description || l.description || '',
+          followers: l.followers_count || 0,
+          following: l.friends_count || 0,
+          tweets: l.statuses_count || 0,
+          verified: !!(u.is_blue_verified || l.verified),
+          profile_image_url: (u.avatar?.image_url || l.profile_image_url_https || '').replace('_normal', '_400x400'),
+          url: 'https://x.com/' + (core.screen_name || l.screen_name || ''),
+        });
+      }
+
+      for (const inst of instructions) {
+        for (const entry of inst.entries || []) {
+          const c = entry.content;
+          if (c?.cursorType === 'Bottom') { nextCursor = c.value; continue; }
+          if (entry.entryId?.startsWith('cursor-bottom-')) { nextCursor = c?.value || c?.itemContent?.value; continue; }
+          const ur = c?.itemContent?.user_results?.result;
+          if (ur) pushUser(ur);
+          for (const item of c?.items || []) {
+            const nr = item.item?.itemContent?.user_results?.result;
+            if (nr) pushUser(nr);
+          }
+        }
+      }
+      return { users: users.slice(0, lim), next_cursor: nextCursor };
+    } catch (e: any) { return { error: e.message || op + ' scraper failed' }; }
+  }, [BEARER, queryIds, operationName, subjectKind, subject, limit, cursor || null]);
+
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return data as { users: any[]; next_cursor: string | null };
+}
+
+export async function getTwitterUserFollowers(username: string, limit = 20, cursor?: string, queryIds: QueryIds = {}): Promise<any> {
+  const uname = username.replace(/^@/, '');
+  return scrapeUserList({
+    operationName: 'Followers',
+    subjectKind: 'user',
+    subject: uname,
+    limit, cursor, queryIds,
+    tabUrl: `https://x.com/${uname}/followers`,
+  });
+}
+
+export async function getTwitterUserFollowing(username: string, limit = 20, cursor?: string, queryIds: QueryIds = {}): Promise<any> {
+  const uname = username.replace(/^@/, '');
+  return scrapeUserList({
+    operationName: 'Following',
+    subjectKind: 'user',
+    subject: uname,
+    limit, cursor, queryIds,
+    tabUrl: `https://x.com/${uname}/following`,
+  });
+}
+
+export async function getTwitterTweetLikers(tweetUrl: string, limit = 20, cursor?: string, queryIds: QueryIds = {}): Promise<any> {
+  return scrapeUserList({
+    operationName: 'Favoriters',
+    subjectKind: 'tweet',
+    subject: tweetUrl,
+    limit, cursor, queryIds,
+    tabUrl: 'https://x.com/home',
+  });
+}
+
+export async function getTwitterTweetRetweeters(tweetUrl: string, limit = 20, cursor?: string, queryIds: QueryIds = {}): Promise<any> {
+  return scrapeUserList({
+    operationName: 'Retweeters',
+    subjectKind: 'tweet',
+    subject: tweetUrl,
+    limit, cursor, queryIds,
+    tabUrl: 'https://x.com/home',
+  });
+}
+
+/**
+ * Long-form Article attached to a tweet. X Articles are surfaced inside
+ * a tweet result under `tweet.article.article_results.result` and consist
+ * of a title plus rich-text content blocks. We fetch via TweetResultByRestId
+ * (less noisy than TweetDetail — no replies/conversation), then walk the
+ * article structure.
+ *
+ * Returns `{ id, title, content, author, created_at, url, cover_image_url? }`
+ * or throws if the tweet has no article attached.
+ */
+export async function getTwitterTweetArticle(tweetUrl: string, queryIds: QueryIds = {}): Promise<any> {
+  const tabId = await getTab('https://x.com');
+  await new Promise(r => setTimeout(r, 2000));
+  await checkLoginRedirect(tabId, 'Twitter');
+
+  const data = await executeInPage(tabId, async (bearer: string, fallbacks: QueryIds, urlOrId: string) => {
+    try {
+      const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
+      if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
+
+      const resolveQueryId = async (operationName: string): Promise<string> => {
+        try {
+          const cached = JSON.parse(sessionStorage.getItem('__bnbot_x_qids') || 'null');
+          if (cached?.ts && Date.now() - cached.ts < 3600_000 && cached.ids?.[operationName]) {
+            return cached.ids[operationName];
+          }
+        } catch {}
+        const ops = ['TweetResultByRestId','TweetDetail'];
+        const ids: Record<string, string> = {};
+        try {
+          const wpChunks: any = (window as any).webpackChunk_twitter_responsive_web;
+          if (Array.isArray(wpChunks)) {
+            for (const entry of wpChunks) {
+              if (!Array.isArray(entry) || entry.length < 2) continue;
+              const modules = entry[1];
+              if (!modules || typeof modules !== 'object') continue;
+              for (const fn of Object.values(modules) as Function[]) {
+                try {
+                  const src = fn.toString();
+                  for (const op of ops) {
+                    if (ids[op]) continue;
+                    const m = src.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + op + '"'));
+                    if (m) ids[op] = m[1];
+                  }
+                } catch {}
+              }
+              if (ids[operationName]) break;
+            }
+          }
+        } catch {}
+        if (ids[operationName]) {
+          try { sessionStorage.setItem('__bnbot_x_qids', JSON.stringify({ ts: Date.now(), ids })); } catch {}
+          return ids[operationName];
+        }
+        const fb = fallbacks[operationName];
+        if (fb) return fb;
+        throw new Error('queryId for ' + operationName + ' missing');
+      };
+
+      const m = urlOrId.match(/\/status(?:es)?\/(\d+)/) || urlOrId.match(/^(\d+)$/);
+      if (!m) return { error: 'Invalid tweet URL or id: ' + urlOrId };
+      const tweetId = m[1];
+
+      const qid = await resolveQueryId('TweetResultByRestId');
+      const headers: Record<string, string> = {
+        'Authorization': 'Bearer ' + decodeURIComponent(bearer),
+        'X-Csrf-Token': ct0, 'X-Twitter-Auth-Type': 'OAuth2Session', 'X-Twitter-Active-User': 'yes',
+      };
+      const variables = JSON.stringify({ tweetId, withCommunity: false, includePromotedContent: false, withVoice: false });
+      const FEATURES = { creator_subscriptions_tweet_preview_api_enabled: true, premium_content_api_read_enabled: false, communities_web_enable_tweet_community_results_fetch: true, c9s_tweet_anatomy_moderator_badge_enabled: true, responsive_web_grok_analyze_button_fetch_trends_enabled: false, responsive_web_grok_analyze_post_followups_enabled: true, responsive_web_jetfuel_frame: true, responsive_web_grok_share_attachment_enabled: true, articles_preview_enabled: true, responsive_web_edit_tweet_api_enabled: true, graphql_is_translatable_rweb_tweet_is_translatable_enabled: true, view_counts_everywhere_api_enabled: true, longform_notetweets_consumption_enabled: true, responsive_web_twitter_article_tweet_consumption_enabled: true, tweet_awards_web_tipping_enabled: false, responsive_web_grok_show_grok_translated_post: false, responsive_web_grok_analysis_button_from_backend: true, creator_subscriptions_quote_tweet_preview_enabled: false, freedom_of_speech_not_reach_fetch_enabled: true, standardized_nudges_misinfo: true, tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true, longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: true, payments_enabled: false, profile_label_improvements_pcf_label_in_post_enabled: true, responsive_web_profile_redirect_enabled: false, rweb_tipjar_consumption_enabled: true, verified_phone_label_enabled: false, responsive_web_grok_image_annotation_enabled: true, responsive_web_grok_imagine_annotation_enabled: true, responsive_web_grok_community_note_auto_translation_is_enabled: false, responsive_web_graphql_skip_user_profile_image_extensions_enabled: false, responsive_web_graphql_timeline_navigation_enabled: true, responsive_web_enhance_cards_enabled: false };
+      const FIELD_TOGGLES = { withArticleRichContentState: true, withArticlePlainText: true };
+      const url = `/i/api/graphql/${qid}/TweetResultByRestId?variables=${encodeURIComponent(variables)}&features=${encodeURIComponent(JSON.stringify(FEATURES))}&fieldToggles=${encodeURIComponent(JSON.stringify(FIELD_TOGGLES))}`;
+      const res = await fetch(url, { headers, credentials: 'include' });
+      if (!res.ok) return { error: 'TweetResultByRestId HTTP ' + res.status };
+      const d = await res.json();
+
+      const tw = d?.data?.tweetResult?.result?.tweet || d?.data?.tweetResult?.result;
+      if (!tw) return { error: 'Tweet ' + tweetId + ' not found' };
+      const article = tw.article?.article_results?.result;
+      if (!article) return { error: 'Tweet ' + tweetId + ' has no Article attached' };
+
+      // X article shape:
+      //   article.title  (string)
+      //   article.preview_text  (string)
+      //   article.metadata.first_published_at_secs  (number)
+      //   article.cover_media.media_info.original_img_url  (string)
+      //   article.content_state.blocks[] — { text, type, entityRanges, ... }
+      //   article.plain_text  (when withArticlePlainText: true)
+      const blocks = article.content_state?.blocks || [];
+      const plain = article.plain_text || blocks.map((b: any) => b.text || '').filter(Boolean).join('\n\n');
+
+      const u = tw.core?.user_results?.result;
+      const ul = u?.legacy || {};
+      const ucore = u?.core || {};
+      const author = ucore.screen_name || ul.screen_name || 'unknown';
+
+      return {
+        id: tw.rest_id || tweetId,
+        title: article.title || '',
+        preview: article.preview_text || '',
+        content: plain,
+        author,
+        author_name: ucore.name || ul.name || '',
+        created_at: article.metadata?.first_published_at_secs
+          ? new Date(article.metadata.first_published_at_secs * 1000).toISOString()
+          : (tw.legacy?.created_at || ''),
+        cover_image_url: article.cover_media?.media_info?.original_img_url || article.cover_media?.media_key || null,
+        url: `https://x.com/${author}/status/${tw.rest_id || tweetId}`,
+      };
+    } catch (e: any) { return { error: e.message || 'Twitter article scraper failed' }; }
+  }, [BEARER, queryIds, tweetUrl]);
+
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return data;
+}
