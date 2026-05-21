@@ -34,8 +34,51 @@ export async function youtubeVideoCommand(url: string) {
   await scrape('SCRAPER_FETCH_YOUTUBE_VIDEO', { url });
 }
 
-export async function youtubeTranscriptCommand(url: string) {
-  await scrape('SCRAPER_FETCH_YOUTUBE_TRANSCRIPT', { url });
+export async function youtubeTranscriptCommand(url: string, options: { lang?: string } = {}) {
+  await scrape('SCRAPER_FETCH_YOUTUBE_TRANSCRIPT', { url, lang: options.lang || '' });
+}
+
+export async function youtubeChannelDetailsCommand(channel: string) {
+  await scrape('SCRAPER_FETCH_YOUTUBE_CHANNEL_DETAILS', { channel });
+}
+
+export async function youtubeChannelVideosCommand(
+  channel: string,
+  options: { filter?: string; limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_YOUTUBE_CHANNEL_VIDEOS', {
+    channel,
+    filter: options.filter || 'latest',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function youtubeTrendingCommand(options: { limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_YOUTUBE_TRENDING', { limit: parseInt(options.limit || '30', 10) });
+}
+
+export async function youtubeChannelSearchCommand(
+  channel: string,
+  query: string,
+  options: { limit?: string } = {},
+) {
+  await scrape('SCRAPER_SEARCH_YOUTUBE_CHANNEL', {
+    channel,
+    query,
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function youtubeStreamingDataCommand(url: string) {
+  await scrape('SCRAPER_FETCH_YOUTUBE_STREAMING_DATA', { url });
+}
+
+export async function youtubeRelatedCommand(url: string, options: { limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_YOUTUBE_RELATED', { url, limit: parseInt(options.limit || '20', 10) });
+}
+
+export async function youtubeCommentsCommand(url: string, options: { limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_YOUTUBE_COMMENTS', { url, limit: parseInt(options.limit || '50', 10) });
 }
 
 // ── Reddit ───────────────────────────────────────────────────

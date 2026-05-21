@@ -67,6 +67,9 @@ import { wxchannelsPostCommand } from './commands/wxchannels.js';
 import {
   tiktokSearchCommand, tiktokExploreCommand,
   youtubeSearchCommand, youtubeVideoCommand, youtubeTranscriptCommand,
+  youtubeChannelDetailsCommand, youtubeChannelVideosCommand, youtubeTrendingCommand,
+  youtubeChannelSearchCommand, youtubeStreamingDataCommand, youtubeRelatedCommand,
+  youtubeCommentsCommand,
   redditSearchCommand, redditHotCommand,
   bilibiliSearchCommand, bilibiliHotCommand, bilibiliRankingCommand,
   zhihuSearchCommand, zhihuHotCommand,
@@ -883,8 +886,28 @@ function buildProgram(): Command {
     .option('--upload <period>', 'Upload date: hour, today, week, month, year')
     .option('--sort <sort>', 'Sort: relevance, date, views, rating')
     .action(youtubeSearchCommand);
-  youtube.command('video <url>').description('Fetch YouTube video info').action(youtubeVideoCommand);
-  youtube.command('transcript <url>').description('Fetch YouTube video transcript').action(youtubeTranscriptCommand);
+  youtube.command('video <url-or-id>').description('Fetch YouTube video details').action(youtubeVideoCommand);
+  youtube.command('channel-details <id-or-handle>').description('Fetch YouTube channel details').action(youtubeChannelDetailsCommand);
+  youtube.command('channel-videos <id-or-handle>').description('Fetch a channel\'s videos')
+    .option('--filter <filter>', 'latest | popular | oldest', 'latest')
+    .option('-l, --limit <n>', 'Max results', '30')
+    .action(youtubeChannelVideosCommand);
+  youtube.command('trending').description('YouTube trending feed')
+    .option('-l, --limit <n>', 'Max results', '30')
+    .action(youtubeTrendingCommand);
+  youtube.command('channel-search <id-or-handle> <query>').description('Search videos within a channel')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .action(youtubeChannelSearchCommand);
+  youtube.command('streaming-data <url-or-id>').description('Fetch YouTube video streaming data (formats / manifest URLs)').action(youtubeStreamingDataCommand);
+  youtube.command('related <url-or-id>').description('Fetch related videos for a watch page')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .action(youtubeRelatedCommand);
+  youtube.command('comments <url-or-id>').description('Fetch comments for a YouTube video')
+    .option('-l, --limit <n>', 'Max results', '50')
+    .action(youtubeCommentsCommand);
+  youtube.command('transcript <url-or-id>').description('Fetch YouTube video transcript')
+    .option('--lang <code>', 'Preferred caption language code (e.g. en, zh)')
+    .action(youtubeTranscriptCommand);
 
   const reddit = program.command('reddit').description('Reddit');
   reddit.command('search <query>').description('Search Reddit posts').option('-l, --limit <n>', 'Max results', '10').action(redditSearchCommand);

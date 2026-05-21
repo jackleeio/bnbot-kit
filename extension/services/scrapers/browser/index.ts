@@ -58,3 +58,30 @@ export { fetchYahooFinanceQuote } from './yahoo-finance';
 export type { YahooFinanceQuote } from './yahoo-finance';
 
 export { getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications } from './twitter';
+
+export {
+  getYouTubeVideoDetails,
+  getYouTubeChannelDetails,
+  getYouTubeChannelVideos,
+  getYouTubeTrending,
+  searchYouTubeChannel,
+  getYouTubeStreamingData,
+  getYouTubeRelatedVideos,
+  getYouTubeComments,
+  getYouTubeTranscript,
+  parseYouTubeVideoId,
+} from './youtube';
+export type {
+  YouTubeVideoDetails,
+  YouTubeChannelDetails,
+  YouTubeChannelVideo,
+  YouTubeChannelVideosFilter,
+  YouTubeTrendingVideo,
+  YouTubeChannelSearchResult,
+  YouTubeStreamingFormat,
+  YouTubeStreamingData,
+  YouTubeRelatedVideo,
+  YouTubeComment,
+  YouTubeTranscriptLine,
+  YouTubeTranscript,
+} from './youtube';

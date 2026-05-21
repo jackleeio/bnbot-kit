@@ -651,7 +651,7 @@ async function debugEvalInTab(args: {
   }
   return { tabId, url: tab.url || '', result: res?.result?.value ?? null };
 }
-import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications } from './services/scrapers/browser';
+import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications, getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos, getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData, getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript } from './services/scrapers/browser';
 
 // GOOGLE_CLIENT_ID / OAUTH_REDIRECT_URI removed — see handleGoogleLogin
 // removal note. chrome.identity.getRedirectURL() also no longer needed.
@@ -1317,6 +1317,15 @@ console.log('BNBot background service worker loaded');
 const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   SCRAPER_SEARCH_TIKTOK: (m) => searchTikTok(m.query, m.limit),
   SCRAPER_SEARCH_YOUTUBE: (m) => searchYouTube(m.query, { limit: m.limit, type: m.type, upload: m.upload, sort: m.sort }),
+  SCRAPER_FETCH_YOUTUBE_VIDEO: (m) => getYouTubeVideoDetails(m.url || m.video || m.videoId),
+  SCRAPER_FETCH_YOUTUBE_CHANNEL_DETAILS: (m) => getYouTubeChannelDetails(m.channel || m.channelId || m.handle),
+  SCRAPER_FETCH_YOUTUBE_CHANNEL_VIDEOS: (m) => getYouTubeChannelVideos(m.channel || m.channelId || m.handle, { filter: m.filter, limit: m.limit }),
+  SCRAPER_FETCH_YOUTUBE_TRENDING: (m) => getYouTubeTrending(m.limit),
+  SCRAPER_SEARCH_YOUTUBE_CHANNEL: (m) => searchYouTubeChannel(m.channel || m.channelId || m.handle, m.query, m.limit),
+  SCRAPER_FETCH_YOUTUBE_STREAMING_DATA: (m) => getYouTubeStreamingData(m.url || m.video || m.videoId),
+  SCRAPER_FETCH_YOUTUBE_RELATED: (m) => getYouTubeRelatedVideos(m.url || m.video || m.videoId, m.limit),
+  SCRAPER_FETCH_YOUTUBE_COMMENTS: (m) => getYouTubeComments(m.url || m.video || m.videoId, m.limit),
+  SCRAPER_FETCH_YOUTUBE_TRANSCRIPT: (m) => getYouTubeTranscript(m.url || m.video || m.videoId, { lang: m.lang }),
   SCRAPER_SEARCH_REDDIT: (m) => searchReddit(m.query, m.limit),
   SCRAPER_SEARCH_BILIBILI: (m) => searchBilibili(m.query, m.limit),
   SCRAPER_SEARCH_ZHIHU: (m) => searchZhihu(m.query, m.limit),
@@ -1478,6 +1487,9 @@ Object.assign(self, {
   searchFacebook, searchLinkedInJobs,
   search36Kr, fetch36KrHot, fetch36KrNews,
   fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote,
+  getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos,
+  getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData,
+  getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript,
 });
 
 // fetchVideoAsDataUrl / fetchImageAsBase64 / fetchBlobAsDataUrl removed —
