@@ -702,8 +702,11 @@ export async function getDouyinPostCommentReplies(
   const cursor = options.cursor || '0';
   const limit = Math.min(Math.max(options.limit || 20, 1), 50);
 
-  const tabId = await getTab('https://www.douyin.com/');
+  // Navigate to the video page so Douyin's signed-fetch wrapper loads
+  // (homepage doesn't include the comment-API signing bundle).
+  const tabId = await getTab('https://www.douyin.com/video/' + encodeURIComponent(vid));
   await checkLoginRedirect(tabId, 'Douyin');
+  await new Promise((r) => setTimeout(r, 2000));
 
   const result = await executeInPage(tabId, async (vId: string, comId: string, cur: string, lim: number) => {
     try {
@@ -790,8 +793,14 @@ export async function searchDouyinGeneral(
   const offset = options.offset || '0';
   const limit = Math.min(Math.max(options.limit || 20, 1), 50);
 
-  const tabId = await getTab('https://www.douyin.com/');
+  // Douyin's `window.fetch` is wrapped with the a-bogus signer ONLY on
+  // search-context pages (search-page bundle ships the signer JS). The
+  // homepage's fetch returns 200-empty / `status_code=5` because the
+  // signing wrapper isn't installed. Navigate to /search/<kw> first so
+  // the bundle hydrates the wrapper, then call the API.
+  const tabId = await getTab('https://www.douyin.com/search/' + encodeURIComponent(kw));
   await checkLoginRedirect(tabId, 'Douyin');
+  await new Promise((r) => setTimeout(r, 2000));
 
   const result = await executeInPage(tabId, async (q: string, off: string, lim: number) => {
     try {
@@ -907,8 +916,11 @@ export async function searchDouyinVideo(
   const offset = options.offset || '0';
   const limit = Math.min(Math.max(options.limit || 20, 1), 50);
 
-  const tabId = await getTab('https://www.douyin.com/');
+  // See searchDouyinGeneral comment: Douyin only loads its signing
+  // wrapper on the /search/* page. Navigate there first.
+  const tabId = await getTab('https://www.douyin.com/search/' + encodeURIComponent(kw) + '?type=video');
   await checkLoginRedirect(tabId, 'Douyin');
+  await new Promise((r) => setTimeout(r, 2000));
 
   const result = await executeInPage(tabId, async (q: string, off: string, lim: number) => {
     try {
@@ -1025,8 +1037,10 @@ export async function searchDouyinAccount(
   const cursor = options.cursor || '0';
   const limit = Math.min(Math.max(options.limit || 20, 1), 50);
 
-  const tabId = await getTab('https://www.douyin.com/');
+  // Search page = signed-fetch wrapper context (see searchDouyinGeneral).
+  const tabId = await getTab('https://www.douyin.com/search/' + encodeURIComponent(kw) + '?type=user');
   await checkLoginRedirect(tabId, 'Douyin');
+  await new Promise((r) => setTimeout(r, 2000));
 
   const result = await executeInPage(tabId, async (q: string, cur: string, lim: number) => {
     try {
@@ -1106,8 +1120,10 @@ export async function searchDouyinLive(
   const offset = options.offset || '0';
   const limit = Math.min(Math.max(options.limit || 20, 1), 50);
 
-  const tabId = await getTab('https://www.douyin.com/');
+  // Search page context for signed fetch (see searchDouyinGeneral).
+  const tabId = await getTab('https://www.douyin.com/search/' + encodeURIComponent(kw) + '?type=live');
   await checkLoginRedirect(tabId, 'Douyin');
+  await new Promise((r) => setTimeout(r, 2000));
 
   const result = await executeInPage(tabId, async (q: string, off: string, lim: number) => {
     try {
@@ -1186,8 +1202,10 @@ export async function getDouyinChallengePosts(
   const offset = options.offset || '0';
   const limit = Math.min(Math.max(options.limit || 20, 1), 50);
 
-  const tabId = await getTab('https://www.douyin.com/');
+  // Hashtag page loads the signed-fetch wrapper for challenge_aweme.
+  const tabId = await getTab('https://www.douyin.com/hashtag/' + encodeURIComponent(ch));
   await checkLoginRedirect(tabId, 'Douyin');
+  await new Promise((r) => setTimeout(r, 2000));
 
   const result = await executeInPage(tabId, async (chId: string, off: string, lim: number) => {
     try {
