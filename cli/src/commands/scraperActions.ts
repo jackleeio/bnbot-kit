@@ -21,6 +21,57 @@ export async function tiktokExploreCommand(options: { limit?: string }) {
   await scrape('SCRAPER_FETCH_TIKTOK_EXPLORE', { limit: parseInt(options.limit || '20', 10) });
 }
 
+export async function tiktokProfileCommand(username: string) {
+  await scrape('TIKTOK_PROFILE', { username });
+}
+
+export async function tiktokUserPostsCommand(
+  user: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_USER_POSTS', {
+    user,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function tiktokUserFollowersCommand(
+  user: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_USER_FOLLOWERS', {
+    user,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function tiktokPostDetailCommand(video: string) {
+  await scrape('SCRAPER_FETCH_TIKTOK_POST_DETAIL', { video });
+}
+
+export async function tiktokPostCommentsCommand(
+  video: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_POST_COMMENTS', {
+    video,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '50', 10),
+  });
+}
+
+export async function tiktokSearchAccountCommand(
+  query: string,
+  options: { limit?: string } = {},
+) {
+  await scrape('SCRAPER_SEARCH_TIKTOK_ACCOUNT', {
+    query,
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
 // ── YouTube ──────────────────────────────────────────────────
 
 export async function youtubeSearchCommand(query: string, options: { limit?: string; type?: string; upload?: string; sort?: string }) {

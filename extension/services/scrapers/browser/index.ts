@@ -85,3 +85,22 @@ export type {
   YouTubeTranscriptLine,
   YouTubeTranscript,
 } from './youtube';
+
+export {
+  getTikTokUserPosts,
+  getTikTokUserFollowers,
+  getTikTokPostDetail,
+  getTikTokPostComments,
+  searchTikTokAccount,
+  parseTikTokVideoId,
+} from './tiktok';
+export type {
+  TikTokVideo,
+  TikTokUserPostsResult,
+  TikTokUserSummary,
+  TikTokUserListResult,
+  TikTokPostDetail,
+  TikTokComment,
+  TikTokCommentsResult,
+  TikTokAccountSearchResult,
+} from './tiktok';

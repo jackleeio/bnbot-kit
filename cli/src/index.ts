@@ -65,7 +65,9 @@ import { kuaishouPostCommand } from './commands/kuaishou.js';
 import { douyinPostCommand } from './commands/douyin.js';
 import { wxchannelsPostCommand } from './commands/wxchannels.js';
 import {
-  tiktokSearchCommand, tiktokExploreCommand,
+  tiktokSearchCommand, tiktokExploreCommand, tiktokProfileCommand,
+  tiktokUserPostsCommand, tiktokUserFollowersCommand, tiktokPostDetailCommand,
+  tiktokPostCommentsCommand, tiktokSearchAccountCommand,
   youtubeSearchCommand, youtubeVideoCommand, youtubeTranscriptCommand,
   youtubeChannelDetailsCommand, youtubeChannelVideosCommand, youtubeTrendingCommand,
   youtubeChannelSearchCommand, youtubeStreamingDataCommand, youtubeRelatedCommand,
@@ -819,6 +821,23 @@ function buildProgram(): Command {
   const tiktok = program.command('tiktok').description('TikTok');
   tiktok.command('search <query>').description('Search TikTok videos').option('-l, --limit <n>', 'Max results', '10').action(tiktokSearchCommand);
   tiktok.command('explore').description('Trending TikTok videos').option('-l, --limit <n>', 'Max results', '20').action(tiktokExploreCommand);
+  tiktok.command('profile <username>').description('Fetch a TikTok user profile').action(tiktokProfileCommand);
+  tiktok.command('user-posts <user>').description('Fetch a user\'s posts (handle or secUid)')
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(tiktokUserPostsCommand);
+  tiktok.command('user-followers <user>').description('Fetch a user\'s followers (handle or secUid)')
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(tiktokUserFollowersCommand);
+  tiktok.command('post-detail <url-or-id>').description('Fetch a TikTok post\'s detail').action(tiktokPostDetailCommand);
+  tiktok.command('post-comments <url-or-id>').description('Fetch a TikTok post\'s comments')
+    .option('-l, --limit <n>', 'Max results', '50')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(tiktokPostCommentsCommand);
+  tiktok.command('search-account <query>').description('Search TikTok accounts')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .action(tiktokSearchAccountCommand);
   // tiktok.command('fetch') removed — `fetch_tiktok_video` orphan was the
   // republish flow; extension no longer hosts the handler.
   tiktok

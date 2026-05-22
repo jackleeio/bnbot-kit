@@ -651,7 +651,7 @@ async function debugEvalInTab(args: {
   }
   return { tabId, url: tab.url || '', result: res?.result?.value ?? null };
 }
-import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications, getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos, getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData, getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript } from './services/scrapers/browser';
+import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications, getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos, getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData, getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript, getTikTokUserPosts, getTikTokUserFollowers, getTikTokPostDetail, getTikTokPostComments, searchTikTokAccount } from './services/scrapers/browser';
 
 // GOOGLE_CLIENT_ID / OAUTH_REDIRECT_URI removed — see handleGoogleLogin
 // removal note. chrome.identity.getRedirectURL() also no longer needed.
@@ -1357,6 +1357,11 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   SCRAPER_FETCH_BILIBILI_HOT: (m) => fetchBilibiliHot(m.limit),
   SCRAPER_FETCH_BILIBILI_RANKING: (m) => fetchBilibiliRanking(m.limit),
   SCRAPER_FETCH_TIKTOK_EXPLORE: (m) => fetchTikTokExplore(m.limit),
+  SCRAPER_FETCH_TIKTOK_USER_POSTS: (m) => getTikTokUserPosts(m.username || m.secUid || m.user, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_TIKTOK_USER_FOLLOWERS: (m) => getTikTokUserFollowers(m.username || m.secUid || m.user, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_TIKTOK_POST_DETAIL: (m) => getTikTokPostDetail(m.url || m.video || m.videoId || m.id),
+  SCRAPER_FETCH_TIKTOK_POST_COMMENTS: (m) => getTikTokPostComments(m.url || m.video || m.videoId || m.id, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_SEARCH_TIKTOK_ACCOUNT: (m) => searchTikTokAccount(m.query, m.limit),
   SCRAPER_FETCH_ZHIHU_HOT: (m) => fetchZhihuHot(m.limit),
   SCRAPER_FETCH_XUEQIU_HOT: (m) => fetchXueqiuHot(m.limit),
   SCRAPER_FETCH_WEIBO_HOT: (m) => fetchWeiboHot(m.limit),
@@ -1498,6 +1503,8 @@ Object.assign(self, {
   getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos,
   getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData,
   getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript,
+  getTikTokUserPosts, getTikTokUserFollowers, getTikTokPostDetail,
+  getTikTokPostComments, searchTikTokAccount,
 });
 
 // fetchVideoAsDataUrl / fetchImageAsBase64 / fetchBlobAsDataUrl removed —
