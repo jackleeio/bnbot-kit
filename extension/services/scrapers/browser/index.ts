@@ -166,6 +166,36 @@ export type {
   TikTokPostCommentRepliesResult,
 } from './tiktok';
 
+// ─── Douyin (抖音) — TikTok's Chinese sibling on douyin.com ───────────
+export {
+  getDouyinUserInfo,
+  getDouyinUserPosts,
+  getDouyinUserLikedPosts,
+  getDouyinUserFollowers,
+  getDouyinUserFollowing,
+  getDouyinPostComments,
+  getDouyinPostCommentReplies,
+  searchDouyinGeneral,
+  searchDouyinVideo,
+  searchDouyinAccount,
+  searchDouyinLive,
+  getDouyinChallengePosts,
+  getDouyinMusicPosts,
+} from './douyin';
+export type {
+  DouyinVideo,
+  DouyinUser,
+  DouyinUserSummary,
+  DouyinComment,
+  DouyinListResult,
+  DouyinVideoListResult,
+  DouyinUserListResult,
+  DouyinCommentListResult,
+  DouyinLiveStream,
+  DouyinLiveListResult,
+  DouyinGeneralSearchResult,
+} from './douyin';
+
 // ─── TikTok Wave 5 — Creative Center (ads.tiktok.com) ────────────────
 //
 // SEPARATE host from regular tiktok.com — requires TikTok For Business

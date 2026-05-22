@@ -72,6 +72,154 @@ export async function tiktokSearchAccountCommand(
   });
 }
 
+// ── Douyin (Wave 1) ──────────────────────────────────────────
+//
+// Mirrors the douyin-api23 RapidAPI surface. Douyin uses `secUid`
+// (sec_user_id) as the canonical user identifier, `max_time` for
+// follower/following pagination, and `offset`-based pagination for
+// search endpoints. Hashtag scraping uses `hashtag` (ch_id) param.
+//
+// All scraping is performed by the chrome extension on douyin.com;
+// the CLI just routes the action + payload through WebSocket.
+
+export async function douyinUserInfoCommand(secUid: string) {
+  await scrape('SCRAPER_FETCH_DY_USER_INFO', { secUid });
+}
+
+export async function douyinUserPostsCommand(
+  secUid: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_DY_USER_POSTS', {
+    secUid,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function douyinUserLikedCommand(
+  secUid: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_DY_USER_LIKED', {
+    secUid,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function douyinUserFollowersCommand(
+  secUid: string,
+  options: { limit?: string; maxTime?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_DY_USER_FOLLOWERS', {
+    secUid,
+    max_time: options.maxTime || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function douyinUserFollowingCommand(
+  secUid: string,
+  options: { limit?: string; maxTime?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_DY_USER_FOLLOWING', {
+    secUid,
+    max_time: options.maxTime || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function douyinPostCommentsCommand(
+  video: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_DY_POST_COMMENTS', {
+    video,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '50', 10),
+  });
+}
+
+export async function douyinPostCommentRepliesCommand(
+  video: string,
+  commentId: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_DY_POST_COMMENT_REPLIES', {
+    video,
+    commentId,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '50', 10),
+  });
+}
+
+export async function douyinSearchGeneralCommand(
+  query: string,
+  options: { limit?: string; offset?: string } = {},
+) {
+  await scrape('SCRAPER_SEARCH_DY_GENERAL', {
+    query,
+    offset: parseInt(options.offset || '0', 10),
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function douyinSearchVideoCommand(
+  query: string,
+  options: { limit?: string; offset?: string } = {},
+) {
+  await scrape('SCRAPER_SEARCH_DY_VIDEO', {
+    query,
+    offset: parseInt(options.offset || '0', 10),
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function douyinSearchAccountCommand(
+  query: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_SEARCH_DY_ACCOUNT', {
+    query,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function douyinSearchLiveCommand(
+  query: string,
+  options: { limit?: string; offset?: string } = {},
+) {
+  await scrape('SCRAPER_SEARCH_DY_LIVE', {
+    query,
+    offset: parseInt(options.offset || '0', 10),
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function douyinChallengePostsCommand(
+  hashtag: string,
+  options: { limit?: string; offset?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_DY_CHALLENGE_POSTS', {
+    hashtag,
+    offset: parseInt(options.offset || '0', 10),
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function douyinMusicPostsCommand(
+  musicId: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_DY_MUSIC_POSTS', {
+    musicId,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
 // ── TikTok Wave 2/3/4 ────────────────────────────────────────
 
 // Challenge / Music

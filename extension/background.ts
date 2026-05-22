@@ -651,7 +651,7 @@ async function debugEvalInTab(args: {
   }
   return { tabId, url: tab.url || '', result: res?.result?.value ?? null };
 }
-import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications, getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos, getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData, getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript, getTikTokUserPosts, getTikTokUserFollowers, getTikTokPostDetail, getTikTokPostComments, searchTikTokAccount, getTikTokChallengeInfo, getTikTokChallengePosts, getTikTokMusicInfo, getTikTokMusicPosts, getTikTokMusicUnlimitedSounds, getTikTokUserInfoWithRegion, getTikTokUserInfoById, getTikTokUserFollowings, getTikTokUserLikedPosts, getTikTokUserPlaylist, getTikTokUserRepost, getTikTokUserStory, searchTikTokGeneral, searchTikTokLive, getTikTokOthersSearchedFor, getTikTokPostRelated, getTikTokPostExplore, getTikTokPostDiscover, getTikTokAdsDetail, getTikTokAdsTop, getTikTokTrendingCreator, getTikTokTrendingVideo, getTikTokTrendingHashtag, getTikTokTrendingSong, getTikTokTrendingKeyword, getTikTokTrendingKeywordPosts, getTikTokTrendingKeywordSentence, getTikTokCommercialMusicLibrary, getTikTokCommercialMusicPlaylists, getTikTokCommercialMusicPlaylistDetail, getTikTokTopProducts, getTikTokTopProductDetail, getTikTokTopProductMetrics, getTikTokPlaceInfo, getTikTokPlacePosts, getTikTokEffectInfo, getTikTokEffectPosts, getTikTokCollectionInfo, getTikTokCollectionPosts, getTikTokPostCommentReplies } from './services/scrapers/browser';
+import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications, getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos, getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData, getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript, getTikTokUserPosts, getTikTokUserFollowers, getTikTokPostDetail, getTikTokPostComments, searchTikTokAccount, getTikTokChallengeInfo, getTikTokChallengePosts, getTikTokMusicInfo, getTikTokMusicPosts, getTikTokMusicUnlimitedSounds, getTikTokUserInfoWithRegion, getTikTokUserInfoById, getTikTokUserFollowings, getTikTokUserLikedPosts, getTikTokUserPlaylist, getTikTokUserRepost, getTikTokUserStory, searchTikTokGeneral, searchTikTokLive, getTikTokOthersSearchedFor, getTikTokPostRelated, getTikTokPostExplore, getTikTokPostDiscover, getTikTokAdsDetail, getTikTokAdsTop, getTikTokTrendingCreator, getTikTokTrendingVideo, getTikTokTrendingHashtag, getTikTokTrendingSong, getTikTokTrendingKeyword, getTikTokTrendingKeywordPosts, getTikTokTrendingKeywordSentence, getTikTokCommercialMusicLibrary, getTikTokCommercialMusicPlaylists, getTikTokCommercialMusicPlaylistDetail, getTikTokTopProducts, getTikTokTopProductDetail, getTikTokTopProductMetrics, getTikTokPlaceInfo, getTikTokPlacePosts, getTikTokEffectInfo, getTikTokEffectPosts, getTikTokCollectionInfo, getTikTokCollectionPosts, getTikTokPostCommentReplies, getDouyinUserInfo, getDouyinUserPosts, getDouyinUserLikedPosts, getDouyinUserFollowers, getDouyinUserFollowing, getDouyinPostComments, getDouyinPostCommentReplies, searchDouyinGeneral, searchDouyinVideo, searchDouyinAccount, searchDouyinLive, getDouyinChallengePosts, getDouyinMusicPosts } from './services/scrapers/browser';
 
 // GOOGLE_CLIENT_ID / OAUTH_REDIRECT_URI removed — see handleGoogleLogin
 // removal note. chrome.identity.getRedirectURL() also no longer needed.
@@ -1412,6 +1412,23 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   SCRAPER_FETCH_TT_COLLECTION_INFO: (m) => getTikTokCollectionInfo(m.collectionId || m.id),
   SCRAPER_FETCH_TT_COLLECTION_POSTS: (m) => getTikTokCollectionPosts(m.collectionId || m.id, { limit: m.limit }),
   SCRAPER_FETCH_TT_POST_COMMENT_REPLIES: (m) => getTikTokPostCommentReplies(m.video || m.videoId || m.id || m.url, m.comment_id || m.commentId, { cursor: m.cursor, limit: m.limit }),
+  // Douyin (抖音) — TikTok's Chinese sibling on douyin.com. All endpoints
+  // take a sec_user_id (Douyin's canonical user id); the a-bogus/X-Bogus
+  // signature requirement on /aweme/v1/web/* is bypassed by the
+  // logged-in same-origin page-context fetch for read endpoints.
+  SCRAPER_FETCH_DY_USER_INFO: (m) => getDouyinUserInfo(m.secUid || m.sec_user_id || m.user),
+  SCRAPER_FETCH_DY_USER_POSTS: (m) => getDouyinUserPosts(m.secUid || m.sec_user_id || m.user, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_DY_USER_LIKED: (m) => getDouyinUserLikedPosts(m.secUid || m.sec_user_id || m.user, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_DY_USER_FOLLOWERS: (m) => getDouyinUserFollowers(m.secUid || m.sec_user_id || m.user, { max_time: m.max_time, limit: m.limit }),
+  SCRAPER_FETCH_DY_USER_FOLLOWING: (m) => getDouyinUserFollowing(m.secUid || m.sec_user_id || m.user, { max_time: m.max_time, limit: m.limit }),
+  SCRAPER_FETCH_DY_POST_COMMENTS: (m) => getDouyinPostComments(m.video || m.videoId || m.video_id || m.aweme_id || m.id, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_DY_POST_COMMENT_REPLIES: (m) => getDouyinPostCommentReplies(m.video || m.videoId || m.video_id || m.aweme_id || m.id, m.commentId || m.comment_id, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_SEARCH_DY_GENERAL: (m) => searchDouyinGeneral(m.keyword || m.query, { offset: m.offset || m.cursor, limit: m.limit }),
+  SCRAPER_SEARCH_DY_VIDEO: (m) => searchDouyinVideo(m.keyword || m.query, { offset: m.offset || m.cursor, limit: m.limit }),
+  SCRAPER_SEARCH_DY_ACCOUNT: (m) => searchDouyinAccount(m.keyword || m.query, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_SEARCH_DY_LIVE: (m) => searchDouyinLive(m.keyword || m.query, { offset: m.offset || m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_DY_CHALLENGE_POSTS: (m) => getDouyinChallengePosts(m.hashtag || m.ch_id || m.id, { offset: m.offset || m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_DY_MUSIC_POSTS: (m) => getDouyinMusicPosts(m.musicId || m.music_id || m.id, { cursor: m.cursor, limit: m.limit }),
   SCRAPER_FETCH_ZHIHU_HOT: (m) => fetchZhihuHot(m.limit),
   SCRAPER_FETCH_XUEQIU_HOT: (m) => fetchXueqiuHot(m.limit),
   SCRAPER_FETCH_WEIBO_HOT: (m) => fetchWeiboHot(m.limit),
@@ -1575,6 +1592,12 @@ Object.assign(self, {
   getTikTokEffectInfo, getTikTokEffectPosts,
   getTikTokCollectionInfo, getTikTokCollectionPosts,
   getTikTokPostCommentReplies,
+  // Douyin (抖音) — TikTok's Chinese sibling on douyin.com
+  getDouyinUserInfo, getDouyinUserPosts, getDouyinUserLikedPosts,
+  getDouyinUserFollowers, getDouyinUserFollowing,
+  getDouyinPostComments, getDouyinPostCommentReplies,
+  searchDouyinGeneral, searchDouyinVideo, searchDouyinAccount, searchDouyinLive,
+  getDouyinChallengePosts, getDouyinMusicPosts,
 });
 
 // fetchVideoAsDataUrl / fetchImageAsBase64 / fetchBlobAsDataUrl removed —

@@ -68,6 +68,13 @@ import {
   tiktokSearchCommand, tiktokExploreCommand, tiktokProfileCommand,
   tiktokUserPostsCommand, tiktokUserFollowersCommand, tiktokPostDetailCommand,
   tiktokPostCommentsCommand, tiktokSearchAccountCommand,
+  // Douyin (Wave 1)
+  douyinUserInfoCommand, douyinUserPostsCommand, douyinUserLikedCommand,
+  douyinUserFollowersCommand, douyinUserFollowingCommand,
+  douyinPostCommentsCommand, douyinPostCommentRepliesCommand,
+  douyinSearchGeneralCommand, douyinSearchVideoCommand,
+  douyinSearchAccountCommand, douyinSearchLiveCommand,
+  douyinChallengePostsCommand, douyinMusicPostsCommand,
   // TikTok Wave 2/3/4
   tiktokChallengeInfoCommand, tiktokChallengePostsCommand,
   tiktokMusicInfoCommand, tiktokMusicPostsCommand, tiktokMusicUnlimitedSoundsCommand,
@@ -1078,6 +1085,58 @@ function buildProgram(): Command {
         return douyinPostCommand(planSource)
       },
     );
+  // ── Douyin Wave 1 — douyin.com data scrapers ──
+  // Mirrors the douyin-api23 RapidAPI surface. Driven by the chrome
+  // extension on douyin.com; secUid is the canonical user id.
+  douyin.command('user-info <secUid>').description('Fetch a Douyin user profile by secUid').action(douyinUserInfoCommand);
+  douyin.command('user-posts <secUid>').description("Fetch a user's posts")
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(douyinUserPostsCommand);
+  douyin.command('user-liked <secUid>').description("Fetch a user's liked posts")
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(douyinUserLikedCommand);
+  douyin.command('user-followers <secUid>').description("Fetch a user's followers")
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--max-time <s>', 'max_time pagination cursor')
+    .action(douyinUserFollowersCommand);
+  douyin.command('user-following <secUid>').description("Fetch a user's followings")
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--max-time <s>', 'max_time pagination cursor')
+    .action(douyinUserFollowingCommand);
+  douyin.command('post-comments <url-or-id>').description("Fetch a video's comments")
+    .option('-l, --limit <n>', 'Max results', '50')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(douyinPostCommentsCommand);
+  douyin.command('post-comment-replies <url-or-id> <commentId>').description('Fetch replies to a comment')
+    .option('-l, --limit <n>', 'Max results', '50')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(douyinPostCommentRepliesCommand);
+  douyin.command('search-general <query>').description('Mixed Douyin search (videos+users)')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--offset <n>', 'Pagination offset', '0')
+    .action(douyinSearchGeneralCommand);
+  douyin.command('search-video <query>').description('Search Douyin videos')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--offset <n>', 'Pagination offset', '0')
+    .action(douyinSearchVideoCommand);
+  douyin.command('search-account <query>').description('Search Douyin accounts')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(douyinSearchAccountCommand);
+  douyin.command('search-live <query>').description('Search Douyin LIVE streams')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--offset <n>', 'Pagination offset', '0')
+    .action(douyinSearchLiveCommand);
+  douyin.command('challenge-posts <hashtag>').description('Posts in a hashtag/challenge')
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--offset <n>', 'Pagination offset', '0')
+    .action(douyinChallengePostsCommand);
+  douyin.command('music-posts <musicId>').description('Posts using a music/sound')
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(douyinMusicPostsCommand);
 
   const youtube = program.command('youtube').description('YouTube');
   youtube.command('search <query>').description('Search YouTube videos')
