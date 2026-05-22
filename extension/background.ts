@@ -651,7 +651,7 @@ async function debugEvalInTab(args: {
   }
   return { tabId, url: tab.url || '', result: res?.result?.value ?? null };
 }
-import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications, getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos, getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData, getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript, getTikTokUserPosts, getTikTokUserFollowers, getTikTokPostDetail, getTikTokPostComments, searchTikTokAccount } from './services/scrapers/browser';
+import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications, getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos, getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData, getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript, getTikTokUserPosts, getTikTokUserFollowers, getTikTokPostDetail, getTikTokPostComments, searchTikTokAccount, getTikTokChallengeInfo, getTikTokChallengePosts, getTikTokMusicInfo, getTikTokMusicPosts, getTikTokMusicUnlimitedSounds, getTikTokUserInfoWithRegion, getTikTokUserInfoById, getTikTokUserFollowings, getTikTokUserLikedPosts, getTikTokUserPlaylist, getTikTokUserRepost, getTikTokUserStory, searchTikTokGeneral, searchTikTokLive, getTikTokOthersSearchedFor, getTikTokPostRelated, getTikTokPostExplore, getTikTokPostDiscover, getTikTokAdsDetail, getTikTokAdsTop, getTikTokTrendingCreator, getTikTokTrendingVideo, getTikTokTrendingHashtag, getTikTokTrendingSong, getTikTokTrendingKeyword, getTikTokTrendingKeywordPosts, getTikTokTrendingKeywordSentence, getTikTokCommercialMusicLibrary, getTikTokCommercialMusicPlaylists, getTikTokCommercialMusicPlaylistDetail, getTikTokTopProducts, getTikTokTopProductDetail, getTikTokTopProductMetrics, getTikTokPlaceInfo, getTikTokPlacePosts, getTikTokEffectInfo, getTikTokEffectPosts, getTikTokCollectionInfo, getTikTokCollectionPosts, getTikTokPostCommentReplies } from './services/scrapers/browser';
 
 // GOOGLE_CLIENT_ID / OAUTH_REDIRECT_URI removed — see handleGoogleLogin
 // removal note. chrome.identity.getRedirectURL() also no longer needed.
@@ -1362,6 +1362,56 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   SCRAPER_FETCH_TIKTOK_POST_DETAIL: (m) => getTikTokPostDetail(m.url || m.video || m.videoId || m.id),
   SCRAPER_FETCH_TIKTOK_POST_COMMENTS: (m) => getTikTokPostComments(m.url || m.video || m.videoId || m.id, { cursor: m.cursor, limit: m.limit }),
   SCRAPER_SEARCH_TIKTOK_ACCOUNT: (m) => searchTikTokAccount(m.query, m.limit),
+  // TikTok Wave 2/3/4
+  SCRAPER_FETCH_TIKTOK_CHALLENGE_INFO: (m) => getTikTokChallengeInfo(m.challengeName || m.name),
+  SCRAPER_FETCH_TIKTOK_CHALLENGE_POSTS: (m) => getTikTokChallengePosts(m.challengeId || m.id, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_TIKTOK_MUSIC_INFO: (m) => getTikTokMusicInfo(m.musicId || m.id),
+  SCRAPER_FETCH_TIKTOK_MUSIC_POSTS: (m) => getTikTokMusicPosts(m.musicId || m.id, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_TIKTOK_MUSIC_UNLIMITED: (m) => getTikTokMusicUnlimitedSounds({ page: m.page, pageSize: m.pageSize, orderBy: m.orderBy }),
+  SCRAPER_FETCH_TIKTOK_USER_INFO_REGION: (m) => getTikTokUserInfoWithRegion(m.uniqueId || m.username || m.handle),
+  SCRAPER_FETCH_TIKTOK_USER_INFO_BY_ID: (m) => getTikTokUserInfoById(m.userId || m.id),
+  SCRAPER_FETCH_TIKTOK_USER_FOLLOWINGS: (m) => getTikTokUserFollowings(m.user || m.secUid || m.uniqueId, { max_time: m.max_time, limit: m.limit }),
+  SCRAPER_FETCH_TIKTOK_USER_LIKED_POSTS: (m) => getTikTokUserLikedPosts(m.user || m.secUid || m.uniqueId, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_TIKTOK_USER_PLAYLIST: (m) => getTikTokUserPlaylist(m.user || m.secUid || m.uniqueId, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_TIKTOK_USER_REPOST: (m) => getTikTokUserRepost(m.user || m.secUid || m.uniqueId, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_TIKTOK_USER_STORY: (m) => getTikTokUserStory(m.userId || m.id, { maxCursor: m.maxCursor }),
+  SCRAPER_SEARCH_TIKTOK_GENERAL: (m) => searchTikTokGeneral(m.query || m.keyword, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_SEARCH_TIKTOK_LIVE: (m) => searchTikTokLive(m.query || m.keyword, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_TIKTOK_SEARCH_SUGGESTIONS: (m) => getTikTokOthersSearchedFor(m.keyword || m.query),
+  SCRAPER_FETCH_TIKTOK_POST_RELATED: (m) => getTikTokPostRelated(m.video || m.videoId || m.url || m.id, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_TIKTOK_POST_EXPLORE: (m) => getTikTokPostExplore({ categoryType: m.categoryType, limit: m.limit }),
+  SCRAPER_FETCH_TIKTOK_POST_DISCOVER: (m) => getTikTokPostDiscover(m.keyword || m.query, { page: m.page }),
+  // TikTok Wave 5 — Creative Center (ads.tiktok.com); array-shaped opts
+  // (placements/themes/genres/moods) come through as repeated query
+  // string keys to mirror what tiktok-api23 emits.
+  SCRAPER_FETCH_TT_ADS_DETAIL: (m) => getTikTokAdsDetail(m.ads_id || m.adsId || m.id),
+  SCRAPER_FETCH_TT_ADS_TOP: (m) => getTikTokAdsTop({ page: m.page, period: m.period, limit: m.limit, country: m.country, order_by: m.order_by }),
+  SCRAPER_FETCH_TT_TRENDING_CREATOR: (m) => getTikTokTrendingCreator({ page: m.page, limit: m.limit, sort_by: m.sort_by, country: m.country }),
+  SCRAPER_FETCH_TT_TRENDING_VIDEO: (m) => getTikTokTrendingVideo({ page: m.page, limit: m.limit, period: m.period, order_by: m.order_by, country: m.country }),
+  SCRAPER_FETCH_TT_TRENDING_HASHTAG: (m) => getTikTokTrendingHashtag({ page: m.page, limit: m.limit, period: m.period, country: m.country, sort_by: m.sort_by }),
+  SCRAPER_FETCH_TT_TRENDING_SONG: (m) => getTikTokTrendingSong({ page: m.page, limit: m.limit, period: m.period, rank_type: m.rank_type, country: m.country }),
+  SCRAPER_FETCH_TT_TRENDING_KEYWORD: (m) => getTikTokTrendingKeyword({ page: m.page, limit: m.limit, period: m.period, country: m.country }),
+  SCRAPER_FETCH_TT_TRENDING_KEYWORD_POSTS: (m) => getTikTokTrendingKeywordPosts(m.keyword, { country: m.country, limit: m.limit, period: m.period }),
+  SCRAPER_FETCH_TT_TRENDING_KEYWORD_SENTENCE: (m) => getTikTokTrendingKeywordSentence(m.keyword, { page: m.page, limit: m.limit, period: m.period, country: m.country, order_type: m.order_type }),
+  SCRAPER_FETCH_TT_COMMERCIAL_MUSIC: (m) => getTikTokCommercialMusicLibrary({ page: m.page, limit: m.limit, region: m.region, scenarios: m.scenarios, duration: m.duration, placements: m.placements, themes: m.themes, genres: m.genres, moods: m.moods }),
+  SCRAPER_FETCH_TT_COMMERCIAL_PLAYLISTS: (m) => getTikTokCommercialMusicPlaylists({ limit: m.limit, region: m.region }),
+  SCRAPER_FETCH_TT_COMMERCIAL_PLAYLIST_DETAIL: (m) => getTikTokCommercialMusicPlaylistDetail(m.playlist_id || m.playlistId, { page: m.page, limit: m.limit, region: m.region }),
+  SCRAPER_FETCH_TT_TOP_PRODUCTS: (m) => getTikTokTopProducts({ page: m.page, last: m.last, order_by: m.order_by, order_type: m.order_type }),
+  SCRAPER_FETCH_TT_TOP_PRODUCT_DETAIL: (m) => getTikTokTopProductDetail(m.product_id || m.productId),
+  SCRAPER_FETCH_TT_TOP_PRODUCT_METRICS: (m) => getTikTokTopProductMetrics(m.product_id || m.productId),
+  // TikTok Wave 6 (long-tail) — place / effect / collection /
+  // post-comment-replies. All on regular www.tiktok.com (same auth as
+  // Wave 1-4). Place + Effect info hit landing-page rehydration scripts
+  // whose webapp.place-detail / webapp.effect-detail namespace is a
+  // best-guess; on miss, scraper returns a structured "endpoint unknown"
+  // error envelope flagging it for follow-up reverse-engineering.
+  SCRAPER_FETCH_TT_PLACE_INFO: (m) => getTikTokPlaceInfo(m.placeId || m.id),
+  SCRAPER_FETCH_TT_PLACE_POSTS: (m) => getTikTokPlacePosts(m.placeId || m.id, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_TT_EFFECT_INFO: (m) => getTikTokEffectInfo(m.effectId || m.id),
+  SCRAPER_FETCH_TT_EFFECT_POSTS: (m) => getTikTokEffectPosts(m.effectId || m.id, { cursor: m.cursor, limit: m.limit }),
+  SCRAPER_FETCH_TT_COLLECTION_INFO: (m) => getTikTokCollectionInfo(m.collectionId || m.id),
+  SCRAPER_FETCH_TT_COLLECTION_POSTS: (m) => getTikTokCollectionPosts(m.collectionId || m.id, { limit: m.limit }),
+  SCRAPER_FETCH_TT_POST_COMMENT_REPLIES: (m) => getTikTokPostCommentReplies(m.video || m.videoId || m.id || m.url, m.comment_id || m.commentId, { cursor: m.cursor, limit: m.limit }),
   SCRAPER_FETCH_ZHIHU_HOT: (m) => fetchZhihuHot(m.limit),
   SCRAPER_FETCH_XUEQIU_HOT: (m) => fetchXueqiuHot(m.limit),
   SCRAPER_FETCH_WEIBO_HOT: (m) => fetchWeiboHot(m.limit),
@@ -1505,6 +1555,26 @@ Object.assign(self, {
   getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript,
   getTikTokUserPosts, getTikTokUserFollowers, getTikTokPostDetail,
   getTikTokPostComments, searchTikTokAccount,
+  getTikTokChallengeInfo, getTikTokChallengePosts,
+  getTikTokMusicInfo, getTikTokMusicPosts, getTikTokMusicUnlimitedSounds,
+  getTikTokUserInfoWithRegion, getTikTokUserInfoById,
+  getTikTokUserFollowings, getTikTokUserLikedPosts,
+  getTikTokUserPlaylist, getTikTokUserRepost, getTikTokUserStory,
+  searchTikTokGeneral, searchTikTokLive, getTikTokOthersSearchedFor,
+  getTikTokPostRelated, getTikTokPostExplore, getTikTokPostDiscover,
+  // Wave 5 — Creative Center (ads.tiktok.com)
+  getTikTokAdsDetail, getTikTokAdsTop,
+  getTikTokTrendingCreator, getTikTokTrendingVideo, getTikTokTrendingHashtag,
+  getTikTokTrendingSong, getTikTokTrendingKeyword,
+  getTikTokTrendingKeywordPosts, getTikTokTrendingKeywordSentence,
+  getTikTokCommercialMusicLibrary, getTikTokCommercialMusicPlaylists,
+  getTikTokCommercialMusicPlaylistDetail,
+  getTikTokTopProducts, getTikTokTopProductDetail, getTikTokTopProductMetrics,
+  // Wave 6 — place / effect / collection / post-comment-replies (www.tiktok.com)
+  getTikTokPlaceInfo, getTikTokPlacePosts,
+  getTikTokEffectInfo, getTikTokEffectPosts,
+  getTikTokCollectionInfo, getTikTokCollectionPosts,
+  getTikTokPostCommentReplies,
 });
 
 // fetchVideoAsDataUrl / fetchImageAsBase64 / fetchBlobAsDataUrl removed —

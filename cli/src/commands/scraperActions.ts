@@ -72,6 +72,462 @@ export async function tiktokSearchAccountCommand(
   });
 }
 
+// ── TikTok Wave 2/3/4 ────────────────────────────────────────
+
+// Challenge / Music
+export async function tiktokChallengeInfoCommand(challengeName: string) {
+  await scrape('SCRAPER_FETCH_TIKTOK_CHALLENGE_INFO', { challengeName });
+}
+
+export async function tiktokChallengePostsCommand(
+  challengeId: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_CHALLENGE_POSTS', {
+    challengeId,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function tiktokMusicInfoCommand(musicId: string) {
+  await scrape('SCRAPER_FETCH_TIKTOK_MUSIC_INFO', { musicId });
+}
+
+export async function tiktokMusicPostsCommand(
+  musicId: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_MUSIC_POSTS', {
+    musicId,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function tiktokMusicUnlimitedSoundsCommand(
+  options: { page?: string; pageSize?: string; orderBy?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_MUSIC_UNLIMITED', {
+    page: parseInt(options.page || '1', 10),
+    pageSize: parseInt(options.pageSize || '30', 10),
+    orderBy: options.orderBy || '',
+  });
+}
+
+// User extras
+export async function tiktokUserInfoRegionCommand(uniqueId: string) {
+  await scrape('SCRAPER_FETCH_TIKTOK_USER_INFO_REGION', { uniqueId });
+}
+
+export async function tiktokUserInfoByIdCommand(userId: string) {
+  await scrape('SCRAPER_FETCH_TIKTOK_USER_INFO_BY_ID', { userId });
+}
+
+export async function tiktokUserFollowingsCommand(
+  user: string,
+  options: { limit?: string; maxTime?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_USER_FOLLOWINGS', {
+    user,
+    max_time: options.maxTime || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function tiktokUserLikedPostsCommand(
+  user: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_USER_LIKED_POSTS', {
+    user,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function tiktokUserPlaylistCommand(
+  user: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_USER_PLAYLIST', {
+    user,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function tiktokUserRepostCommand(
+  user: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_USER_REPOST', {
+    user,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function tiktokUserStoryCommand(
+  userId: string,
+  options: { maxCursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_USER_STORY', {
+    userId,
+    maxCursor: options.maxCursor || '',
+  });
+}
+
+// Search / Discovery
+export async function tiktokSearchGeneralCommand(
+  query: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_SEARCH_TIKTOK_GENERAL', {
+    query,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function tiktokSearchLiveCommand(
+  query: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_SEARCH_TIKTOK_LIVE', {
+    query,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function tiktokSearchSuggestionsCommand(keyword: string) {
+  await scrape('SCRAPER_FETCH_TIKTOK_SEARCH_SUGGESTIONS', { keyword });
+}
+
+export async function tiktokPostRelatedCommand(
+  video: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_POST_RELATED', {
+    video,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function tiktokPostExploreCommand(
+  options: { limit?: string; categoryType?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_POST_EXPLORE', {
+    categoryType: options.categoryType || '',
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function tiktokPostDiscoverCommand(
+  keyword: string,
+  options: { page?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TIKTOK_POST_DISCOVER', {
+    keyword,
+    page: parseInt(options.page || '1', 10),
+  });
+}
+
+// ── TikTok Wave 5 — Creative Center (ads.tiktok.com) ─────────
+//
+// Separate ads-domain login required. Every command shells the same
+// JSON-or-error envelope from the radar API; CLI defaults mirror the
+// tiktok-api23 query shape (period in days, country as ISO code).
+
+interface AdsTopOpts {
+  page?: string;
+  period?: string;
+  limit?: string;
+  country?: string;
+  orderBy?: string;
+}
+export async function tiktokAdsTopCommand(options: AdsTopOpts = {}) {
+  await scrape('SCRAPER_FETCH_TT_ADS_TOP', {
+    page: parseInt(options.page || '1', 10),
+    period: parseInt(options.period || '7', 10),
+    limit: parseInt(options.limit || '20', 10),
+    country: options.country || 'US',
+    order_by: options.orderBy || 'ctr',
+  });
+}
+
+export async function tiktokAdsDetailCommand(adsId: string) {
+  await scrape('SCRAPER_FETCH_TT_ADS_DETAIL', { ads_id: adsId });
+}
+
+interface TrendingCreatorOpts {
+  page?: string;
+  limit?: string;
+  sortBy?: string;
+  country?: string;
+}
+export async function tiktokTrendingCreatorCommand(options: TrendingCreatorOpts = {}) {
+  await scrape('SCRAPER_FETCH_TT_TRENDING_CREATOR', {
+    page: parseInt(options.page || '1', 10),
+    limit: parseInt(options.limit || '20', 10),
+    sort_by: options.sortBy || 'follower',
+    country: options.country || 'US',
+  });
+}
+
+interface TrendingVideoOpts {
+  page?: string;
+  limit?: string;
+  period?: string;
+  orderBy?: string;
+  country?: string;
+}
+export async function tiktokTrendingVideoCommand(options: TrendingVideoOpts = {}) {
+  await scrape('SCRAPER_FETCH_TT_TRENDING_VIDEO', {
+    page: parseInt(options.page || '1', 10),
+    limit: parseInt(options.limit || '20', 10),
+    period: parseInt(options.period || '30', 10),
+    order_by: options.orderBy || 'vv',
+    country: options.country || 'US',
+  });
+}
+
+interface TrendingHashtagOpts {
+  page?: string;
+  limit?: string;
+  period?: string;
+  country?: string;
+  sortBy?: string;
+}
+export async function tiktokTrendingHashtagCommand(options: TrendingHashtagOpts = {}) {
+  await scrape('SCRAPER_FETCH_TT_TRENDING_HASHTAG', {
+    page: parseInt(options.page || '1', 10),
+    limit: parseInt(options.limit || '20', 10),
+    period: parseInt(options.period || '120', 10),
+    country: options.country || 'US',
+    sort_by: options.sortBy || 'popular',
+  });
+}
+
+interface TrendingSongOpts {
+  page?: string;
+  limit?: string;
+  period?: string;
+  rankType?: string;
+  country?: string;
+}
+export async function tiktokTrendingSongCommand(options: TrendingSongOpts = {}) {
+  await scrape('SCRAPER_FETCH_TT_TRENDING_SONG', {
+    page: parseInt(options.page || '1', 10),
+    limit: parseInt(options.limit || '20', 10),
+    period: parseInt(options.period || '7', 10),
+    rank_type: options.rankType || 'popular',
+    country: options.country || 'US',
+  });
+}
+
+interface TrendingKeywordOpts {
+  page?: string;
+  limit?: string;
+  period?: string;
+  country?: string;
+}
+export async function tiktokTrendingKeywordCommand(options: TrendingKeywordOpts = {}) {
+  await scrape('SCRAPER_FETCH_TT_TRENDING_KEYWORD', {
+    page: parseInt(options.page || '1', 10),
+    limit: parseInt(options.limit || '20', 10),
+    period: parseInt(options.period || '7', 10),
+    country: options.country || 'US',
+  });
+}
+
+interface KeywordPostsOpts {
+  country?: string;
+  limit?: string;
+  period?: string;
+}
+export async function tiktokTrendingKeywordPostsCommand(
+  keyword: string,
+  options: KeywordPostsOpts = {},
+) {
+  await scrape('SCRAPER_FETCH_TT_TRENDING_KEYWORD_POSTS', {
+    keyword,
+    country: options.country || 'US',
+    limit: parseInt(options.limit || '10', 10),
+    period: parseInt(options.period || '7', 10),
+  });
+}
+
+interface KeywordSentenceOpts {
+  page?: string;
+  limit?: string;
+  period?: string;
+  country?: string;
+  orderType?: string;
+}
+export async function tiktokTrendingKeywordSentenceCommand(
+  keyword: string,
+  options: KeywordSentenceOpts = {},
+) {
+  await scrape('SCRAPER_FETCH_TT_TRENDING_KEYWORD_SENTENCE', {
+    keyword,
+    page: parseInt(options.page || '1', 10),
+    limit: parseInt(options.limit || '50', 10),
+    period: parseInt(options.period || '30', 10),
+    country: options.country || 'US',
+    order_type: options.orderType || 'desc',
+  });
+}
+
+interface CommercialMusicOpts {
+  page?: string;
+  limit?: string;
+  region?: string;
+  scenarios?: string;
+  duration?: string;
+  placements?: string;   // comma-separated
+  themes?: string;
+  genres?: string;
+  moods?: string;
+}
+function splitCsv(s?: string): string[] {
+  return s ? s.split(',').map((x) => x.trim()).filter(Boolean) : [];
+}
+export async function tiktokCommercialMusicCommand(options: CommercialMusicOpts = {}) {
+  await scrape('SCRAPER_FETCH_TT_COMMERCIAL_MUSIC', {
+    page: parseInt(options.page || '1', 10),
+    limit: parseInt(options.limit || '20', 10),
+    region: options.region || 'US',
+    scenarios: parseInt(options.scenarios || '0', 10),
+    duration: parseInt(options.duration || '0', 10),
+    placements: splitCsv(options.placements),
+    themes: splitCsv(options.themes),
+    genres: splitCsv(options.genres),
+    moods: splitCsv(options.moods),
+  });
+}
+
+interface CommercialPlaylistsOpts {
+  limit?: string;
+  region?: string;
+}
+export async function tiktokCommercialPlaylistsCommand(options: CommercialPlaylistsOpts = {}) {
+  await scrape('SCRAPER_FETCH_TT_COMMERCIAL_PLAYLISTS', {
+    limit: parseInt(options.limit || '20', 10),
+    region: options.region || 'US',
+  });
+}
+
+interface CommercialPlaylistDetailOpts {
+  page?: string;
+  limit?: string;
+  region?: string;
+}
+export async function tiktokCommercialPlaylistDetailCommand(
+  playlistId: string,
+  options: CommercialPlaylistDetailOpts = {},
+) {
+  await scrape('SCRAPER_FETCH_TT_COMMERCIAL_PLAYLIST_DETAIL', {
+    playlist_id: playlistId,
+    page: parseInt(options.page || '1', 10),
+    limit: parseInt(options.limit || '20', 10),
+    region: options.region || 'US',
+  });
+}
+
+interface TopProductsOpts {
+  page?: string;
+  last?: string;
+  orderBy?: string;
+  orderType?: string;
+}
+export async function tiktokTopProductsCommand(options: TopProductsOpts = {}) {
+  await scrape('SCRAPER_FETCH_TT_TOP_PRODUCTS', {
+    page: parseInt(options.page || '1', 10),
+    last: parseInt(options.last || '7', 10),
+    order_by: options.orderBy || 'post',
+    order_type: options.orderType || 'desc',
+  });
+}
+
+export async function tiktokTopProductDetailCommand(productId: string) {
+  await scrape('SCRAPER_FETCH_TT_TOP_PRODUCT_DETAIL', { product_id: productId });
+}
+
+export async function tiktokTopProductMetricsCommand(productId: string) {
+  await scrape('SCRAPER_FETCH_TT_TOP_PRODUCT_METRICS', { product_id: productId });
+}
+
+// ── TikTok Wave 6 — long-tail (place / effect / collection / comment-replies) ──
+//
+// Same www.tiktok.com auth as Wave 1-4. Place + Effect info call
+// landing-page rehydration scripts whose namespace is a best-effort
+// guess; the underlying scraper surfaces a structured error envelope on
+// miss so callers can flag for follow-up reverse-engineering.
+
+export async function tiktokPlaceInfoCommand(placeId: string) {
+  await scrape('SCRAPER_FETCH_TT_PLACE_INFO', { placeId });
+}
+
+export async function tiktokPlacePostsCommand(
+  placeId: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TT_PLACE_POSTS', {
+    placeId,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function tiktokEffectInfoCommand(effectId: string) {
+  await scrape('SCRAPER_FETCH_TT_EFFECT_INFO', { effectId });
+}
+
+export async function tiktokEffectPostsCommand(
+  effectId: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TT_EFFECT_POSTS', {
+    effectId,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function tiktokCollectionInfoCommand(collectionId: string) {
+  await scrape('SCRAPER_FETCH_TT_COLLECTION_INFO', { collectionId });
+}
+
+export async function tiktokCollectionPostsCommand(
+  collectionId: string,
+  options: { limit?: string } = {},
+) {
+  // No cursor: tiktok-api23's /api/collection/posts sample paginates
+  // by `count` only. The scraper returns has_more from the response;
+  // if true, callers may need to bump count or wait on TikTok exposing
+  // a cursor token.
+  await scrape('SCRAPER_FETCH_TT_COLLECTION_POSTS', {
+    collectionId,
+    limit: parseInt(options.limit || '30', 10),
+  });
+}
+
+export async function tiktokPostCommentRepliesCommand(
+  video: string,
+  commentId: string,
+  options: { limit?: string; cursor?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_TT_POST_COMMENT_REPLIES', {
+    video,
+    comment_id: commentId,
+    cursor: options.cursor || '',
+    limit: parseInt(options.limit || '6', 10),
+  });
+}
+
 // ── YouTube ──────────────────────────────────────────────────
 
 export async function youtubeSearchCommand(query: string, options: { limit?: string; type?: string; upload?: string; sort?: string }) {

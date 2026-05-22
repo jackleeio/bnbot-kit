@@ -68,6 +68,27 @@ import {
   tiktokSearchCommand, tiktokExploreCommand, tiktokProfileCommand,
   tiktokUserPostsCommand, tiktokUserFollowersCommand, tiktokPostDetailCommand,
   tiktokPostCommentsCommand, tiktokSearchAccountCommand,
+  // TikTok Wave 2/3/4
+  tiktokChallengeInfoCommand, tiktokChallengePostsCommand,
+  tiktokMusicInfoCommand, tiktokMusicPostsCommand, tiktokMusicUnlimitedSoundsCommand,
+  tiktokUserInfoRegionCommand, tiktokUserInfoByIdCommand,
+  tiktokUserFollowingsCommand, tiktokUserLikedPostsCommand,
+  tiktokUserPlaylistCommand, tiktokUserRepostCommand, tiktokUserStoryCommand,
+  tiktokSearchGeneralCommand, tiktokSearchLiveCommand, tiktokSearchSuggestionsCommand,
+  tiktokPostRelatedCommand, tiktokPostExploreCommand, tiktokPostDiscoverCommand,
+  // TikTok Wave 5 (Creative Center / ads.tiktok.com)
+  tiktokAdsDetailCommand, tiktokAdsTopCommand,
+  tiktokTrendingCreatorCommand, tiktokTrendingVideoCommand, tiktokTrendingHashtagCommand,
+  tiktokTrendingSongCommand, tiktokTrendingKeywordCommand,
+  tiktokTrendingKeywordPostsCommand, tiktokTrendingKeywordSentenceCommand,
+  tiktokCommercialMusicCommand, tiktokCommercialPlaylistsCommand,
+  tiktokCommercialPlaylistDetailCommand,
+  tiktokTopProductsCommand, tiktokTopProductDetailCommand, tiktokTopProductMetricsCommand,
+  // TikTok Wave 6 (long-tail)
+  tiktokPlaceInfoCommand, tiktokPlacePostsCommand,
+  tiktokEffectInfoCommand, tiktokEffectPostsCommand,
+  tiktokCollectionInfoCommand, tiktokCollectionPostsCommand,
+  tiktokPostCommentRepliesCommand,
   youtubeSearchCommand, youtubeVideoCommand, youtubeTranscriptCommand,
   youtubeChannelDetailsCommand, youtubeChannelVideosCommand, youtubeTrendingCommand,
   youtubeChannelSearchCommand, youtubeStreamingDataCommand, youtubeRelatedCommand,
@@ -838,6 +859,166 @@ function buildProgram(): Command {
   tiktok.command('search-account <query>').description('Search TikTok accounts')
     .option('-l, --limit <n>', 'Max results', '20')
     .action(tiktokSearchAccountCommand);
+  // ── TikTok Wave 2/3/4 ──
+  tiktok.command('challenge-info <name>').description('Fetch TikTok challenge (hashtag) info').action(tiktokChallengeInfoCommand);
+  tiktok.command('challenge-posts <id>').description('Posts in a challenge')
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(tiktokChallengePostsCommand);
+  tiktok.command('music-info <id>').description('Fetch TikTok music/sound info').action(tiktokMusicInfoCommand);
+  tiktok.command('music-posts <id>').description('Posts using a music/sound')
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(tiktokMusicPostsCommand);
+  tiktok.command('music-unlimited').description('Unlimited (royalty-free) sound catalog')
+    .option('-p, --page <n>', 'Page', '1')
+    .option('-s, --page-size <n>', 'Page size', '30')
+    .option('-o, --order-by <s>', 'Sort order')
+    .action(tiktokMusicUnlimitedSoundsCommand);
+  tiktok.command('user-info-region <uniqueId>').description('Fetch user info with region (uniqueId)').action(tiktokUserInfoRegionCommand);
+  tiktok.command('user-info-by-id <userId>').description('Fetch user info by numeric userId').action(tiktokUserInfoByIdCommand);
+  tiktok.command('user-followings <user>').description("Fetch a user's followings")
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--max-time <s>', 'max_time pagination cursor')
+    .action(tiktokUserFollowingsCommand);
+  tiktok.command('user-liked-posts <user>').description("Fetch a user's liked posts")
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(tiktokUserLikedPostsCommand);
+  tiktok.command('user-playlist <user>').description("Fetch a user's playlists")
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(tiktokUserPlaylistCommand);
+  tiktok.command('user-repost <user>').description("Fetch a user's reposts")
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(tiktokUserRepostCommand);
+  tiktok.command('user-story <userId>').description("Fetch a user's stories")
+    .option('--max-cursor <c>', 'Pagination cursor')
+    .action(tiktokUserStoryCommand);
+  tiktok.command('search-general <query>').description('Mixed TikTok search (videos+users+sounds)')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(tiktokSearchGeneralCommand);
+  tiktok.command('search-live <query>').description('Search TikTok LIVE streams')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(tiktokSearchLiveCommand);
+  tiktok.command('search-suggestions <keyword>').description('Search suggestions / autocomplete')
+    .action(tiktokSearchSuggestionsCommand);
+  tiktok.command('post-related <url-or-id>').description('Related posts for a video')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--cursor <c>', 'Pagination cursor')
+    .action(tiktokPostRelatedCommand);
+  tiktok.command('post-explore').description('Explore feed (foryou) posts')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('-c, --category-type <s>', 'Category type filter')
+    .action(tiktokPostExploreCommand);
+  tiktok.command('post-discover <keyword>').description('Discover posts by keyword')
+    .option('-p, --page <n>', 'Page', '1')
+    .action(tiktokPostDiscoverCommand);
+  // ── TikTok Wave 5 — Creative Center (ads.tiktok.com) ──
+  // Requires TikTok For Business login in the same Chrome profile.
+  tiktok.command('ads-detail <adsId>').description('Creative Center: top-ad detail').action(tiktokAdsDetailCommand);
+  tiktok.command('ads-top').description('Creative Center: top ads list')
+    .option('-p, --page <n>', 'Page', '1')
+    .option('--period <n>', 'Period (days): 7 | 30 | 120', '7')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--country <code>', 'Country code (ISO)', 'US')
+    .option('--order-by <s>', 'ctr | cvr | impression', 'ctr')
+    .action(tiktokAdsTopCommand);
+  tiktok.command('trending-creator').description('Creative Center: trending creators')
+    .option('-p, --page <n>', 'Page', '1')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--sort-by <s>', 'follower | follower_growth | engagement', 'follower')
+    .option('--country <code>', 'Country code (ISO)', 'US')
+    .action(tiktokTrendingCreatorCommand);
+  tiktok.command('trending-video').description('Creative Center: trending videos')
+    .option('-p, --page <n>', 'Page', '1')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--period <n>', 'Period (days)', '30')
+    .option('--order-by <s>', 'vv | like | comment | share', 'vv')
+    .option('--country <code>', 'Country code (ISO)', 'US')
+    .action(tiktokTrendingVideoCommand);
+  tiktok.command('trending-hashtag').description('Creative Center: trending hashtags')
+    .option('-p, --page <n>', 'Page', '1')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--period <n>', 'Period (days)', '120')
+    .option('--country <code>', 'Country code (ISO)', 'US')
+    .option('--sort-by <s>', 'popular | new', 'popular')
+    .action(tiktokTrendingHashtagCommand);
+  tiktok.command('trending-song').description('Creative Center: trending songs')
+    .option('-p, --page <n>', 'Page', '1')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--period <n>', 'Period (days)', '7')
+    .option('--rank-type <s>', 'popular | breakout', 'popular')
+    .option('--country <code>', 'Country code (ISO)', 'US')
+    .action(tiktokTrendingSongCommand);
+  tiktok.command('trending-keyword').description('Creative Center: trending keywords')
+    .option('-p, --page <n>', 'Page', '1')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--period <n>', 'Period (days)', '7')
+    .option('--country <code>', 'Country code (ISO)', 'US')
+    .action(tiktokTrendingKeywordCommand);
+  tiktok.command('trending-keyword-posts <keyword>').description('Creative Center: posts using a keyword')
+    .option('--country <code>', 'Country code (ISO)', 'US')
+    .option('-l, --limit <n>', 'Max results', '10')
+    .option('--period <n>', 'Period (days)', '7')
+    .action(tiktokTrendingKeywordPostsCommand);
+  tiktok.command('trending-keyword-sentence <keyword>').description('Creative Center: keyword topic sentences')
+    .option('-p, --page <n>', 'Page', '1')
+    .option('-l, --limit <n>', 'Max results', '50')
+    .option('--period <n>', 'Period (days)', '30')
+    .option('--country <code>', 'Country code (ISO)', 'US')
+    .option('--order-type <s>', 'asc | desc', 'desc')
+    .action(tiktokTrendingKeywordSentenceCommand);
+  tiktok.command('commercial-music').description('Creative Center: commercial music library')
+    .option('-p, --page <n>', 'Page', '1')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--region <code>', 'Region (ISO)', 'US')
+    .option('--scenarios <n>', 'Scenario id (0=all)', '0')
+    .option('--duration <n>', 'Duration filter (0=all)', '0')
+    .option('--placements <csv>', 'Comma-separated placements')
+    .option('--themes <csv>', 'Comma-separated themes')
+    .option('--genres <csv>', 'Comma-separated genres')
+    .option('--moods <csv>', 'Comma-separated moods')
+    .action(tiktokCommercialMusicCommand);
+  tiktok.command('commercial-playlists').description('Creative Center: commercial music playlists')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--region <code>', 'Region (ISO)', 'US')
+    .action(tiktokCommercialPlaylistsCommand);
+  tiktok.command('commercial-playlist-detail <playlistId>').description('Creative Center: commercial playlist detail')
+    .option('-p, --page <n>', 'Page', '1')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .option('--region <code>', 'Region (ISO)', 'US')
+    .action(tiktokCommercialPlaylistDetailCommand);
+  tiktok.command('top-products').description('Creative Center: top products list')
+    .option('-p, --page <n>', 'Page', '1')
+    .option('--last <n>', 'Last N days (7 | 30)', '7')
+    .option('--order-by <s>', 'post | ad | sale | growth', 'post')
+    .option('--order-type <s>', 'asc | desc', 'desc')
+    .action(tiktokTopProductsCommand);
+  tiktok.command('top-product-detail <productId>').description('Creative Center: top product detail').action(tiktokTopProductDetailCommand);
+  tiktok.command('top-product-metrics <productId>').description('Creative Center: top product metrics').action(tiktokTopProductMetricsCommand);
+  // ── TikTok Wave 6 (long-tail: place / effect / collection / comment-replies) ──
+  tiktok.command('place-info <placeId>').description('Fetch TikTok place (POI) info').action(tiktokPlaceInfoCommand);
+  tiktok.command('place-posts <placeId>').description('Posts tagged at a place')
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--cursor <c>', 'Pagination cursor', '')
+    .action(tiktokPlacePostsCommand);
+  tiktok.command('effect-info <effectId>').description('Fetch TikTok effect / sticker info').action(tiktokEffectInfoCommand);
+  tiktok.command('effect-posts <effectId>').description('Posts using an effect / sticker')
+    .option('-l, --limit <n>', 'Max results', '30')
+    .option('--cursor <c>', 'Pagination cursor', '')
+    .action(tiktokEffectPostsCommand);
+  tiktok.command('collection-info <collectionId>').description('Fetch TikTok user-curated collection info').action(tiktokCollectionInfoCommand);
+  tiktok.command('collection-posts <collectionId>').description('Posts in a user-curated collection (no cursor — paginates by count only)')
+    .option('-l, --limit <n>', 'Max results', '30')
+    .action(tiktokCollectionPostsCommand);
+  tiktok.command('post-comment-replies <video> <commentId>').description("Fetch replies to a specific comment on a post")
+    .option('-l, --limit <n>', 'Max results', '6')
+    .option('--cursor <c>', 'Pagination cursor', '')
+    .action(tiktokPostCommentRepliesCommand);
   // tiktok.command('fetch') removed — `fetch_tiktok_video` orphan was the
   // republish flow; extension no longer hosts the handler.
   tiktok

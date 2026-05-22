@@ -93,6 +93,35 @@ export {
   getTikTokPostComments,
   searchTikTokAccount,
   parseTikTokVideoId,
+  // Wave 2 — Challenge + Music
+  getTikTokChallengeInfo,
+  getTikTokChallengePosts,
+  getTikTokMusicInfo,
+  getTikTokMusicPosts,
+  getTikTokMusicUnlimitedSounds,
+  // Wave 3 — User extras
+  getTikTokUserInfoWithRegion,
+  getTikTokUserInfoById,
+  getTikTokUserFollowings,
+  getTikTokUserLikedPosts,
+  getTikTokUserPlaylist,
+  getTikTokUserRepost,
+  getTikTokUserStory,
+  // Wave 4 — Search + Discovery
+  searchTikTokGeneral,
+  searchTikTokLive,
+  getTikTokOthersSearchedFor,
+  getTikTokPostRelated,
+  getTikTokPostExplore,
+  getTikTokPostDiscover,
+  // Wave 6 — Place / Effect / Collection / Comment-replies
+  getTikTokPlaceInfo,
+  getTikTokPlacePosts,
+  getTikTokEffectInfo,
+  getTikTokEffectPosts,
+  getTikTokCollectionInfo,
+  getTikTokCollectionPosts,
+  getTikTokPostCommentReplies,
 } from './tiktok';
 export type {
   TikTokVideo,
@@ -103,4 +132,63 @@ export type {
   TikTokComment,
   TikTokCommentsResult,
   TikTokAccountSearchResult,
+  // Wave 2
+  TikTokChallengeInfo,
+  TikTokChallengePostsResult,
+  TikTokMusicInfo,
+  TikTokMusicPostsResult,
+  TikTokUnlimitedSoundsResult,
+  // Wave 3
+  TikTokUserInfo,
+  TikTokUserInfoWithRegion,
+  TikTokPlaylist,
+  TikTokUserPlaylistResult,
+  TikTokRepostResult,
+  TikTokStory,
+  TikTokStoryResult,
+  // Wave 4
+  TikTokHashtagSummary,
+  TikTokMusicSummary,
+  TikTokGeneralSearchResult,
+  TikTokLiveStream,
+  TikTokLiveSearchResult,
+  TikTokSuggestionsResult,
+  TikTokPostRelatedResult,
+  TikTokPostExploreResult,
+  TikTokPostDiscoverResult,
+  // Wave 6
+  TikTokPlaceInfo,
+  TikTokPlacePostsResult,
+  TikTokEffectInfo,
+  TikTokEffectPostsResult,
+  TikTokCollectionInfo,
+  TikTokCollectionPostsResult,
+  TikTokPostCommentRepliesResult,
 } from './tiktok';
+
+// ─── TikTok Wave 5 — Creative Center (ads.tiktok.com) ────────────────
+//
+// SEPARATE host from regular tiktok.com — requires TikTok For Business
+// login. Each function lands on a creativecenter page, checks for the
+// login bounce, then page-context fetches `/creative_radar_api/v1/*`.
+//
+// All return a raw envelope (the radar API's own JSON) — no schema
+// remap yet because we can't easily verify the live payload shape
+// without a TikTok Business account.
+export {
+  getTikTokAdsDetail,
+  getTikTokAdsTop,
+  getTikTokTrendingCreator,
+  getTikTokTrendingVideo,
+  getTikTokTrendingHashtag,
+  getTikTokTrendingSong,
+  getTikTokTrendingKeyword,
+  getTikTokTrendingKeywordPosts,
+  getTikTokTrendingKeywordSentence,
+  getTikTokCommercialMusicLibrary,
+  getTikTokCommercialMusicPlaylists,
+  getTikTokCommercialMusicPlaylistDetail,
+  getTikTokTopProducts,
+  getTikTokTopProductDetail,
+  getTikTokTopProductMetrics,
+} from './tiktok-ads';
