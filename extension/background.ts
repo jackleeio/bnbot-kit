@@ -865,10 +865,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'BNBOT_SOURCE_CAPTURE') {
     void (async () => {
       try {
-        const response = await fetch('http://localhost:27421/api/remix-jobs', {
+        // The X share menu now injects two items (AI Quote / AI Remix);
+        // the injector tags `intent` on the payload so we can forward it
+        // as a top-level field. BNBot desktop branches on this to pick
+        // /quote vs /x-tweet-remix. Default 'remix' keeps legacy callers
+        // (e.g. an older injector still saying 发送到BNBot) working.
+        const rawPayload = (message.payload || {}) as Record<string, unknown> & { intent?: string };
+        const { intent: rawIntent, ...source } = rawPayload;
+        const intent = rawIntent === 'quote' ? 'quote' : 'remix';
+        const response = await fetch('http://127.0.0.1:27421/api/remix-jobs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source: message.payload || {} }),
+          body: JSON.stringify({ source, intent }),
         });
         if (!response.ok) {
           const text = await response.text().catch(() => '');

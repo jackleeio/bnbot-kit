@@ -53,10 +53,24 @@ export function scrapeTweet(article: HTMLElement): ScrapedBookmark | null {
       }
     }
 
-    // 获取头像
+    // 获取头像。X 在不同 viewport / 嵌入位置下用过几种容器；先看
+    // testid 容器，再退化到任何指向 pbs.twimg.com/profile_images 的 img。
     const avatarContainer = article.querySelector(SELECTORS.avatar);
-    const avatarImg = avatarContainer?.querySelector('img');
-    const authorAvatar = avatarImg?.src || '';
+    let avatarImg = avatarContainer?.querySelector('img') ?? null;
+    if (!avatarImg || !avatarImg.getAttribute('src')) {
+      avatarImg =
+        article.querySelector('img[src*="profile_images"]') as HTMLImageElement | null;
+    }
+    const authorAvatar = avatarImg?.getAttribute('src') || '';
+
+    // 蓝标 / Verified badge 检测。X 用 `[data-testid="icon-verified"]`
+    // 或 aria-label="Verified account" 标记蓝标号；放在 User-Name 区。
+    // Affiliate / business 标也归到 verified（视觉上都是蓝勾或金勾）。
+    const verifiedEl =
+      userNameEl?.querySelector(
+        '[data-testid="icon-verified"], [aria-label="Verified account" i], [aria-label*="verified" i], svg[data-testid$="-verified"]',
+      ) ?? null;
+    const authorVerified = Boolean(verifiedEl);
 
     // 获取内容
     const textEl = article.querySelector(SELECTORS.tweetText);
@@ -77,6 +91,7 @@ export function scrapeTweet(article: HTMLElement): ScrapedBookmark | null {
       authorHandle,
       authorName,
       authorAvatar,
+      authorVerified,
       content,
       timestamp,
       metrics,

@@ -113,6 +113,11 @@ export interface ScrapedBookmark {
   authorHandle: string;
   authorName: string;
   authorAvatar: string;
+  /** True when X shows the verified / blue-check badge next to the
+   *  author name on the rendered tweet. Captured at scrape time so
+   *  downstream embed cards (quote tweets, today's-output previews)
+   *  can render the checkmark instead of a bare username. */
+  authorVerified?: boolean;
   content: string;
   timestamp: string;
   metrics: {

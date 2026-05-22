@@ -11,7 +11,150 @@
  * shape; the goal here is accuracy + consistency, not 1:1 layout match.
  */
 
-import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService';
+import {
+  getTab,
+  checkLoginRedirect,
+  executeInPage,
+  ensureDebuggerAttached,
+  debuggerSend,
+  waitForLoad,
+} from '../../scraperService';
+
+// ─── INTERCEPT helper ───────────────────────────────────────────────
+//
+// YouTube ships the SPA's per-request data (player streamingData URLs,
+// transcript cues, comment threads) inside /youtubei/v1/{player,
+// get_transcript, next} POST responses fired by the page itself.
+//
+// We can't read those if we only attach a page-level `window.fetch`
+// override AFTER navigation — the first round-trip has already happened
+// by then. The fix is CDP's `Page.addScriptToEvaluateOnNewDocument`,
+// which registers the override against the debugger session so every
+// future Document executes it before any of YouTube's own scripts.
+// Then we force a fresh navigation (about:blank → watchUrl) so the
+// override is live when the SPA bootstraps.
+async function interceptYoutubeApi(
+  tabId: number,
+  watchUrl: string,
+  spec: { pattern: string; globalName: string },
+  options: { settleMs?: number } = {},
+): Promise<void> {
+  const targetId = await ensureDebuggerAttached(tabId, ['Page', 'Runtime', 'Network']);
+  // YouTube's Service Worker returns a ~300-byte stub for /youtubei/v1/*
+  // requests that fire from a hooked page (it appears to detect either the
+  // chrome.debugger attachment or the fetch override and treats us as a
+  // bot). Bypassing the SW makes the request hit YouTube's origin server
+  // directly, which returns the real player/transcript/next response.
+  try { await debuggerSend(targetId, 'Network.setBypassServiceWorker', { bypass: true }); } catch { /* not fatal */ }
+  // Force a normal desktop UA. When chrome.debugger is attached YouTube
+  // sometimes downgrades to SSR-only minimal HTML (watch7-content / no
+  // ytd-watch-flexy) — supplying a clean Chrome UA short-circuits the
+  // headless-fingerprint codepath that triggers the downgrade.
+  try {
+    await debuggerSend(targetId, 'Network.setUserAgentOverride', {
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+      acceptLanguage: 'en-US,en;q=0.9',
+      platform: 'MacIntel',
+    });
+  } catch { /* not fatal */ }
+  const pat = spec.pattern.replace(/[\\'"`]/g, '');
+  const gname = spec.globalName.replace(/[^A-Za-z0-9_$]/g, '');
+  // The hook is self-guarding (`if (window.${gname}) return`) so duplicate
+  // installations across calls are a no-op. We do reset the capture
+  // array on every call so different videoIds don't bleed into each other.
+  const source = `
+    (function(){
+      try {
+        var w = window;
+        // Visibility shim: scraper tabs run inside a background window,
+        // so document.visibilityState is 'hidden' and YouTube skips a
+        // ton of DOM work — comments lazy-load never fires, "Show
+        // transcript" never mounts, etc. We patch the page-visibility
+        // API to say 'visible' BEFORE any of YouTube's scripts read it.
+        if (!w.__bnbotVisShimInstalled) {
+          w.__bnbotVisShimInstalled = true;
+          try {
+            Object.defineProperty(document, 'visibilityState', { configurable: true, get: function(){ return 'visible'; } });
+            Object.defineProperty(document, 'hidden', { configurable: true, get: function(){ return false; } });
+            Object.defineProperty(document, 'webkitVisibilityState', { configurable: true, get: function(){ return 'visible'; } });
+            Object.defineProperty(document, 'webkitHidden', { configurable: true, get: function(){ return false; } });
+            // Re-fire visibilitychange after DOMContentLoaded so any
+            // listener that wired up early picks up the new value.
+            document.addEventListener('DOMContentLoaded', function(){
+              try { document.dispatchEvent(new Event('visibilitychange')); } catch(_) {}
+            });
+          } catch(_) {}
+        }
+        w.${gname} = [];
+        w.${gname}_raw = [];
+        if (w.${gname}__installed) return;
+        w.${gname}__installed = true;
+        var o = w.fetch.bind(w);
+        w.fetch = async function(){
+          var args = arguments;
+          var r = await o.apply(this, args);
+          try {
+            var u = '';
+            if (typeof args[0] === 'string') u = args[0];
+            else if (args[0] instanceof Request) u = args[0].url;
+            else if (args[0] && args[0].url) u = args[0].url;
+            if (u.indexOf(${JSON.stringify(pat)}) !== -1) {
+              r.clone().text().then(function(t){
+                w.${gname}_raw.push(t);
+                try { w.${gname}.push(JSON.parse(t)); } catch(_) {}
+              }).catch(function(){});
+            }
+          } catch(_) {}
+          return r;
+        };
+      } catch(_) {}
+    })();
+  `;
+  await debuggerSend(targetId, 'Page.addScriptToEvaluateOnNewDocument', { source });
+  // Force a fresh document load. about:blank is the cleanest reset —
+  // YouTube's SPA does NOT serve a new HTML document on /watch?v=A → /watch?v=B
+  // (it's an internal hash-style transition), so we have to leave the
+  // origin first and come back.
+  await debuggerSend(targetId, 'Page.navigate', { url: 'about:blank' });
+  await new Promise((r) => setTimeout(r, 400));
+  await debuggerSend(targetId, 'Page.navigate', { url: watchUrl });
+  // Wait for the watch page to actually settle. `waitForLoad` checks
+  // chrome.tabs status which is more reliable than a blind sleep.
+  try { await waitForLoad(tabId, 'www.youtube.com'); } catch { /* tolerate */ }
+  await new Promise((r) => setTimeout(r, options.settleMs ?? 2500));
+}
+
+// Resets the capture array for the given global on the active page. Used
+// when a scraper needs to discard any frames that fired before its own
+// trigger (e.g. transcript click) so it can wait specifically for ITS
+// response.
+async function resetCaptureArray(tabId: number, globalName: string): Promise<void> {
+  const gname = globalName.replace(/[^A-Za-z0-9_$]/g, '');
+  await executeInPage(tabId, (g: string) => {
+    try { (window as any)[g] = []; } catch { /* ignore */ }
+    return true;
+  }, [gname]);
+}
+
+async function waitForCapture(
+  tabId: number,
+  globalName: string,
+  predicateSrc: string,  // function source: "(arr) => boolean" — passed as string for IIFE
+  timeoutMs: number,
+): Promise<boolean> {
+  return await executeInPage(tabId, async (g: string, predSrc: string, t: number) => {
+    const w = window as any;
+    // eslint-disable-next-line no-new-func
+    const pred = new Function('arr', 'return (' + predSrc + ')(arr);');
+    const start = Date.now();
+    while (Date.now() - start < t) {
+      const arr = w[g] || [];
+      try { if (pred(arr)) return true; } catch { /* ignore */ }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    return false;
+  }, [globalName, predicateSrc, timeoutMs]) as boolean;
+}
 
 // ─── Utilities ─────────────────────────────────────────────────────
 
@@ -739,93 +882,61 @@ export interface YouTubeStreamingData {
 
 export async function getYouTubeStreamingData(videoIdOrUrl: string): Promise<YouTubeStreamingData> {
   const id = parseYouTubeVideoId(videoIdOrUrl);
-  const tabId = await getTab(`https://www.youtube.com/watch?v=${id}`);
-  await new Promise((r) => setTimeout(r, 1500));
+  const watchUrl = `https://www.youtube.com/watch?v=${id}`;
+  const tabId = await getTab(watchUrl);
   await checkLoginRedirect(tabId, 'YouTube');
 
-  // Why INTERCEPT mode:
-  //   Modern YouTube strips the actual streaming URLs (.url, signatureCipher,
-  //   hlsManifestUrl, dashManifestUrl) from the page-load ytInitialPlayerResponse.
-  //   The real URLs are fetched lazily by the SPA via POST /youtubei/v1/player
-  //   (the same endpoint the watch page hits to bootstrap playback). To get
-  //   them we monkey-patch window.fetch inside the page, capture that response,
-  //   and return its streamingData.
-  //
-  // Trigger strategy:
-  //   1. Install fetch hook.
-  //   2. Re-fire the player request by reloading the tab (the hook gets wiped
-  //      on reload, so we re-install it as fast as possible after navigation).
-  //   3. Wait for at least one captured /youtubei/v1/player response.
-  //   4. Fall back to ytInitialPlayerResponse if interception yields nothing
-  //      (some restricted / DRM / age-gated videos never expose real URLs).
+  // INTERCEPT mode: YouTube strips streaming URLs (.url / signatureCipher /
+  // hlsManifestUrl / dashManifestUrl) from the page-load
+  // ytInitialPlayerResponse. The real URLs come back inside the
+  // POST /youtubei/v1/player response the SPA fires on bootstrap. We inject
+  // a fetch override via CDP `Page.addScriptToEvaluateOnNewDocument`
+  // (interceptYoutubeApi) so the override is live BEFORE the request fires,
+  // then force a fresh navigation so it actually runs against the watch page.
+  await interceptYoutubeApi(
+    tabId,
+    watchUrl,
+    { pattern: '/youtubei/v1/player', globalName: '__bnbotYTPlayerFrames' },
+    { settleMs: 2500 },
+  );
 
-  // STEP 1: install hook + capture array on window
-  const installHook = async () => {
-    await executeInPage(tabId, () => {
-      try {
-        const w = window as any;
-        if (!Array.isArray(w.__bnbotYTPlayerFrames)) w.__bnbotYTPlayerFrames = [];
-        if (w.__bnbotYTPlayerHook) return true;
-        const origFetch = w.fetch.bind(w);
-        w.fetch = async (...args: any[]) => {
-          const res = await origFetch(...args);
-          try {
-            let url = '';
-            if (typeof args[0] === 'string') url = args[0];
-            else if (args[0] instanceof Request) url = args[0].url;
-            else if (args[0]?.url) url = args[0].url;
-            if (/\/youtubei\/v1\/player(\?|$)/.test(url)) {
-              const clone = res.clone();
-              clone.json().then((body: any) => {
-                w.__bnbotYTPlayerFrames.push(body);
-              }).catch(() => { /* ignore */ });
-            }
-          } catch { /* ignore */ }
-          return res;
-        };
-        w.__bnbotYTPlayerHook = true;
-        return true;
-      } catch {
-        return false;
-      }
-    });
-  };
-
-  await installHook();
-
-  // STEP 2: re-fire the player API. Reloading the tab is the most reliable
-  // trigger — YouTube's SPA always calls /youtubei/v1/player during init.
-  try {
-    await chrome.tabs.reload(tabId);
-  } catch { /* tab gone — fall through */ }
-  // Wait briefly for the page to start loading, then re-install the hook ASAP
-  // (the previous hook was wiped by the reload).
-  await new Promise((r) => setTimeout(r, 800));
-  await installHook();
-
-  // STEP 3: wait for capture
-  await executeInPage(tabId, async (targetId: string) => {
-    const w = window as any;
-    const start = Date.now();
-    while (Date.now() - start < 15000) {
-      const frames: any[] = w.__bnbotYTPlayerFrames || [];
-      // Prefer the player response matching the target videoId
-      if (frames.some((p: any) => p?.videoDetails?.videoId === targetId && p?.streamingData)) return true;
-      if (frames.some((p: any) => p?.streamingData)) return true;
-      await new Promise((r) => setTimeout(r, 300));
-    }
-    return false;
-  }, [id]);
+  // Wait for a /player response that carries a real mime ("video/..." or
+  // "audio/..."). The earliest responses are stubs (~300 bytes with 2-char
+  // placeholder values) that ship before the SPA's player bootstraps;
+  // skipping them avoids returning garbage data.
+  await waitForCapture(
+    tabId,
+    '__bnbotYTPlayerFrames',
+    `(arr) => arr && arr.some(p => { const m = p && p.streamingData && p.streamingData.adaptiveFormats && p.streamingData.adaptiveFormats[0] && p.streamingData.adaptiveFormats[0].mimeType; return typeof m === 'string' && m.indexOf('/') !== -1; })`,
+    18000,
+  );
 
   const data = await executeInPage(tabId, (targetId: string) => {
     try {
       const w = window as any;
       const frames: any[] = w.__bnbotYTPlayerFrames || [];
 
-      // Prefer the player response whose videoDetails.videoId matches — some
-      // responses are for the next video (autoplay preload).
-      let match = frames.find((p: any) => p?.videoDetails?.videoId === targetId && p?.streamingData);
-      if (!match) match = frames.find((p: any) => p?.streamingData);
+      // Frame selection: YouTube fires the /player endpoint multiple times
+      // during page load — some responses are tiny stubs (~300 bytes with
+      // 2-char placeholder strings) that ship before the SPA boots; the
+      // real one is large (>40KB) and has a recognizable mime like
+      // "video/webm; codecs=...". Pick a frame whose adaptiveFormats[0]
+      // .mimeType contains a '/'.
+      //
+      // Some frames also wrap the real payload inside `playerResponse`
+      // (`{ playerResponse: { streamingData, videoDetails, ... } }`), so
+      // we normalize via `unwrap` before inspecting.
+      const unwrap = (p: any) => (p?.playerResponse?.streamingData ? p.playerResponse : p);
+      const hasRealMime = (p: any) => {
+        const fmt = unwrap(p)?.streamingData?.adaptiveFormats?.[0];
+        return typeof fmt?.mimeType === 'string' && fmt.mimeType.indexOf('/') !== -1;
+      };
+      const realFrames = frames.filter(hasRealMime).map(unwrap);
+      let match =
+        realFrames.find((p: any) => p?.videoDetails?.videoId === targetId) ||
+        realFrames[0] ||
+        frames.map(unwrap).find((p: any) => p?.videoDetails?.videoId === targetId && p?.streamingData) ||
+        frames.map(unwrap).find((p: any) => p?.streamingData);
 
       const mapFormat = (f: any) => ({
         itag: f.itag || 0,
@@ -1055,52 +1166,45 @@ export interface YouTubeComment {
 
 export async function getYouTubeComments(videoIdOrUrl: string, limit = 50): Promise<YouTubeComment[]> {
   const id = parseYouTubeVideoId(videoIdOrUrl);
-  const tabId = await getTab(`https://www.youtube.com/watch?v=${id}`);
-  await new Promise((r) => setTimeout(r, 3000));
+  const watchUrl = `https://www.youtube.com/watch?v=${id}`;
+  const tabId = await getTab(watchUrl);
   await checkLoginRedirect(tabId, 'YouTube');
 
-  // Why INTERCEPT mode:
-  //   Comments are NOT in the page-load ytInitialData. The SPA lazy-loads them
-  //   via POST /youtubei/v1/next once the user scrolls the comments section
-  //   into view (or close to it). We monkey-patch window.fetch to capture
-  //   every /youtubei/v1/next response body and harvest commentEntityPayload
-  //   mutations from frameworkUpdates.
-
-  // STEP 1: Install a fetch interceptor BEFORE we scroll.
-  await executeInPage(tabId, () => {
-    try {
-      const w = window as any;
-      // Always reset captured frames per scrape so different videoIds don't
-      // bleed into each other when the tab is reused.
-      w.__bnbotYTCommentFrames = [];
-      if (w.__bnbotYTCommentHook) return true;
-      const origFetch = w.fetch.bind(w);
-      w.fetch = async (...args: any[]) => {
-        const res = await origFetch(...args);
-        try {
-          let url = '';
-          if (typeof args[0] === 'string') url = args[0];
-          else if (args[0] instanceof Request) url = args[0].url;
-          else if (args[0]?.url) url = args[0].url;
-          if (/\/youtubei\/v1\/next/.test(url)) {
-            // Clone so the page's own consumer still gets the body.
-            const clone = res.clone();
-            clone.json().then((body: any) => {
-              w.__bnbotYTCommentFrames.push(body);
-            }).catch(() => { /* ignore */ });
-          }
-        } catch { /* ignore */ }
-        return res;
-      };
-      w.__bnbotYTCommentHook = true;
-      return true;
-    } catch {
-      return false;
-    }
-  });
+  // Comments are NOT in the page-load ytInitialData. The SPA lazy-loads them
+  // via POST /youtubei/v1/next when the comments section nears the viewport.
+  // We install the fetch override BEFORE navigation so the SPA's bootstrap
+  // /next (which also carries related-video data) is captured; the post-load
+  // scroll then triggers the comments-specific /next continuation.
+  await interceptYoutubeApi(
+    tabId,
+    watchUrl,
+    { pattern: '/youtubei/v1/next', globalName: '__bnbotYTCommentFrames' },
+    { settleMs: 3000 },
+  );
 
   // STEP 2: Aggressive scroll to trigger comments lazy-load. Comments are
   // below the player + description, so we need to scroll multiple screens.
+  //
+  // Important: YouTube uses IntersectionObserver to decide WHEN to fire the
+  // /youtubei/v1/next lazy-load. A minimized scraper window has no
+  // viewport, so observer callbacks never fire and our scrolls become
+  // no-ops. We temporarily restore the window for the duration of the
+  // scrape, then minimize it again on the way out.
+  let prevWindowState: chrome.windows.windowStateEnum | undefined;
+  let scraperWindowId: number | undefined;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    scraperWindowId = tab.windowId;
+    if (scraperWindowId != null) {
+      const win = await chrome.windows.get(scraperWindowId);
+      prevWindowState = win.state;
+      if (win.state === 'minimized') {
+        await chrome.windows.update(scraperWindowId, { state: 'normal' });
+        await new Promise((r) => setTimeout(r, 800));
+      }
+    }
+  } catch { /* tolerate */ }
+
   await executeInPage(tabId, async (target: number) => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     const w = window as any;
@@ -1159,6 +1263,12 @@ export async function getYouTubeComments(videoIdOrUrl: string, limit = 50): Prom
     }
     return true;
   }, [limit]);
+
+  // Restore the scraper window's previous minimized state — we only
+  // unminimized it to let IntersectionObserver tick.
+  if (scraperWindowId != null && prevWindowState === 'minimized') {
+    try { await chrome.windows.update(scraperWindowId, { state: 'minimized' }); } catch { /* ignore */ }
+  }
 
   // STEP 3: Extract from captured frames first (cleaner data), fall back to DOM.
   const data = await executeInPage(tabId, (lim: number) => {
@@ -1384,102 +1494,135 @@ export async function getYouTubeTranscript(
   options: { lang?: string } = {},
 ): Promise<YouTubeTranscript> {
   const id = parseYouTubeVideoId(videoIdOrUrl);
-  const tabId = await getTab(`https://www.youtube.com/watch?v=${id}`);
-  await new Promise((r) => setTimeout(r, 3000));
+  const watchUrl = `https://www.youtube.com/watch?v=${id}`;
+  const tabId = await getTab(watchUrl);
   await checkLoginRedirect(tabId, 'YouTube');
 
-  // Why INTERCEPT mode (Approach A):
-  //   The legacy /api/timedtext?v=... URL embedded in ytInitialPlayerResponse
-  //   now requires a `pot` (proof-of-token) signature that's only valid for
-  //   the player session — fetching it from a different context returns no
-  //   parseable body. The reliable alternative is the modern endpoint
-  //   POST /youtubei/v1/get_transcript, which the SPA hits when the user
-  //   clicks the "Show transcript" button under the video's "..." menu. We
-  //   install a fetch hook, programmatically click the menu items, capture
-  //   the response, and parse cueGroups out of it. Falls back to the legacy
-  //   timedtext URL if the button isn't available.
+  // INTERCEPT mode: the legacy /api/timedtext URL embedded in
+  // ytInitialPlayerResponse now requires a `pot` proof-of-token signature
+  // tied to the player session, so cross-context fetches come back empty.
+  // The modern alternative is POST /youtubei/v1/get_transcript, fired by
+  // the SPA when the "Show transcript" button is clicked. We register the
+  // fetch override on the debugger session (so it survives navigation),
+  // then drive the click after the page loads. Falls back to /timedtext
+  // if no transcript button is exposed.
+  await interceptYoutubeApi(
+    tabId,
+    watchUrl,
+    { pattern: '/youtubei/v1/get_transcript', globalName: '__bnbotYTTranscriptFrames' },
+    { settleMs: 3000 },
+  );
+  // Drop any frames that may have somehow leaked across a tab reuse — we
+  // want only the response that comes back from OUR click.
+  await resetCaptureArray(tabId, '__bnbotYTTranscriptFrames');
 
-  // STEP 1: install fetch hook for /youtubei/v1/get_transcript
-  await executeInPage(tabId, () => {
-    try {
-      const w = window as any;
-      w.__bnbotYTTranscriptFrames = [];
-      if (w.__bnbotYTTranscriptHook) return true;
-      const origFetch = w.fetch.bind(w);
-      w.fetch = async (...args: any[]) => {
-        const res = await origFetch(...args);
-        try {
-          let url = '';
-          if (typeof args[0] === 'string') url = args[0];
-          else if (args[0] instanceof Request) url = args[0].url;
-          else if (args[0]?.url) url = args[0].url;
-          if (/\/youtubei\/v1\/get_transcript/.test(url)) {
-            const clone = res.clone();
-            clone.json().then((body: any) => {
-              w.__bnbotYTTranscriptFrames.push(body);
-            }).catch(() => { /* ignore */ });
-          }
-        } catch { /* ignore */ }
-        return res;
-      };
-      w.__bnbotYTTranscriptHook = true;
-      return true;
-    } catch {
-      return false;
+  // Restore the window so YouTube actually mounts the description /
+  // metadata UI (it skips heavy DOM work on minimized tabs). We'll
+  // re-minimize at the end.
+  let prevWindowState: chrome.windows.windowStateEnum | undefined;
+  let scraperWindowId: number | undefined;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    scraperWindowId = tab.windowId;
+    if (scraperWindowId != null) {
+      const win = await chrome.windows.get(scraperWindowId);
+      prevWindowState = win.state;
+      if (win.state === 'minimized') {
+        await chrome.windows.update(scraperWindowId, { state: 'normal' });
+        await new Promise((r) => setTimeout(r, 800));
+      }
     }
-  });
+  } catch { /* tolerate */ }
 
-  // STEP 2: click "More actions" (...) → "Show transcript". If the button
-  // chain isn't there (no transcript / mobile layout / region-blocked) we'll
-  // fall through to Plan B.
+  // STEP 2: trigger /youtubei/v1/get_transcript by clicking the
+  // "Show transcript" button. Modern YouTube hides this button behind
+  // the description-expander, so we expand description first, then
+  // search the entire DOM (button, ytd-button-renderer, link, span) for
+  // any element whose text or aria-label includes "transcript". As a
+  // last resort we open the "..." menu under the title.
   await executeInPage(tabId, async () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-    // First, scroll the description into view so the "..." button is mounted.
-    // On a fresh watch page, the meta row sometimes lazy-renders.
+    const isVisible = (el: Element) => {
+      const r = (el as HTMLElement).getBoundingClientRect?.();
+      return !!r && r.width > 0 && r.height > 0;
+    };
+
+    // Scroll description area into view so its DOM mounts.
     const meta = document.querySelector('ytd-watch-metadata, #above-the-fold');
     if (meta) (meta as HTMLElement).scrollIntoView({ block: 'start' });
-    await sleep(500);
+    await sleep(400);
 
-    // Approach 1: try the dedicated "Show transcript" button that appears
-    // inline under the description (it's a primary button in some layouts).
-    const inlineBtn = Array.from(document.querySelectorAll('ytd-video-description-transcript-section-renderer button, button[aria-label*="transcript" i], button[aria-label*="Transcript" i]')) as HTMLButtonElement[];
-    for (const b of inlineBtn) {
-      if (/transcript/i.test(b.textContent || '') || /transcript/i.test(b.getAttribute('aria-label') || '')) {
-        b.click();
-        await sleep(800);
+    // Expand description so the "Show transcript" pill renders (it lives
+    // inside the expanded description for most layouts in 2026).
+    const expandSelectors = [
+      'tp-yt-paper-button#expand',
+      'ytd-text-inline-expander #expand',
+      'ytd-watch-metadata #description-inner #expand',
+      'ytd-watch-metadata tp-yt-paper-button#expand',
+      '#expand[role="button"]',
+    ];
+    for (const sel of expandSelectors) {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (el && isVisible(el)) { el.click(); break; }
+    }
+    await sleep(700);
+
+    // Approach 1: any element whose text / aria-label looks like a
+    // transcript trigger. We accept buttons, anchor tags, and yt's
+    // custom <ytd-button-renderer> wrappers. Walk the description region
+    // first (most specific), then fall back to a global scan.
+    const transcriptRe = /show\s*transcript|transcript|显示文字|字幕|文字记录/i;
+    const candidateRoots = [
+      document.querySelector('ytd-video-description-transcript-section-renderer'),
+      document.querySelector('ytd-watch-metadata'),
+      document.body,
+    ].filter(Boolean) as Element[];
+
+    for (const root of candidateRoots) {
+      const candidates = Array.from(root.querySelectorAll(
+        'button, ytd-button-renderer, yt-button-shape, a[role="button"], yt-formatted-string, span',
+      )) as HTMLElement[];
+      for (const c of candidates) {
+        const txt = (c.textContent || '').trim();
+        const aria = c.getAttribute('aria-label') || '';
+        if (!transcriptRe.test(txt) && !transcriptRe.test(aria)) continue;
+        if (!isVisible(c)) continue;
+        // Walk up to the nearest clickable ancestor (button) for reliable click.
+        let clickTarget: HTMLElement = c;
+        const clickable = c.closest('button, [role="button"], ytd-button-renderer, a') as HTMLElement | null;
+        if (clickable) clickTarget = clickable;
+        clickTarget.click();
+        await sleep(1200);
         return true;
       }
     }
 
-    // Approach 2: open the "..." menu and click the transcript item.
+    // Approach 2: open the "..." menu and look for a transcript item.
     const moreSelectors = [
       'ytd-watch-metadata #button-shape button',
-      'ytd-watch-metadata tp-yt-paper-button#expand',
-      'ytd-menu-renderer #button button',
+      'ytd-menu-renderer.ytd-watch-metadata yt-icon-button button',
       'button[aria-label="More actions"]',
-      'button[aria-label*="More" i]',
+      'button[aria-label*="More actions" i]',
     ];
     let moreBtn: HTMLElement | null = null;
     for (const sel of moreSelectors) {
       const el = document.querySelector(sel) as HTMLElement | null;
-      if (el) { moreBtn = el; break; }
+      if (el && isVisible(el)) { moreBtn = el; break; }
     }
     if (moreBtn) {
       moreBtn.click();
       await sleep(600);
-
       const menuItems = Array.from(document.querySelectorAll(
         'ytd-menu-service-item-renderer, tp-yt-paper-item, yt-dropdown-menu tp-yt-paper-item, [role="menuitem"]',
       )) as HTMLElement[];
-      const transcriptBtn = menuItems.find((el) => /transcript/i.test(el.textContent || ''));
-      if (transcriptBtn) {
-        transcriptBtn.click();
-        await sleep(1000);
+      const item = menuItems.find((el) => transcriptRe.test(el.textContent || ''));
+      if (item) {
+        item.click();
+        await sleep(1200);
         return true;
       }
-
-      // Close the menu if we opened it but found nothing useful.
+      // Dismiss menu if no match.
       document.body.click();
     }
     return false;
@@ -1675,6 +1818,11 @@ export async function getYouTubeTranscript(
       return { error: e?.message || 'YouTube transcript scraper failed' };
     }
   }, [options.lang || '']);
+
+  // Restore minimized state.
+  if (scraperWindowId != null && prevWindowState === 'minimized') {
+    try { await chrome.windows.update(scraperWindowId, { state: 'minimized' }); } catch { /* ignore */ }
+  }
 
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data as YouTubeTranscript;

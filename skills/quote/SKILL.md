@@ -35,20 +35,36 @@ they say "rewrite this as my own tweet" → `/remix`.
 
 ## Preflight
 
-1. `bnbot status` — extension ✓ connected
+1. `bnbot status` — extension ✓ connected. **Skip when source data is
+   already in the prompt** (see step 1 below) — that flow guarantees
+   the extension was just connected and responsive seconds ago.
 2. Voice profile loaded
 3. Persona rules from `~/.claude/skills/bnbot/references/persona.md`
 
 ## Core flow
 
-### 1. Scrape source
+### 1. Get source (read prompt OR scrape)
 
-```bash
-bnbot x scrape thread "<tweet-url>" > /tmp/quote-source.json
-```
+**Decide first — don't scrape blindly.** Check whether the caller has
+already attached the source in the prompt:
 
-Read full text. Parse media[] — if the source has a chart / image, a
-good quote often comments on the visual, not just the text.
+- If the prompt contains a `<source>...</source>` block (or any
+  structured payload with `tweet_url`, `text`, `author_handle`,
+  `media`, etc.) **plus** a `<viewer>...</viewer>` block, that's the
+  share-menu / desktop UI entry path: the extension already captured
+  everything. **Read those fields directly. Do NOT call
+  `bnbot x scrape thread` or `bnbot x status` — it wastes a tool turn
+  and may even re-fetch stale data.**
+- If the caller only gave you a tweet URL with no inline payload (e.g.
+  CLI invocation, dry chat command), then scrape:
+
+  ```bash
+  bnbot x scrape thread "<tweet-url>" > /tmp/quote-source.json
+  ```
+
+Either way, before drafting: confirm you have full text + author
+handle + media list. If a chart / image is present, a good quote often
+comments on the visual, not just the text.
 
 ### 2. Gates
 

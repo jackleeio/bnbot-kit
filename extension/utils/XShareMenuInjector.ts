@@ -2,8 +2,6 @@ import { scrapeTweet } from '../services/actions/scrapeActions';
 import { TwitterClient } from './TwitterClient';
 import type { TweetDetailCaptureTweet } from './TwitterClient';
 
-declare const chrome: any;
-
 const MENU_SELECTOR = '[role="menu"]';
 const TWEET_SELECTOR = 'article[data-testid="tweet"]';
 const SHARE_BUTTON_SELECTOR = [
@@ -13,10 +11,30 @@ const SHARE_BUTTON_SELECTOR = [
 const INJECTED_ATTR = 'data-bnbot-remix-item';
 const STYLE_ID = 'bnbot-share-menu-style';
 const NOTICE_ID = 'bnbot-share-menu-notice';
-const MENU_LABEL = '发送到BNBot';
-const MENU_LABEL_EN = 'Send to BNBot';
+
+type BnbotIntent = 'quote' | 'remix';
+
+const MENU_LABELS: Record<BnbotIntent, { zh: string; en: string }> = {
+  quote: { zh: 'AI 引用', en: 'AI Quote' },
+  remix: { zh: 'AI 创作', en: 'AI Remix' },
+};
 
 type XMedia = { type: 'photo' | 'video' | 'gif'; url: string; alt?: string; thumbnail?: string };
+
+interface ChromeRuntimeLike {
+  sendMessage?: (
+    message: unknown,
+    callback?: (response: { ok?: boolean; error?: string } | undefined) => void,
+  ) => void;
+  lastError?: { message?: string };
+}
+
+function getChromeRuntime(): ChromeRuntimeLike | null {
+  const runtime = (globalThis as unknown as {
+    chrome?: { runtime?: ChromeRuntimeLike };
+  }).chrome?.runtime;
+  return typeof runtime?.sendMessage === 'function' ? runtime : null;
+}
 
 interface XRelatedTweet {
   tweetId: string;
@@ -37,6 +55,18 @@ interface XRelatedTweet {
   media: XMedia[];
 }
 
+interface XViewerCapture {
+  /** Currently logged-in X account `@handle` (no leading @, lowercase).
+   *  Empty string when DOM detection fails. */
+  handle: string;
+  /** Display name pulled from the SideNav account switcher button.
+   *  Empty when not parseable. */
+  name: string;
+  /** Avatar URL — usually pbs.twimg.com profile_images path. Empty
+   *  when no img found. */
+  avatar: string;
+}
+
 interface XSourceCapture {
   source: 'x';
   capturedAt: string;
@@ -46,6 +76,10 @@ interface XSourceCapture {
   authorHandle: string;
   authorName: string;
   authorAvatar: string;
+  /** Whether the source-tweet author shows the blue/verified badge on
+   *  X. Captured by the scraper and propagated through to the desktop
+   *  so embedded quote cards can render the checkmark. */
+  authorVerified: boolean;
   content: string;
   timestamp: string;
   metrics: {
@@ -64,6 +98,10 @@ interface XSourceCapture {
   apiEnriched: boolean;
   apiError?: string;
   promoted: boolean;
+  /** Currently logged-in X account viewing the page. Captured at the
+   *  moment the share menu opens so the desktop knows whose voice to
+   *  draft in / which account will receive the publish. */
+  viewer: XViewerCapture;
 }
 
 export class XShareMenuInjector {
@@ -108,7 +146,12 @@ export class XShareMenuInjector {
       if (!(menu instanceof HTMLElement)) continue;
       if (menu.querySelector(`[${INJECTED_ATTR}="true"]`)) continue;
       if (!this.looksLikeShareMenu(menu)) continue;
-      this.injectMenuItem(menu, capture);
+      // Two items: Quote first (drafts a tweet that embeds the original),
+      // Remix second (rewrites the source as a fresh standalone tweet).
+      // Order matters — Quote is the lower-commitment action that users
+      // reach for first when they want to react vs. fully repurpose.
+      this.injectMenuItem(menu, capture, 'quote');
+      this.injectMenuItem(menu, capture, 'remix');
     }
   }
 
@@ -123,20 +166,39 @@ export class XShareMenuInjector {
     );
   }
 
-  private injectMenuItem(menu: HTMLElement, capture: XSourceCapture): void {
+  private injectMenuItem(menu: HTMLElement, capture: XSourceCapture, intent: BnbotIntent): void {
     const dropdown = menu.querySelector('[data-testid="Dropdown"]') || menu.firstElementChild || menu;
     const firstItem = dropdown.querySelector('[role="menuitem"]') as HTMLElement | null;
     if (!firstItem) return;
+    // When injecting the 2nd item (remix), `firstItem` is still X's own
+    // "Copy link" — we want our new item placed AFTER any already-injected
+    // BNBot items so the visual order matches the inject sequence
+    // (Quote first, Remix second).
+    let anchor: HTMLElement = firstItem;
+    let sibling: Element | null = firstItem.nextElementSibling;
+    while (sibling) {
+      if (sibling instanceof HTMLElement && sibling.getAttribute(INJECTED_ATTR) === 'true') {
+        anchor = sibling;
+        sibling = sibling.nextElementSibling;
+        continue;
+      }
+      break;
+    }
 
     const item = firstItem.cloneNode(true) as HTMLElement;
     item.setAttribute(INJECTED_ATTR, 'true');
     item.classList.add('bnbot-share-menu-item');
+    item.classList.add(`bnbot-share-menu-item-${intent}`);
     item.setAttribute('role', 'menuitem');
     item.setAttribute('tabindex', '0');
     item.removeAttribute('data-testid');
     const locale = this.detectMenuLocale(menu);
     item.dataset.bnbotLocale = locale;
-    item.setAttribute('aria-label', locale === 'en' ? MENU_LABEL_EN : MENU_LABEL);
+    item.dataset.bnbotIntent = intent;
+    item.setAttribute(
+      'aria-label',
+      locale === 'en' ? MENU_LABELS[intent].en : MENU_LABELS[intent].zh,
+    );
 
     this.setMenuItemState(item, 'idle');
 
@@ -147,13 +209,21 @@ export class XShareMenuInjector {
       this.setMenuItemState(item, 'sending');
       try {
         const payload = await this.enrichWithTweetDetail(capture);
-        chrome.runtime.sendMessage(
-          { type: 'BNBOT_SOURCE_CAPTURE', payload },
+        const runtime = getChromeRuntime();
+        if (!runtime) {
+          sending = false;
+          this.setMenuItemState(item, 'idle');
+          this.showNotice('扩展连接已断开，请刷新 X 页面后重试', 'error');
+          return;
+        }
+        runtime.sendMessage(
+          { type: 'BNBOT_SOURCE_CAPTURE', payload: { ...payload, intent } },
           (response: { ok?: boolean; error?: string } | undefined) => {
-            if (chrome.runtime?.lastError) {
+            const lastError = runtime.lastError;
+            if (lastError) {
               sending = false;
               this.setMenuItemState(item, 'idle');
-              this.showNotice(this.normalizeSendError(chrome.runtime.lastError.message), 'error');
+              this.showNotice(this.normalizeSendError(lastError.message), 'error');
               return;
             }
             if (response?.ok) {
@@ -185,7 +255,7 @@ export class XShareMenuInjector {
       void send();
     });
 
-    firstItem.parentElement?.insertBefore(item, firstItem.nextSibling);
+    anchor.parentElement?.insertBefore(item, anchor.nextSibling);
   }
 
   private ensureStyles(): void {
@@ -248,11 +318,13 @@ export class XShareMenuInjector {
 
     const label = item.querySelector('span');
     const locale = item.dataset.bnbotLocale === 'en' ? 'en' : 'zh';
+    const intent: BnbotIntent = item.dataset.bnbotIntent === 'remix' ? 'remix' : 'quote';
+    const idleText = locale === 'en' ? MENU_LABELS[intent].en : MENU_LABELS[intent].zh;
     const text =
       state === 'sending' ? (locale === 'en' ? 'Sending...' : '发送中...')
         : state === 'done' ? (locale === 'en' ? 'Sent' : '发送成功')
           : state === 'error' ? message || '发送失败'
-            : locale === 'en' ? MENU_LABEL_EN : MENU_LABEL;
+            : idleText;
     if (label) label.textContent = text;
     else item.textContent = text;
 
@@ -270,7 +342,19 @@ export class XShareMenuInjector {
       svg.innerHTML = '<g><path d="M12 4v9" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"></path><path d="M12 19h.01" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"></path></g>';
       return;
     }
-    svg.innerHTML = '<g><path d="M12 3l1.75 4.35L18 9l-4.25 1.65L12 15l-1.75-4.35L6 9l4.25-1.65L12 3zm6.6 11.2l.85 2.05L21.5 17l-2.05.75-.85 2.05-.85-2.05L15.7 17l2.05-.75.85-2.05zM5.4 14.2l.85 2.05L8.3 17l-2.05.75-.85 2.05-.85-2.05L2.5 17l2.05-.75.85-2.05z"></path></g>';
+    // Idle icons lifted verbatim from X's own repost dropdown so the
+    // two BNBot rows render pixel-identical to the native 引用 / 转帖
+    // items. Don't simplify these paths — the curve commands match X's
+    // exported SVG character-for-character.
+    if (intent === 'quote') {
+      svg.innerHTML = '<g><path clip-rule="evenodd" d="M13.543 4.04275C15.3142 2.27164 18.1858 2.27164 19.957 4.04275C21.7282 5.81396 21.7282 8.68558 19.957 10.4568L11.2314 19.1834C10.4044 20.0104 9.31319 20.5208 8.14844 20.6267L2.89551 21.1043L3.37305 15.8513C3.47901 14.6866 3.99039 13.5953 4.81738 12.7683L13.543 4.04275ZM6.23145 14.1824C5.73525 14.6786 5.42881 15.3341 5.36523 16.033L5.10449 18.8943L7.9668 18.6346C8.66565 18.571 9.32019 18.2645 9.81641 17.7683L16.585 10.9988L13 7.41385L6.23145 14.1824ZM18.543 5.45682C17.5528 4.46675 15.9472 4.46675 14.957 5.45682L14.4141 5.99979L17.999 9.58475L18.543 9.04275C19.5331 8.05257 19.5331 6.44698 18.543 5.45682Z" fill-rule="evenodd"></path><path d="M21 20.9998H12.207C12.3582 20.8723 12.5047 20.7382 12.6455 20.5974L14.2432 18.9998H21V20.9998Z"></path></g>';
+      return;
+    }
+    // Remix = AI rewrite, not retweet. Sparkles is the established "AI
+    // generation" glyph across X (Grok), Anthropic, Apple Intelligence
+    // etc. — using X's retweet arrows here would falsely suggest
+    // "repost", which is exactly what AI Remix is NOT.
+    svg.innerHTML = '<g><path d="M9 2.5l1.85 4.65L15.5 9l-4.65 1.85L9 15.5l-1.85-4.65L2.5 9l4.65-1.85L9 2.5zm9 9l1.1 2.4 2.4 1.1-2.4 1.1-1.1 2.4-1.1-2.4-2.4-1.1 2.4-1.1L18 11.5zm-3.5-1l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6.6-1.5z" fill="currentColor"></path></g>';
   }
 
   private normalizeSendError(message?: string): string {
@@ -318,6 +402,7 @@ export class XShareMenuInjector {
       authorHandle: scraped?.authorHandle || '',
       authorName: scraped?.authorName || '',
       authorAvatar: scraped?.authorAvatar || '',
+      authorVerified: Boolean(scraped?.authorVerified),
       content: scraped?.content || article.querySelector('[data-testid="tweetText"]')?.textContent?.trim() || '',
       timestamp: scraped?.timestamp || new Date().toISOString(),
       metrics: scraped?.metrics || { replies: 0, retweets: 0, likes: 0, views: 0 },
@@ -330,7 +415,41 @@ export class XShareMenuInjector {
       visibleText: this.compactText(article.textContent || ''),
       apiEnriched: false,
       promoted: /promoted|广告|推广/i.test(socialContext) || /promoted|广告|推广/i.test(fullText.slice(0, 160)),
+      viewer: this.captureCurrentUser(),
     };
+  }
+
+  /** Read the currently logged-in X user from the SideNav account
+   *  switcher. Mirrors TimelineScroller.resolveCurrentUser but also
+   *  picks up display name + avatar so the desktop has the full
+   *  identity (not just @handle). Falls back to a profile-link probe
+   *  when the SideNav isn't mounted (e.g. mobile breakpoint). */
+  private captureCurrentUser(): XViewerCapture {
+    const empty: XViewerCapture = { handle: '', name: '', avatar: '' };
+    const switcher = document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
+    if (switcher instanceof HTMLElement) {
+      const text = switcher.textContent || '';
+      const handleMatch = text.match(/@([A-Za-z0-9_]+)/);
+      const handle = handleMatch ? handleMatch[1].toLowerCase() : '';
+      // Display name = textContent with the @handle suffix peeled off.
+      const name = handleMatch
+        ? text.slice(0, handleMatch.index ?? text.length).trim()
+        : text.trim();
+      const avatarImg = switcher.querySelector('img');
+      const avatar = avatarImg instanceof HTMLImageElement ? avatarImg.src : '';
+      if (handle || name) return { handle, name, avatar };
+    }
+    // Fallback: profile link in the side nav. Provides handle from the
+    // href and avatar from the nested img, but no name.
+    const profileLink = document.querySelector('[data-testid="AppTabBar_Profile_Link"]');
+    if (profileLink instanceof HTMLAnchorElement) {
+      const href = profileLink.getAttribute('href') || '';
+      const handle = href.startsWith('/') ? href.slice(1).split('/')[0].toLowerCase() : '';
+      const avatarImg = profileLink.querySelector('img');
+      const avatar = avatarImg instanceof HTMLImageElement ? avatarImg.src : '';
+      if (handle) return { handle, name: '', avatar };
+    }
+    return empty;
   }
 
   private async enrichWithTweetDetail(capture: XSourceCapture): Promise<XSourceCapture> {
@@ -346,6 +465,12 @@ export class XShareMenuInjector {
         authorHandle: main.author.handle || capture.authorHandle,
         authorName: main.author.name || capture.authorName,
         authorAvatar: main.author.avatar || capture.authorAvatar,
+        // Trust the API's verified flag when present — it's authoritative
+        // (GraphQL `is_blue_verified` / `verification.verified`). Fall
+        // back to the DOM-scraped flag otherwise.
+        authorVerified: typeof main.author.verified === 'boolean'
+          ? main.author.verified
+          : capture.authorVerified,
         content: main.text || capture.content,
         timestamp: main.createdAt || capture.timestamp,
         metrics: {

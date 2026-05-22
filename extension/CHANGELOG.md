@@ -3,6 +3,22 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.12.10] - 2026-05-19
+
+### Fixed
+- **X 分享菜单发送稳定性**：content script 里 `chrome.runtime` 不可用或扩展上下文失效时，不再抛 `Cannot read properties of undefined (reading 'sendMessage')`；菜单会恢复可点击状态并提示用户刷新 X 页面。
+- **X 分享菜单成功文案**：发送完成后显示“发送成功”/`Sent`，不再显示“已发送到 BNBot”。
+
+
+## [0.12.9] - 2026-05-19
+
+### Fixed
+- **CSP 拦本地 bridge**：`@crxjs/vite-plugin` 打包时会把 `content_security_policy.connect-src` 里的 `ws://localhost:*` / `http://localhost:*` 剥掉（manifest 源文件里有但 dist 里没有）。代码侧 `localRelayManager` 用的是 `ws://localhost:18900`、`background.ts` 的 source-capture 用的是 `http://localhost:27421/api/remix-jobs`，全部被 CSP 拦掉。把这两处 URL 换成 `127.0.0.1`（dist CSP 一直放行 `ws://127.0.0.1:*` / `http://127.0.0.1:*`），CLI bridge + Remix 抓源链路恢复。
+
+### Changed
+- **本地 relay 自动重连有上限**：从未连上过 daemon 时最多重试 5 次（约 75 秒），到上限就停手，等用户点 popup 的"重连"按钮再试。**连过一次之后**保持原来的无限指数退避重连，daemon 重启时可自愈。这条改动是为了减少 daemon 未启动情况下 Chrome 引擎层在 chrome://extensions Errors 面板里堆积的 `WebSocket connection failed` 红字 — 该红字是浏览器协议层日志，JS 无法抑制，只能通过控制尝试次数减少。普通用户开发者模式默认关闭，看不到此面板。
+
+
 ## [0.12.8] - 2026-05-18
 
 ### Removed

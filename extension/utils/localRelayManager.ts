@@ -12,6 +12,15 @@ const DEFAULT_LOCAL_WS_PORT = 18900;
 const HEARTBEAT_INTERVAL = 30000; // 30s
 const MIN_RECONNECT_DELAY = 3000; // 3s
 const MAX_RECONNECT_DELAY = 30000; // 30s
+// Cap on auto-reconnect attempts *before* the first successful connect.
+// After that many failures we stop retrying and wait for the user to click
+// "Reconnect" in the popup. This caps the count of Chrome's protocol-level
+// "WebSocket connection failed" errors in the chrome://extensions Errors
+// panel — those are emitted by the browser engine itself and can't be
+// suppressed from JS, so the only knob is "stop trying". Once we *have*
+// connected successfully, the cap is lifted and we keep auto-reconnecting
+// indefinitely so the daemon can restart without user action.
+const MAX_RECONNECT_BEFORE_SUCCESS = 5;
 
 export interface LocalRelayCallbacks {
   /** Forward action message to content script for execution */
@@ -65,6 +74,7 @@ class LocalRelayManager {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectAttempts: number = 0;
+  private hasConnectedOnce: boolean = false;
 
   /**
    * Initialize the local relay manager with callbacks
@@ -105,7 +115,7 @@ class LocalRelayManager {
       return;
     }
 
-    const url = `ws://localhost:${this.port}`;
+    const url = `ws://127.0.0.1:${this.port}`;
     console.log(`[LocalRelay] Connecting to ${url}...`);
 
     try {
@@ -114,6 +124,7 @@ class LocalRelayManager {
       this.ws.onopen = () => {
         console.log('[LocalRelay] Connected');
         this.connected = true;
+        this.hasConnectedOnce = true;
         this.reconnectAttempts = 0;
         this.callbacks?.onConnectionChange?.(true);
         this.startHeartbeat();
@@ -246,10 +257,21 @@ class LocalRelayManager {
   }
 
   /**
-   * Schedule reconnection with exponential backoff
+   * Schedule reconnection with exponential backoff.
+   * Before the first successful connect we cap retries at
+   * MAX_RECONNECT_BEFORE_SUCCESS — after that, give up and wait for the
+   * user to click "Reconnect" in the popup. Once we *have* succeeded
+   * once, keep retrying forever so daemon restarts heal automatically.
    */
   private scheduleReconnect(): void {
     if (!this.enabled) return;
+
+    if (!this.hasConnectedOnce && this.reconnectAttempts >= MAX_RECONNECT_BEFORE_SUCCESS) {
+      console.log(
+        `[LocalRelay] Gave up after ${this.reconnectAttempts} attempts — click Reconnect in the popup once bnbot serve is running`
+      );
+      return;
+    }
 
     this.clearReconnectTimer();
 
