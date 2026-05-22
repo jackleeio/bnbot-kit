@@ -174,7 +174,6 @@ export {
   getDouyinUserFollowers,
   getDouyinUserFollowing,
   getDouyinPostComments,
-  getDouyinPostCommentReplies,
   searchDouyinGeneral,
   searchDouyinVideo,
   searchDouyinAccount,

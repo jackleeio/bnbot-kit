@@ -71,7 +71,7 @@ import {
   // Douyin (Wave 1)
   douyinUserInfoCommand, douyinUserPostsCommand, douyinUserLikedCommand,
   douyinUserFollowersCommand, douyinUserFollowingCommand,
-  douyinPostCommentsCommand, douyinPostCommentRepliesCommand,
+  douyinPostCommentsCommand,
   douyinSearchGeneralCommand, douyinSearchVideoCommand,
   douyinSearchAccountCommand, douyinSearchLiveCommand,
   douyinChallengePostsCommand, douyinMusicPostsCommand,
@@ -1109,10 +1109,6 @@ function buildProgram(): Command {
     .option('-l, --limit <n>', 'Max results', '50')
     .option('--cursor <c>', 'Pagination cursor')
     .action(douyinPostCommentsCommand);
-  douyin.command('post-comment-replies <url-or-id> <commentId>').description('Fetch replies to a comment')
-    .option('-l, --limit <n>', 'Max results', '50')
-    .option('--cursor <c>', 'Pagination cursor')
-    .action(douyinPostCommentRepliesCommand);
   douyin.command('search-general <query>').description('Mixed Douyin search (videos+users)')
     .option('-l, --limit <n>', 'Max results', '20')
     .option('--offset <n>', 'Pagination offset', '0')

@@ -141,18 +141,6 @@ export async function douyinPostCommentsCommand(
   });
 }
 
-export async function douyinPostCommentRepliesCommand(
-  video: string,
-  commentId: string,
-  options: { limit?: string; cursor?: string } = {},
-) {
-  await scrape('SCRAPER_FETCH_DY_POST_COMMENT_REPLIES', {
-    video,
-    commentId,
-    cursor: options.cursor || '',
-    limit: parseInt(options.limit || '50', 10),
-  });
-}
 
 export async function douyinSearchGeneralCommand(
   query: string,
