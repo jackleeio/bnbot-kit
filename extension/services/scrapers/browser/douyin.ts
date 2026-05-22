@@ -1202,17 +1202,36 @@ export async function getDouyinChallengePosts(
   const offset = options.offset || '0';
   const limit = Math.min(Math.max(options.limit || 20, 1), 50);
 
-  // Hashtag page loads the signed-fetch wrapper for challenge_aweme.
-  const tabId = await getTab('https://www.douyin.com/hashtag/' + encodeURIComponent(ch));
+  // Use homepage context for the challenge endpoints — both
+  // /challenge/search and /challenge/aweme work from /jingxuan.
+  const tabId = await getTab('https://www.douyin.com/');
   await checkLoginRedirect(tabId, 'Douyin');
-  await new Promise((r) => setTimeout(r, 2000));
+  await new Promise((r) => setTimeout(r, 1500));
 
-  const result = await executeInPage(tabId, async (chId: string, off: string, lim: number) => {
+  const result = await executeInPage(tabId, async (chOrId: string, off: string, lim: number) => {
     try {
+      // Step 1: resolve cid. If input is a 15-19 digit numeric string,
+      // treat as ch_id directly. Otherwise call /challenge/search to
+      // map text → cid.
+      let cid = chOrId;
+      if (!/^\d{15,19}$/.test(chOrId)) {
+        const searchUrl =
+          '/aweme/v1/web/challenge/search/' +
+          '?device_platform=webapp&aid=6383&channel=channel_pc_web' +
+          '&keyword=' + encodeURIComponent(chOrId) +
+          '&cursor=0&count=3';
+        const sres = await fetch(searchUrl, { credentials: 'include' });
+        if (!sres.ok) return { error: 'douyin challenge-search failed: HTTP ' + sres.status };
+        const sj: any = await sres.json().catch(() => null);
+        const first = sj?.challenge_list?.[0];
+        cid = first?.cid || first?.challenge_info?.cid || '';
+        if (!cid) return { error: 'douyin-challenge-not-found: no challenge matched "' + chOrId + '"' };
+      }
+
       const apiUrl =
         '/aweme/v1/web/challenge/aweme/' +
         '?device_platform=webapp&aid=6383&channel=channel_pc_web' +
-        '&ch_id=' + encodeURIComponent(chId) +
+        '&ch_id=' + encodeURIComponent(cid) +
         '&offset=' + encodeURIComponent(off) +
         '&count=' + lim +
         '&type=5';
