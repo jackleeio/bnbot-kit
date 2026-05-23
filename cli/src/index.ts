@@ -122,6 +122,12 @@ import {
   instagramSearchCommand, instagramExploreCommand,
   linuxdoSearchCommand, jikeSearchCommand,
   xiaohongshuSearchCommand,
+  xhsCreatorHotInspirationFeedCommand, xhsProductRecommendationsCommand,
+  xhsTopicInfoCommand, xhsNoteCommentsCommand, xhsSearchGroupsCommand,
+  xhsProductReviewsCommand, xhsTopicFeedCommand, xhsMixedNoteDetailCommand,
+  xhsSearchNotesCommand, xhsProductDetailCommand, xhsProductReviewOverviewCommand,
+  xhsCreatorInspirationFeedCommand, xhsImageNoteDetailCommand, xhsSearchUsersCommand,
+  xhsSearchImagesCommand, xhsSearchProductsCommand, xhsUserFavedNotesCommand,
   weiboSearchCommand, weiboHotCommand,
   doubanSearchCommand, doubanMovieHotCommand, doubanBookHotCommand, doubanTop250Command,
   mediumSearchCommand,
@@ -1307,6 +1313,23 @@ function buildProgram(): Command {
 
   const xiaohongshu = program.command('xiaohongshu').description('Xiaohongshu');
   xiaohongshu.command('search <query>').description('Search Xiaohongshu notes').option('-l, --limit <n>', 'Max results', '10').action(xiaohongshuSearchCommand);
+  xiaohongshu.command('creator-hot-inspiration-feed').description('XHS creator hot inspiration feed').action(xhsCreatorHotInspirationFeedCommand);
+  xiaohongshu.command('product-recommendations').description('XHS product recommendations').option('--region <region>').option('--sku-id <id>').action(xhsProductRecommendationsCommand);
+  xiaohongshu.command('topic-info').description('XHS topic info').option('--source <source>').option('--page-id <id>').action(xhsTopicInfoCommand);
+  xiaohongshu.command('note-comments').description('XHS note comments').option('--index <n>', 'Page index', '1').option('--cursor <cursor>').option('--note-id <id>').option('--share-text <text>').option('--sort-strategy <s>').option('-l, --limit <n>', 'Max comments', '20').action(xhsNoteCommentsCommand);
+  xiaohongshu.command('search-groups <keyword>').description('XHS search groups').option('--source <source>').option('--search-id <id>').action(xhsSearchGroupsCommand);
+  xiaohongshu.command('product-reviews').description('XHS product reviews').option('--sku-id <id>').option('--from-page <page>').action(xhsProductReviewsCommand);
+  xiaohongshu.command('topic-feed').description('XHS topic feed').option('--sort <sort>').option('--source <source>').option('--page-id <id>').action(xhsTopicFeedCommand);
+  xiaohongshu.command('mixed-note-detail').description('XHS mixed note detail').option('--note-id <id>').option('--share-text <text>').action(xhsMixedNoteDetailCommand);
+  xiaohongshu.command('search-notes <keyword>').description('XHS search notes').option('--page <n>', 'Page', '1').option('--source <source>').option('--note-type <type>').option('--sort-type <type>').option('--time-filter <filter>').option('-l, --limit <n>', 'Max results', '20').action(xhsSearchNotesCommand);
+  xiaohongshu.command('product-detail').description('XHS product detail').option('--sku-id <id>').option('--source <source>').option('--pre-page <page>').action(xhsProductDetailCommand);
+  xiaohongshu.command('product-review-overview').description('XHS product review overview').option('--tab <tab>').option('--sku-id <id>').action(xhsProductReviewOverviewCommand);
+  xiaohongshu.command('creator-inspiration-feed').description('XHS creator inspiration feed').option('--source <source>').action(xhsCreatorInspirationFeedCommand);
+  xiaohongshu.command('image-note-detail').description('XHS image note detail').option('--note-id <id>').option('--share-text <text>').action(xhsImageNoteDetailCommand);
+  xiaohongshu.command('search-users <keyword>').description('XHS search users').option('--page <n>', 'Page', '1').option('--source <source>').action(xhsSearchUsersCommand);
+  xiaohongshu.command('search-images <keyword>').description('XHS search images').option('--page <n>', 'Page', '1').option('--source <source>').option('-l, --limit <n>', 'Max results', '20').action(xhsSearchImagesCommand);
+  xiaohongshu.command('search-products <keyword>').description('XHS search products').option('--page <n>', 'Page', '1').option('--source <source>').action(xhsSearchProductsCommand);
+  xiaohongshu.command('user-faved-notes').description('XHS user faved notes').action(xhsUserFavedNotesCommand);
   // xiaohongshu.command('fetch') removed — fetch_xiaohongshu_note orphan
   // was the abandoned republish flow; extension no longer hosts the handler.
 

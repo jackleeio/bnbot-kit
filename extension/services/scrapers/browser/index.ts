@@ -74,6 +74,26 @@ export type { JikeResult } from './jike';
 
 export { searchXiaohongshu } from './xiaohongshu-search';
 export type { XiaohongshuSearchResult } from './xiaohongshu-search';
+export {
+  xhsGetCreatorHotInspirationFeed,
+  xhsGetProductRecommendations,
+  xhsGetTopicInfo,
+  xhsGetNoteComments,
+  xhsSearchGroups,
+  xhsGetProductReviews,
+  xhsGetTopicFeed,
+  xhsGetMixedNoteDetail,
+  xhsSearchNotes,
+  xhsGetProductDetail,
+  xhsGetProductReviewOverview,
+  xhsGetCreatorInspirationFeed,
+  xhsGetImageNoteDetail,
+  xhsSearchUsers,
+  xhsSearchImages,
+  xhsSearchProducts,
+  xhsGetUserFavedNotes,
+} from './xiaohongshu-app-v2';
+export type { XiaohongshuEnvelope, XiaohongshuNoteDetail, XiaohongshuComment } from './xiaohongshu-app-v2';
 
 export { searchWeibo, fetchWeiboHot } from './weibo';
 export type { WeiboSearchResult, WeiboHotResult } from './weibo';

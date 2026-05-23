@@ -1047,6 +1047,94 @@ export async function xiaohongshuSearchCommand(query: string, options: { limit?:
   await scrape('SCRAPER_SEARCH_XIAOHONGSHU', { query, limit: parseInt(options.limit || '10', 10) });
 }
 
+export async function xhsCreatorHotInspirationFeedCommand() {
+  await scrape('SCRAPER_FETCH_XHS_CREATOR_HOT_INSPIRATION_FEED', {});
+}
+
+export async function xhsProductRecommendationsCommand(options: { region?: string; skuId?: string } = {}) {
+  await scrape('SCRAPER_FETCH_XHS_PRODUCT_RECOMMENDATIONS', { region: options.region, sku_id: options.skuId });
+}
+
+export async function xhsTopicInfoCommand(options: { source?: string; pageId?: string } = {}) {
+  await scrape('SCRAPER_FETCH_XHS_TOPIC_INFO', { source: options.source, page_id: options.pageId });
+}
+
+export async function xhsNoteCommentsCommand(options: { index?: string; cursor?: string; noteId?: string; shareText?: string; sortStrategy?: string; limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_XHS_NOTE_COMMENTS', {
+    index: parseInt(options.index || '1', 10),
+    cursor: options.cursor || '',
+    note_id: options.noteId || '',
+    share_text: options.shareText || '',
+    sort_strategy: options.sortStrategy || '',
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function xhsSearchGroupsCommand(keyword: string, options: { source?: string; searchId?: string } = {}) {
+  await scrape('SCRAPER_SEARCH_XHS_GROUPS', { keyword, source: options.source, search_id: options.searchId });
+}
+
+export async function xhsProductReviewsCommand(options: { skuId?: string; fromPage?: string } = {}) {
+  await scrape('SCRAPER_FETCH_XHS_PRODUCT_REVIEWS', { sku_id: options.skuId, from_page: options.fromPage });
+}
+
+export async function xhsTopicFeedCommand(options: { sort?: string; source?: string; pageId?: string } = {}) {
+  await scrape('SCRAPER_FETCH_XHS_TOPIC_FEED', { sort: options.sort, source: options.source, page_id: options.pageId });
+}
+
+export async function xhsMixedNoteDetailCommand(options: { noteId?: string; shareText?: string } = {}) {
+  await scrape('SCRAPER_FETCH_XHS_MIXED_NOTE_DETAIL', { note_id: options.noteId, share_text: options.shareText });
+}
+
+export async function xhsSearchNotesCommand(keyword: string, options: { page?: string; source?: string; noteType?: string; sortType?: string; timeFilter?: string; limit?: string } = {}) {
+  await scrape('SCRAPER_SEARCH_XHS_NOTES', {
+    keyword,
+    page: parseInt(options.page || '1', 10),
+    source: options.source || 'explore_feed',
+    note_type: options.noteType,
+    sort_type: options.sortType,
+    time_filter: options.timeFilter,
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function xhsProductDetailCommand(options: { skuId?: string; source?: string; prePage?: string } = {}) {
+  await scrape('SCRAPER_FETCH_XHS_PRODUCT_DETAIL', { sku_id: options.skuId, source: options.source, pre_page: options.prePage });
+}
+
+export async function xhsProductReviewOverviewCommand(options: { tab?: string; skuId?: string } = {}) {
+  await scrape('SCRAPER_FETCH_XHS_PRODUCT_REVIEW_OVERVIEW', { tab: options.tab, sku_id: options.skuId });
+}
+
+export async function xhsCreatorInspirationFeedCommand(options: { source?: string } = {}) {
+  await scrape('SCRAPER_FETCH_XHS_CREATOR_INSPIRATION_FEED', { source: options.source });
+}
+
+export async function xhsImageNoteDetailCommand(options: { noteId?: string; shareText?: string } = {}) {
+  await scrape('SCRAPER_FETCH_XHS_IMAGE_NOTE_DETAIL', { note_id: options.noteId, share_text: options.shareText });
+}
+
+export async function xhsSearchUsersCommand(keyword: string, options: { page?: string; source?: string } = {}) {
+  await scrape('SCRAPER_SEARCH_XHS_USERS', { keyword, page: parseInt(options.page || '1', 10), source: options.source });
+}
+
+export async function xhsSearchImagesCommand(keyword: string, options: { page?: string; source?: string; limit?: string } = {}) {
+  await scrape('SCRAPER_SEARCH_XHS_IMAGES', {
+    keyword,
+    page: parseInt(options.page || '1', 10),
+    source: options.source,
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function xhsSearchProductsCommand(keyword: string, options: { page?: string; source?: string } = {}) {
+  await scrape('SCRAPER_SEARCH_XHS_PRODUCTS', { keyword, page: parseInt(options.page || '1', 10), source: options.source });
+}
+
+export async function xhsUserFavedNotesCommand() {
+  await scrape('SCRAPER_FETCH_XHS_USER_FAVED_NOTES', {});
+}
+
 // ── Weibo ────────────────────────────────────────────────────
 
 export async function weiboSearchCommand(query: string, options: { limit?: string }) {
