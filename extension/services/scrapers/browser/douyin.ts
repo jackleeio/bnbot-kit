@@ -1113,17 +1113,24 @@ export async function searchDouyinLive(
       const num = (x: any): number => (typeof x === 'number' ? x : (typeof x === 'string' ? (parseInt(x, 10) || 0) : 0));
 
       const items = list.map((entry: any) => {
-        // Live search envelope: { type, lives: { aweme_id, author, room_id?, ... } }
-        const room = entry.lives || entry.room_info || entry.room || entry.live_room || entry;
-        const owner = room?.author || room?.owner || room?.host || entry?.user || {};
+        // Live search envelope: { type, lives: { aweme_id, author, rawdata: '<json>', ... } }
+        // Title + user_count live inside `lives.rawdata` (JSON-stringified room object).
+        const lives = entry.lives || entry.room_info || entry.room || entry.live_room || entry;
+        let raw: any = null;
+        if (typeof lives?.rawdata === 'string') {
+          try { raw = JSON.parse(lives.rawdata); } catch {}
+        } else if (lives?.rawdata && typeof lives.rawdata === 'object') {
+          raw = lives.rawdata;
+        }
+        const owner = raw?.owner || lives?.author || lives?.owner || lives?.host || {};
         const avatar = owner.avatar_thumb?.url_list?.[0]
           || owner.avatar_medium?.url_list?.[0]
           || owner.avatar_larger?.url_list?.[0]
           || '';
         return {
-          roomId: String(room?.room_id_str || room?.room_id || room?.aweme_id || room?.id || ''),
-          title: room?.title || room?.room_title || room?.desc || '',
-          viewerCount: num(room?.user_count ?? room?.total_user ?? room?.viewer_count),
+          roomId: String(raw?.id_str || lives?.room_id_str || lives?.room_id || lives?.aweme_id || ''),
+          title: raw?.title || lives?.title || '',
+          viewerCount: num(raw?.user_count ?? raw?.stats?.total_user ?? lives?.user_count),
           host: {
             username: owner.unique_id || owner.short_id || '',
             nickname: owner.nickname || '',
@@ -1132,20 +1139,11 @@ export async function searchDouyinLive(
         };
       }).filter((l: any) => l.roomId);
 
-      const out: any = {
+      return {
         items,
         cursor: data.cursor != null ? String(data.cursor) : (data.offset != null ? String(data.offset) : ''),
         has_more: Boolean(data.has_more),
       };
-      if (list.length > 0) {
-        const first = list[0];
-        const rawStr = first?.lives?.rawdata;
-        let raw: any = null;
-        try { raw = typeof rawStr === 'string' ? JSON.parse(rawStr) : rawStr; } catch {}
-        out._debug_rawdata_keys = raw ? Object.keys(raw) : null;
-        out._debug_rawdata_sample = JSON.stringify(raw, null, 0).slice(0, 3500);
-      }
-      return out;
     } catch (e: any) {
       return { error: e?.message || 'douyin live-search scraper failed' };
     }
