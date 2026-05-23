@@ -44,6 +44,37 @@ import {
   executeInPage,
 } from '../../scraperService';
 
+/**
+ * Temporarily un-minimize the scraper window for the duration of a
+ * call. Douyin's search endpoints return empty `items: []` when the
+ * scraper tab is `document.visibilityState === 'hidden'`. Bringing
+ * the window to `state: 'normal'` makes the tab visible enough to
+ * pass that check. Returns a cleanup function that restores the
+ * previous window state (idempotent — safe to call even if no
+ * restore was needed).
+ */
+async function withVisibleScraperWindow(tabId: number): Promise<() => Promise<void>> {
+  let scraperWindowId: number | undefined;
+  let prev: chrome.windows.windowStateEnum | undefined;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    scraperWindowId = tab.windowId;
+    if (scraperWindowId != null) {
+      const win = await chrome.windows.get(scraperWindowId);
+      prev = win.state;
+      if (win.state === 'minimized') {
+        await chrome.windows.update(scraperWindowId, { state: 'normal' });
+        await new Promise((r) => setTimeout(r, 800));
+      }
+    }
+  } catch { /* tolerate */ }
+  return async () => {
+    if (scraperWindowId != null && prev === 'minimized') {
+      try { await chrome.windows.update(scraperWindowId, { state: 'minimized' }); } catch { /* ignore */ }
+    }
+  };
+}
+
 // ─── Shared types ──────────────────────────────────────────────────
 
 export interface DouyinVideo {
@@ -716,6 +747,7 @@ export async function searchDouyinGeneral(
   // the bundle hydrates the wrapper, then call the API.
   const tabId = await getTab('https://www.douyin.com/search/' + encodeURIComponent(kw));
   await checkLoginRedirect(tabId, 'Douyin');
+  const restore = await withVisibleScraperWindow(tabId);
   await new Promise((r) => setTimeout(r, 2000));
 
   const result = await executeInPage(tabId, async (q: string, off: string, lim: number) => {
@@ -815,6 +847,7 @@ export async function searchDouyinGeneral(
     }
   }, [kw, offset, limit]) as DouyinGeneralSearchResult | { error: string };
 
+  await restore();
   if (result && typeof result === 'object' && 'error' in result) {
     throw new Error((result as any).error);
   }
@@ -836,6 +869,7 @@ export async function searchDouyinVideo(
   // wrapper on the /search/* page. Navigate there first.
   const tabId = await getTab('https://www.douyin.com/search/' + encodeURIComponent(kw) + '?type=video');
   await checkLoginRedirect(tabId, 'Douyin');
+  const restore = await withVisibleScraperWindow(tabId);
   await new Promise((r) => setTimeout(r, 2000));
 
   const result = await executeInPage(tabId, async (q: string, off: string, lim: number) => {
@@ -936,6 +970,7 @@ export async function searchDouyinVideo(
     }
   }, [kw, offset, limit]) as DouyinVideoListResult | { error: string };
 
+  await restore();
   if (result && typeof result === 'object' && 'error' in result) {
     throw new Error((result as any).error);
   }
@@ -956,6 +991,7 @@ export async function searchDouyinAccount(
   // Search page = signed-fetch wrapper context (see searchDouyinGeneral).
   const tabId = await getTab('https://www.douyin.com/search/' + encodeURIComponent(kw) + '?type=user');
   await checkLoginRedirect(tabId, 'Douyin');
+  const restore = await withVisibleScraperWindow(tabId);
   await new Promise((r) => setTimeout(r, 2000));
 
   const result = await executeInPage(tabId, async (q: string, cur: string, lim: number) => {
@@ -1019,6 +1055,7 @@ export async function searchDouyinAccount(
     }
   }, [kw, cursor, limit]) as DouyinUserListResult | { error: string };
 
+  await restore();
   if (result && typeof result === 'object' && 'error' in result) {
     throw new Error((result as any).error);
   }
@@ -1039,6 +1076,7 @@ export async function searchDouyinLive(
   // Search page context for signed fetch (see searchDouyinGeneral).
   const tabId = await getTab('https://www.douyin.com/search/' + encodeURIComponent(kw) + '?type=live');
   await checkLoginRedirect(tabId, 'Douyin');
+  const restore = await withVisibleScraperWindow(tabId);
   await new Promise((r) => setTimeout(r, 2000));
 
   const result = await executeInPage(tabId, async (q: string, off: string, lim: number) => {
@@ -1101,6 +1139,7 @@ export async function searchDouyinLive(
     }
   }, [kw, offset, limit]) as DouyinLiveListResult | { error: string };
 
+  await restore();
   if (result && typeof result === 'object' && 'error' in result) {
     throw new Error((result as any).error);
   }
