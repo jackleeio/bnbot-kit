@@ -1132,11 +1132,15 @@ export async function searchDouyinLive(
         };
       }).filter((l: any) => l.roomId);
 
-      return {
+      const out: any = {
         items,
         cursor: data.cursor != null ? String(data.cursor) : (data.offset != null ? String(data.offset) : ''),
         has_more: Boolean(data.has_more),
       };
+      if (list.length > 0) {
+        out._debug_entry = JSON.stringify(list[0], null, 0).slice(0, 4000);
+      }
+      return out;
     } catch (e: any) {
       return { error: e?.message || 'douyin live-search scraper failed' };
     }
