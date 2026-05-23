@@ -1113,14 +1113,16 @@ export async function searchDouyinLive(
       const num = (x: any): number => (typeof x === 'number' ? x : (typeof x === 'string' ? (parseInt(x, 10) || 0) : 0));
 
       const items = list.map((entry: any) => {
-        const room = entry.room_info || entry.room || entry.live_room || entry.lives || entry;
-        const owner = room?.owner || room?.host || entry?.user || entry?.author || {};
+        // Live search envelope: { type, lives: { aweme_id, author, room_id?, ... } }
+        const room = entry.lives || entry.room_info || entry.room || entry.live_room || entry;
+        const owner = room?.author || room?.owner || room?.host || entry?.user || {};
         const avatar = owner.avatar_thumb?.url_list?.[0]
           || owner.avatar_medium?.url_list?.[0]
+          || owner.avatar_larger?.url_list?.[0]
           || '';
         return {
-          roomId: String(room?.room_id_str || room?.room_id || room?.id || ''),
-          title: room?.title || room?.room_title || '',
+          roomId: String(room?.room_id_str || room?.room_id || room?.aweme_id || room?.id || ''),
+          title: room?.title || room?.room_title || room?.desc || '',
           viewerCount: num(room?.user_count ?? room?.total_user ?? room?.viewer_count),
           host: {
             username: owner.unique_id || owner.short_id || '',
@@ -1130,21 +1132,11 @@ export async function searchDouyinLive(
         };
       }).filter((l: any) => l.roomId);
 
-      const out: any = {
+      return {
         items,
         cursor: data.cursor != null ? String(data.cursor) : (data.offset != null ? String(data.offset) : ''),
         has_more: Boolean(data.has_more),
       };
-      if (items.length === 0) {
-        out._debug = {
-          top_keys: Object.keys(data),
-          data_type: Array.isArray(data.data) ? 'array' : typeof data.data,
-          data_len: Array.isArray(data.data) ? data.data.length : null,
-          status_code: data.status_code,
-          sample: JSON.stringify(data).slice(0, 800),
-        };
-      }
-      return out;
     } catch (e: any) {
       return { error: e?.message || 'douyin live-search scraper failed' };
     }
