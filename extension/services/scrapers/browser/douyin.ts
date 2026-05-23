@@ -1107,18 +1107,19 @@ export async function searchDouyinLive(
       }
       const list: any[] = Array.isArray(data.data) ? data.data
         : Array.isArray(data.live_list) ? data.live_list
+        : Array.isArray(data.lives) ? data.lives
         : [];
 
       const num = (x: any): number => (typeof x === 'number' ? x : (typeof x === 'string' ? (parseInt(x, 10) || 0) : 0));
 
       const items = list.map((entry: any) => {
-        const room = entry.room_info || entry.room || entry.live_room || entry;
-        const owner = room?.owner || room?.host || entry?.user || {};
+        const room = entry.room_info || entry.room || entry.live_room || entry.lives || entry;
+        const owner = room?.owner || room?.host || entry?.user || entry?.author || {};
         const avatar = owner.avatar_thumb?.url_list?.[0]
           || owner.avatar_medium?.url_list?.[0]
           || '';
         return {
-          roomId: String(room?.room_id || room?.id || ''),
+          roomId: String(room?.room_id_str || room?.room_id || room?.id || ''),
           title: room?.title || room?.room_title || '',
           viewerCount: num(room?.user_count ?? room?.total_user ?? room?.viewer_count),
           host: {
@@ -1129,11 +1130,21 @@ export async function searchDouyinLive(
         };
       }).filter((l: any) => l.roomId);
 
-      return {
+      const out: any = {
         items,
         cursor: data.cursor != null ? String(data.cursor) : (data.offset != null ? String(data.offset) : ''),
         has_more: Boolean(data.has_more),
       };
+      if (items.length === 0) {
+        out._debug = {
+          top_keys: Object.keys(data),
+          data_type: Array.isArray(data.data) ? 'array' : typeof data.data,
+          data_len: Array.isArray(data.data) ? data.data.length : null,
+          status_code: data.status_code,
+          sample: JSON.stringify(data).slice(0, 800),
+        };
+      }
+      return out;
     } catch (e: any) {
       return { error: e?.message || 'douyin live-search scraper failed' };
     }
