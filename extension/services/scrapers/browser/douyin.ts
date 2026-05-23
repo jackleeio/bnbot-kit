@@ -1138,7 +1138,10 @@ export async function searchDouyinLive(
         has_more: Boolean(data.has_more),
       };
       if (list.length > 0) {
-        out._debug_entry = JSON.stringify(list[0], null, 0).slice(0, 4000);
+        const first = list[0];
+        out._debug_entry_keys = Object.keys(first || {});
+        out._debug_lives_keys = Object.keys(first?.lives || {});
+        out._debug_tail = JSON.stringify(first).slice(-3500);
       }
       return out;
     } catch (e: any) {
