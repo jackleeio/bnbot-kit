@@ -13,3 +13,4 @@ web/.open-next/
 web/.vercel/
 web/.wrangler/
 web/tsconfig.tsbuildinfo
+cli/bnbot-cli-*.tgz
