@@ -11,6 +11,7 @@ import { localRelayManager, LocalActionRequest } from './utils/localRelayManager
 import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, IDLE_BONUS_EXPLORE, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok, ensureDebuggerAttached, debuggerSend, getPoolTabs, openTabInScraperWindow, getTab } from './services/scraperService';
 import { debuggerWriteHandlers } from './services/debugger';
 import { setFileInputFilesViaChooser, setFilesViaBlob, registerEventListener } from './services/debugger/debuggerOps';
+import { getAccountAnalytics as bgAccountAnalytics, getReplyImpressions as bgReplyImpressions } from './utils/BackgroundTwitterClient';
 
 /**
  * Capture a PNG screenshot of an arbitrary Chrome tab via CDP.
@@ -746,6 +747,48 @@ localRelayManager.init({
         });
       }
       return;
+    }
+
+    // X analytics — run entirely in background using chrome.cookies + direct
+    // fetch (no x.com tab needed). Falls through to the legacy content-script
+    // route only if BackgroundTwitterClient throws (e.g. user not logged in,
+    // or cookies permission missing on older installs).
+    if (message.actionType === 'account_analytics') {
+      try {
+        const p = (message.actionPayload ?? {}) as {
+          fromTime: string; toTime: string; granularity?: 'Daily' | 'Weekly' | 'Monthly';
+        };
+        const data = await bgAccountAnalytics({
+          fromTime: p.fromTime, toTime: p.toTime, granularity: p.granularity,
+        });
+        localRelayManager.sendActionResult({
+          type: 'action_result', requestId: message.requestId, success: true, data,
+        });
+        return;
+      } catch (error) {
+        localRelayManager.sendActionResult({
+          type: 'action_result', requestId: message.requestId, success: false,
+          error: error instanceof Error ? error.message : 'account_analytics failed',
+        });
+        return;
+      }
+    }
+
+    if (message.actionType === 'reply_impressions') {
+      try {
+        const p = (message.actionPayload ?? {}) as { fromTime: string; toTime: string };
+        const data = await bgReplyImpressions({ fromTime: p.fromTime, toTime: p.toTime });
+        localRelayManager.sendActionResult({
+          type: 'action_result', requestId: message.requestId, success: true, data,
+        });
+        return;
+      } catch (error) {
+        localRelayManager.sendActionResult({
+          type: 'action_result', requestId: message.requestId, success: false,
+          error: error instanceof Error ? error.message : 'reply_impressions failed',
+        });
+        return;
+      }
     }
 
     // Handle scraper actions directly in background (no content script needed)

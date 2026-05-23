@@ -57,6 +57,17 @@ import {
 } from './commands/actions.js';
 import { screenshotCommand } from './commands/screenshot.js';
 import { downloadCommand } from './commands/download.js';
+import {
+  codexArtifactsCommand,
+  codexAskCommand,
+  codexHistoryCommand,
+  codexImageGenerateCommand,
+  codexModelCommand,
+  codexNewCommand,
+  codexReadCommand,
+  codexSendCommand,
+  codexStatusCommand,
+} from './commands/codex.js';
 import { debugEvalCommand, debugUploadCommand, debugClickCommand, debugShowCommand, debugDragCommand, debugRecordCommand } from './commands/debug.js';
 import { xhsPostCommand, xhsStatsNoteCommand, xhsStatsAccountCommand } from './commands/xhs.js';
 import { wxmpPostCommand } from './commands/wxmp.js';
@@ -123,11 +134,9 @@ import {
   linuxdoSearchCommand, jikeSearchCommand,
   xiaohongshuSearchCommand,
   xhsCreatorHotInspirationFeedCommand, xhsProductRecommendationsCommand,
-  xhsTopicInfoCommand, xhsNoteCommentsCommand, xhsSearchGroupsCommand,
-  xhsProductReviewsCommand, xhsTopicFeedCommand, xhsMixedNoteDetailCommand,
-  xhsSearchNotesCommand, xhsProductDetailCommand, xhsProductReviewOverviewCommand,
-  xhsCreatorInspirationFeedCommand, xhsImageNoteDetailCommand, xhsSearchUsersCommand,
-  xhsSearchImagesCommand, xhsSearchProductsCommand, xhsUserFavedNotesCommand,
+  xhsNoteCommentsCommand, xhsSearchGroupsCommand, xhsMixedNoteDetailCommand,
+  xhsSearchNotesCommand, xhsProductDetailCommand,
+  xhsCreatorInspirationFeedCommand, xhsImageNoteDetailCommand,
   weiboSearchCommand, weiboHotCommand,
   doubanSearchCommand, doubanMovieHotCommand, doubanBookHotCommand, doubanTop250Command,
   mediumSearchCommand,
@@ -248,6 +257,109 @@ function buildProgram(): Command {
     .command('status')
     .description('Check extension connection status')
     .action(statusCommand);
+
+  // ── Codex Desktop (local Electron/CDP bridge) ─────────
+  const codex = program
+    .command('codex')
+    .description('Control Codex Desktop through a local CDP bridge');
+
+  codex
+    .command('status')
+    .description('Check Codex Desktop CDP status')
+    .option('--port <port>', 'Codex remote debugging port', '9238')
+    .option('--endpoint <url>', 'CDP endpoint override (http://127.0.0.1:9238 or ws://...)')
+    .option('--launch', 'Launch Codex with CDP if it is not already reachable')
+    .action(codexStatusCommand);
+
+  codex
+    .command('send <text>')
+    .description('Send text to the current Codex Desktop conversation. Use "-" to read stdin.')
+    .option('--port <port>', 'Codex remote debugging port', '9238')
+    .option('--endpoint <url>', 'CDP endpoint override (http://127.0.0.1:9238 or ws://...)')
+    .option('--no-launch', 'Do not auto-launch Codex when CDP is not reachable')
+    .option('--restart', 'Quit/relaunch Codex if it is already running without CDP')
+    .action(codexSendCommand);
+
+  codex
+    .command('ask <text>')
+    .description('Send a prompt to Codex Desktop and wait for the next response. Use "-" to read stdin.')
+    .option('--timeout <seconds>', 'Max seconds to wait for the response', '90')
+    .option('--port <port>', 'Codex remote debugging port', '9238')
+    .option('--endpoint <url>', 'CDP endpoint override (http://127.0.0.1:9238 or ws://...)')
+    .option('--no-launch', 'Do not auto-launch Codex when CDP is not reachable')
+    .option('--restart', 'Quit/relaunch Codex if it is already running without CDP')
+    .option('--artifacts', 'Extract visible image/canvas artifacts after the response')
+    .option('--artifact-dir <path>', 'Directory for extracted artifacts (default /tmp/bnbot-codex-artifacts)')
+    .option('--inline-artifacts', 'Include artifact base64 in JSON output')
+    .action(codexAskCommand);
+
+  codex
+    .command('read')
+    .description('Read the current Codex Desktop conversation')
+    .option('--limit <n>', 'Max recent turns to return', '20')
+    .option('--port <port>', 'Codex remote debugging port', '9238')
+    .option('--endpoint <url>', 'CDP endpoint override (http://127.0.0.1:9238 or ws://...)')
+    .option('--no-launch', 'Do not auto-launch Codex when CDP is not reachable')
+    .option('--restart', 'Quit/relaunch Codex if it is already running without CDP')
+    .option('--artifacts', 'Extract visible image/canvas artifacts')
+    .option('--artifact-dir <path>', 'Directory for extracted artifacts (default /tmp/bnbot-codex-artifacts)')
+    .option('--inline-artifacts', 'Include artifact base64 in JSON output')
+    .action(codexReadCommand);
+
+  codex
+    .command('artifacts')
+    .description('Extract visible image/canvas artifacts from the current Codex Desktop window')
+    .option('--port <port>', 'Codex remote debugging port', '9238')
+    .option('--endpoint <url>', 'CDP endpoint override (http://127.0.0.1:9238 or ws://...)')
+    .option('--no-launch', 'Do not auto-launch Codex when CDP is not reachable')
+    .option('--restart', 'Quit/relaunch Codex if it is already running without CDP')
+    .option('--artifact-dir <path>', 'Directory for extracted artifacts (default /tmp/bnbot-codex-artifacts)')
+    .option('--inline-artifacts', 'Include artifact base64 in JSON output')
+    .action(codexArtifactsCommand);
+
+  codex
+    .command('image-generate <prompt>')
+    .description('Generate a real image through Codex Desktop Image Gen and return image artifacts. Use "-" to read stdin.')
+    .option('--size <size>', 'Requested image size/aspect hint, e.g. 1024x576')
+    .option('--timeout <seconds>', 'Max seconds to wait for image generation', '300')
+    .option('--response-format <format>', 'path | b64_json', 'path')
+    .option('--port <port>', 'Codex remote debugging port', '9238')
+    .option('--endpoint <url>', 'CDP endpoint override (http://127.0.0.1:9238 or ws://...)')
+    .option('--no-launch', 'Do not auto-launch Codex when CDP is not reachable')
+    .option('--restart', 'Quit/relaunch Codex if it is already running without CDP')
+    .option('--new', 'Start a fresh Codex conversation before generating')
+    .option('--artifact-dir <path>', 'Directory for extracted artifacts (default /tmp/bnbot-codex-artifacts)')
+    .option('--inline-artifacts', 'Include artifact base64 in JSON output')
+    .action(codexImageGenerateCommand);
+
+  codex
+    .command('new')
+    .description('Start a new Codex Desktop conversation')
+    .option('--port <port>', 'Codex remote debugging port', '9238')
+    .option('--endpoint <url>', 'CDP endpoint override (http://127.0.0.1:9238 or ws://...)')
+    .option('--no-launch', 'Do not auto-launch Codex when CDP is not reachable')
+    .option('--restart', 'Quit/relaunch Codex if it is already running without CDP')
+    .action(codexNewCommand);
+
+  codex
+    .command('history')
+    .description('List visible Codex Desktop projects/conversations from the sidebar')
+    .option('--limit <n>', 'Max conversations per project', '10')
+    .option('--project <name>', 'Filter by project label or path')
+    .option('--port <port>', 'Codex remote debugging port', '9238')
+    .option('--endpoint <url>', 'CDP endpoint override (http://127.0.0.1:9238 or ws://...)')
+    .option('--no-launch', 'Do not auto-launch Codex when CDP is not reachable')
+    .option('--restart', 'Quit/relaunch Codex if it is already running without CDP')
+    .action(codexHistoryCommand);
+
+  codex
+    .command('model [model-name]')
+    .description('Read the current Codex Desktop model, or open the generic model picker for a target model')
+    .option('--port <port>', 'Codex remote debugging port', '9238')
+    .option('--endpoint <url>', 'CDP endpoint override (http://127.0.0.1:9238 or ws://...)')
+    .option('--no-launch', 'Do not auto-launch Codex when CDP is not reachable')
+    .option('--restart', 'Quit/relaunch Codex if it is already running without CDP')
+    .action(codexModelCommand);
 
   // ── Screenshot (any tab, any URL) ──────────────────────
   program
@@ -1314,21 +1426,13 @@ function buildProgram(): Command {
   xiaohongshu.command('search <query>').description('Search Xiaohongshu notes').option('-l, --limit <n>', 'Max results', '10').action(xiaohongshuSearchCommand);
   xiaohongshu.command('creator-hot-inspiration-feed').description('XHS creator hot inspiration feed').action(xhsCreatorHotInspirationFeedCommand);
   xiaohongshu.command('product-recommendations').description('XHS product recommendations').option('--region <region>').option('--sku-id <id>').action(xhsProductRecommendationsCommand);
-  xiaohongshu.command('topic-info').description('XHS topic info').option('--source <source>').option('--page-id <id>').action(xhsTopicInfoCommand);
   xiaohongshu.command('note-comments').description('XHS note comments').option('--index <n>', 'Page index', '1').option('--cursor <cursor>').option('--note-id <id>').option('--share-text <text>').option('--sort-strategy <s>').option('-l, --limit <n>', 'Max comments', '20').action(xhsNoteCommentsCommand);
   xiaohongshu.command('search-groups <keyword>').description('XHS search groups').option('--source <source>').option('--search-id <id>').action(xhsSearchGroupsCommand);
-  xiaohongshu.command('product-reviews').description('XHS product reviews').option('--sku-id <id>').option('--from-page <page>').action(xhsProductReviewsCommand);
-  xiaohongshu.command('topic-feed').description('XHS topic feed').option('--sort <sort>').option('--source <source>').option('--page-id <id>').action(xhsTopicFeedCommand);
   xiaohongshu.command('mixed-note-detail').description('XHS mixed note detail').option('--note-id <id>').option('--share-text <text>').action(xhsMixedNoteDetailCommand);
   xiaohongshu.command('search-notes <keyword>').description('XHS search notes').option('--page <n>', 'Page', '1').option('--source <source>').option('--note-type <type>').option('--sort-type <type>').option('--time-filter <filter>').option('-l, --limit <n>', 'Max results', '20').action(xhsSearchNotesCommand);
   xiaohongshu.command('product-detail').description('XHS product detail').option('--sku-id <id>').option('--source <source>').option('--pre-page <page>').action(xhsProductDetailCommand);
-  xiaohongshu.command('product-review-overview').description('XHS product review overview').option('--tab <tab>').option('--sku-id <id>').action(xhsProductReviewOverviewCommand);
   xiaohongshu.command('creator-inspiration-feed').description('XHS creator inspiration feed').option('--source <source>').action(xhsCreatorInspirationFeedCommand);
   xiaohongshu.command('image-note-detail').description('XHS image note detail').option('--note-id <id>').option('--share-text <text>').action(xhsImageNoteDetailCommand);
-  xiaohongshu.command('search-users <keyword>').description('XHS search users').option('--page <n>', 'Page', '1').option('--source <source>').action(xhsSearchUsersCommand);
-  xiaohongshu.command('search-images <keyword>').description('XHS search images').option('--page <n>', 'Page', '1').option('--source <source>').option('-l, --limit <n>', 'Max results', '20').action(xhsSearchImagesCommand);
-  xiaohongshu.command('search-products <keyword>').description('XHS search products').option('--page <n>', 'Page', '1').option('--source <source>').action(xhsSearchProductsCommand);
-  xiaohongshu.command('user-faved-notes').description('XHS user faved notes').action(xhsUserFavedNotesCommand);
   // xiaohongshu.command('fetch') removed — fetch_xiaohongshu_note orphan
   // was the abandoned republish flow; extension no longer hosts the handler.
 

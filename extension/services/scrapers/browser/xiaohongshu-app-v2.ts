@@ -45,6 +45,15 @@ function unsupported(endpoint: string, input: Record<string, unknown>, reason: s
   };
 }
 
+function notPursued(endpoint: string, input: Record<string, unknown>, reason: string): XiaohongshuEnvelope {
+  return {
+    endpoint,
+    note: 'xiaohongshu-web-endpoint-not-pursued-account-risk',
+    input,
+    data: { reason },
+  };
+}
+
 function decodeMaybe(value = ''): string {
   try {
     return decodeURIComponent(value);
@@ -411,9 +420,11 @@ export async function xhsSearchImages(args: {
   source?: string;
   limit?: number;
 }): Promise<XiaohongshuEnvelope<XiaohongshuSearchResult>> {
-  const limit = args.limit || 20;
-  const items = await searchXiaohongshu(args.keyword, limit);
-  return wrapSearch('search_images', items.filter((item) => !!item.cover), args);
+  return notPursued(
+    'search_images',
+    args,
+    'Not pursued for Xiaohongshu Wave 1: search image channel repeatedly trips login-wall / account-risk flows. Use search_notes for the approved search surface.',
+  ) as XiaohongshuEnvelope<XiaohongshuSearchResult>;
 }
 
 export async function xhsGetImageNoteDetail(args: {
@@ -519,18 +530,11 @@ async function scrapeNoteDetail(noteId?: string, shareText?: string): Promise<Xi
 }
 
 export async function xhsSearchUsers(args: { keyword: string; page?: number; source?: string }): Promise<XiaohongshuEnvelope> {
-  const state = await scrapeSearchState(args.keyword, 'user');
-  const items = normalizeSearchUsers(state.userLists || []);
-  return {
-    endpoint: 'search_users',
-    items,
-    count: items.length,
-    input: args,
-  };
+  return notPursued('search_users', args, 'Not pursued for Xiaohongshu Wave 1: user-search channel repeatedly trips login-wall / account-risk flows.');
 }
 
 export async function xhsSearchProducts(args: { keyword: string; page?: number; source?: string }): Promise<XiaohongshuEnvelope> {
-  return unsupported('search_products', args, 'Xiaohongshu desktop Web does not expose a product-search tab/API on the public search page; product detail/recommendation work with a real sku_id.');
+  return notPursued('search_products', args, 'Not pursued for Xiaohongshu Wave 1: desktop Web has no stable product-search tab/API; use product_detail/product_recommendations with a real sku_id.');
 }
 
 export async function xhsSearchGroups(args: { keyword: string; source?: string; search_id?: string }): Promise<XiaohongshuEnvelope> {
@@ -581,21 +585,7 @@ export async function xhsGetProductRecommendations(args: { region?: string; sku_
 }
 
 export async function xhsGetProductReviews(args: { sku_id?: string; from_page?: string }): Promise<XiaohongshuEnvelope> {
-  const sku = assertId(args.sku_id, 'sku_id');
-  const tabId = await getTab(goodsUrl(sku));
-  await new Promise(r => setTimeout(r, 2000));
-  const body: any = await fetchJsonInPage(tabId, `https://www.xiaohongshu.com/api/store/review/${encodeURIComponent(sku)}/product_review?cursor=&limit=20`);
-  if (body?.success === false) {
-    return dataEnvelope('get_product_reviews', body, args);
-  }
-  const items = body?.data?.reviews || body?.data?.items || body?.data?.list || [];
-  return {
-    endpoint: 'get_product_reviews',
-    items,
-    count: Array.isArray(items) ? items.length : 0,
-    data: body.data,
-    input: args,
-  };
+  return notPursued('get_product_reviews', args, 'Not pursued for Xiaohongshu Wave 1: mall review API returned login-expired and risks account friction.');
 }
 
 export async function xhsGetProductDetail(args: { sku_id?: string; source?: string; pre_page?: string }): Promise<XiaohongshuEnvelope> {
@@ -603,21 +593,17 @@ export async function xhsGetProductDetail(args: { sku_id?: string; source?: stri
 }
 
 export async function xhsGetProductReviewOverview(args: { sku_id?: string; tab?: string }): Promise<XiaohongshuEnvelope> {
-  const sku = assertId(args.sku_id, 'sku_id');
-  const tabId = await getTab(goodsUrl(sku));
-  await new Promise(r => setTimeout(r, 2000));
-  const body: any = await fetchJsonInPage(tabId, `https://www.xiaohongshu.com/api/store/review/${encodeURIComponent(sku)}/review_tags`);
-  return dataEnvelope('get_product_review_overview', body, args);
+  return notPursued('get_product_review_overview', args, 'Not pursued for Xiaohongshu Wave 1: mall review API returned login-expired and risks account friction.');
 }
 
 export async function xhsGetTopicInfo(args: { source?: string; page_id?: string }): Promise<XiaohongshuEnvelope> {
-  return unsupported('get_topic_info', args, 'Topic info endpoint needs signed topic API mapping.');
+  return notPursued('get_topic_info', args, 'Not pursued for Xiaohongshu Wave 1: topic APIs need signed Web/App mapping and are not worth the account-risk tradeoff.');
 }
 
 export async function xhsGetTopicFeed(args: { sort?: string; source?: string; page_id?: string }): Promise<XiaohongshuEnvelope> {
-  return unsupported('get_topic_feed', args, 'Topic feed endpoint needs signed topic API mapping.');
+  return notPursued('get_topic_feed', args, 'Not pursued for Xiaohongshu Wave 1: topic APIs need signed Web/App mapping and are not worth the account-risk tradeoff.');
 }
 
 export async function xhsGetUserFavedNotes(): Promise<XiaohongshuEnvelope> {
-  return unsupported('get_user_faved_notes', {}, 'User faved notes require account-specific signed API mapping.');
+  return notPursued('get_user_faved_notes', {}, 'Not pursued for Xiaohongshu Wave 1: account-private favorites are high-risk and unnecessary for the accepted 9-endpoint surface.');
 }

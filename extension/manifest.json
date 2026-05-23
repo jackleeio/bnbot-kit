@@ -11,10 +11,12 @@
   "permissions": [
     "storage",
     "tabs",
-    "debugger"
+    "debugger",
+    "cookies"
   ],
   "host_permissions": [
     "*://api.bnbot.ai/*",
+    "*://x.com/*",
     "http://127.0.0.1:*/*",
     "http://localhost:*/*"
   ],
@@ -56,6 +58,6 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' wss://api.bnbot.ai https://api.bnbot.ai ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:* blob: data:; img-src 'self' https://abs.twimg.com https://pbs.twimg.com blob: data:; media-src 'self' blob: data:; worker-src 'self';"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' wss://api.bnbot.ai https://api.bnbot.ai https://x.com ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:* blob: data:; img-src 'self' https://abs.twimg.com https://pbs.twimg.com blob: data:; media-src 'self' blob: data:; worker-src 'self';"
   }
 }
