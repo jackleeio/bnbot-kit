@@ -134,7 +134,18 @@ export async function searchXiaohongshu(query: string, limit = 20): Promise<Xiao
 
         if (filtered.length === 0) {
           const url = window.location.href;
-          if (url.includes('/login') || url.includes('/signin') || url.includes('passport.') || document.title.includes('登录') || document.title.includes('Sign in') || document.title.includes('Log in')) {
+          const bodyText = document.body.innerText || '';
+          if (
+            url.includes('/login')
+            || url.includes('/signin')
+            || url.includes('passport.')
+            || document.title.includes('登录')
+            || document.title.includes('Sign in')
+            || document.title.includes('Log in')
+            || bodyText.includes('登录后查看搜索结果')
+            || bodyText.includes('登录后探索更多内容')
+            || bodyText.includes('请先登录')
+          ) {
             return { error: 'Please sign in to Xiaohongshu first' };
           }
         }

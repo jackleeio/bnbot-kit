@@ -439,22 +439,6 @@ export async function getRedditSubredditInfo(subreddit: string): Promise<RedditS
   return mapSubredditChild(raw, 0);
 }
 
-export async function getRedditSubredditModerators(subreddit: string): Promise<unknown> {
-  const sub = cleanSubreddit(subreddit);
-  const raw = await fetchRedditJson(`/r/${sub}/about/moderators.json?raw_json=1`);
-  const children = raw?.data?.children || [];
-  return {
-    subreddit: sub,
-    moderators: children.map((child: any, idx: number) => ({
-      rank: idx + 1,
-      username: child?.name || child?.data?.name || '',
-      author_flair_text: child?.author_flair_text || child?.data?.author_flair_text || '',
-      mod_permissions: child?.mod_permissions || child?.data?.mod_permissions || [],
-    })),
-    count: children.length,
-  };
-}
-
 export async function getRedditSubredditRules(subreddit: string): Promise<unknown> {
   const sub = cleanSubreddit(subreddit);
   const raw = await fetchRedditJson(`/r/${sub}/about/rules.json?raw_json=1`);

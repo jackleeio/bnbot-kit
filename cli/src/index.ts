@@ -106,7 +106,7 @@ import {
   redditPopularPostsByCountryCommand, redditPostsBySubredditCommand,
   redditTopPostsBySubredditCommand, redditControversialPostsBySubredditCommand,
   redditCommentsBySubredditCommand, redditSubredditInfoCommand,
-  redditSubredditModeratorsCommand, redditSubredditRulesCommand,
+  redditSubredditRulesCommand,
   redditSimilarSubredditsCommand, redditNewSubredditsCommand,
   redditPopularSubredditsCommand, redditPostsByUsernameCommand,
   redditTopPostsByUsernameCommand, redditCommentsByUsernameCommand,
@@ -1224,7 +1224,6 @@ function buildProgram(): Command {
     .option('-l, --limit <n>', 'Max results', '25')
     .action(redditCommentsBySubredditCommand);
   reddit.command('subreddit-info <subreddit>').description('Fetch subreddit info').action(redditSubredditInfoCommand);
-  reddit.command('subreddit-moderators <subreddit>').description('Fetch subreddit moderators').action(redditSubredditModeratorsCommand);
   reddit.command('subreddit-rules <subreddit>').description('Fetch subreddit rules').action(redditSubredditRulesCommand);
   reddit.command('similar-subreddits <subreddit>').description('Find similar subreddits')
     .option('-l, --limit <n>', 'Max results', '25')

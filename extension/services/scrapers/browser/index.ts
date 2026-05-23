@@ -22,7 +22,6 @@ export {
   getRedditControversialPostsBySubreddit,
   getRedditCommentsBySubreddit,
   getRedditSubredditInfo,
-  getRedditSubredditModerators,
   getRedditSubredditRules,
   getRedditSimilarSubreddits,
   getRedditNewSubreddits,

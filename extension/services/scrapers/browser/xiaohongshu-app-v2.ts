@@ -79,6 +79,318 @@ function wrapSearch(endpoint: string, items: XiaohongshuSearchResult[], input: R
   };
 }
 
+function searchUrl(keyword: string): string {
+  return `https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(keyword)}&source=web_search_result_notes`;
+}
+
+function goodsUrl(skuId: string): string {
+  return `https://www.xiaohongshu.com/goods-detail/${encodeURIComponent(skuId)}`;
+}
+
+function creatorHomeUrl(): string {
+  return 'https://creator.xiaohongshu.com/new/home';
+}
+
+function assertId(value: string | undefined, label: string): string {
+  const v = (value || '').trim();
+  if (!v) throw new Error(`${label} required`);
+  if (v === 'sample-id' || v === 'string') {
+    throw new Error(`${label} must be a real Xiaohongshu id, not sample placeholder "${v}"`);
+  }
+  return v;
+}
+
+function dataEnvelope<T>(endpoint: string, data: T, input: Record<string, unknown>): XiaohongshuEnvelope<T> {
+  return {
+    endpoint,
+    data,
+    count: Array.isArray(data) ? data.length : undefined,
+    input,
+  };
+}
+
+function compactText(value: unknown, max = 300): string {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function pickImage(value: any): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const img = pickImage(item);
+      if (img) return img;
+    }
+    return '';
+  }
+  if (typeof value === 'object') {
+    return value.url
+      || value.image_url
+      || value.imageUrl
+      || value.url_default
+      || value.defaultUrl
+      || value.thumbnail
+      || value.cover
+      || pickImage(value.image)
+      || pickImage(value.images)
+      || '';
+  }
+  return '';
+}
+
+function compactSeller(value: any): any {
+  if (!value || typeof value !== 'object') return null;
+  return {
+    seller_id: value.seller_id || value.sellerId || value.id || '',
+    name: value.name || value.seller_name || value.nickname || value.shop_name || '',
+    avatar: pickImage(value.avatar || value.logo || value.image),
+    sales: value.salesVolume || value.sale_quantity || value.sales || '',
+  };
+}
+
+function compactProduct(item: any, rank?: number): any {
+  const sku = item?.sku_id || item?.skuId || item?.item_id || item?.itemId || item?.goods_id || item?.id || '';
+  const seller = compactSeller(item?.seller || item?.seller_info || item?.sellerInfo || item);
+  return {
+    rank,
+    sku_id: sku,
+    title: compactText(item?.title || item?.name || item?.goods_name || item?.product_name || item?.desc),
+    desc: compactText(item?.desc || item?.description || item?.sub_title || item?.subtitle),
+    price: item?.price || item?.price_text || item?.display_price || item?.highlight_price || item?.highlightPrice || '',
+    sold: item?.sale_quantity || item?.saleQuantity || item?.sales || item?.sold || '',
+    image: pickImage(item?.image || item?.image_info || item?.imageInfo || item?.cover || item?.images || item?.goods_images),
+    seller_id: seller?.seller_id || item?.seller_id || item?.sellerId || '',
+    seller_name: seller?.name || item?.seller_name || item?.shop_name || '',
+    url: sku ? goodsUrl(String(sku)) : '',
+  };
+}
+
+async function scrapeSearchState(keyword: string, channel?: 'user'): Promise<any> {
+  const tabId = await getTab(searchUrl(keyword));
+  await new Promise(r => setTimeout(r, 3000));
+  await checkLoginRedirect(tabId, 'Xiaohongshu');
+
+  const state = await executeInPage(tabId, async (targetChannel?: 'user') => {
+    const plain = (value: any) => {
+      try { return JSON.parse(JSON.stringify(value)); } catch { return value; }
+    };
+    const unwrap = (value: any) => value && typeof value === 'object' && '_value' in value ? value._value : value;
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    if (targetChannel) {
+      const channelEl = Array.from(document.querySelectorAll('.channel'))
+        .find((el: Element) => {
+          const e = el as HTMLElement;
+          const r = e.getBoundingClientRect();
+          return e.id === targetChannel
+            && e.getAttribute('aria-hidden') !== 'true'
+            && r.width > 1
+            && r.height > 1;
+        }) as HTMLElement | undefined;
+      if (channelEl) {
+        const r = channelEl.getBoundingClientRect();
+        for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+          channelEl.dispatchEvent(new MouseEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            clientX: r.left + Math.min(10, r.width / 2),
+            clientY: r.top + Math.min(10, r.height / 2),
+          }));
+        }
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+          const current = unwrap((window as any).__INITIAL_STATE__?.search?.currentSearchType);
+          const users = unwrap((window as any).__INITIAL_STATE__?.search?.userLists) || [];
+          if (current === targetChannel || users.length > 0) break;
+          await sleep(250);
+        }
+      }
+    }
+
+    const search = (window as any).__INITIAL_STATE__?.search || {};
+    const chips = Array.from(document.querySelectorAll('.tab'))
+      .map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    const bodyText = document.body.innerText || '';
+    return plain({
+      currentSearchType: unwrap(search.currentSearchType),
+      feeds: unwrap(search.feeds) || [],
+      userLists: unwrap(search.userLists) || [],
+      suggestions: unwrap(search.suggestions) || [],
+      tagSearch: unwrap(search.tagSearch) || [],
+      queryTrendingInfo: unwrap(search.queryTrendingInfo) || {},
+      oneboxInfo: unwrap(search.oneboxInfo) || {},
+      searchContext: search.searchContext || {},
+      chips,
+      href: location.href,
+      loginRequired: bodyText.includes('登录后查看搜索结果')
+        || bodyText.includes('登录后探索更多内容')
+        || bodyText.includes('请先登录')
+        || location.href.includes('/login'),
+    });
+  }, [channel]) as any;
+
+  const hasData = state.feeds?.length
+    || state.userLists?.length
+    || state.suggestions?.length
+    || state.tagSearch?.length
+    || state.chips?.length;
+  if (state.loginRequired && !hasData) {
+    throw new Error('Please sign in to Xiaohongshu first: search results require login in the BNBot scraper browser');
+  }
+  return state;
+}
+
+function normalizeSearchUsers(raw: any[]): any[] {
+  return (raw || []).map((u, idx) => ({
+    rank: idx + 1,
+    user_id: u.id || u.userId || '',
+    red_id: u.redId || '',
+    name: u.name || u.nickname || '',
+    avatar: u.image || u.avatar || '',
+    fans: u.fans || '',
+    note_count: typeof u.noteCount === 'number' ? u.noteCount : undefined,
+    update_time: u.updateTime || '',
+    followed: !!u.followed,
+    verified: !!u.redOfficialVerified,
+    xsec_token: u.xsecToken || '',
+    url: u.id
+      ? `https://www.xiaohongshu.com/user/profile/${u.id}${u.xsecToken ? `?xsec_token=${encodeURIComponent(u.xsecToken)}` : ''}`
+      : '',
+  })).filter((u) => u.user_id || u.name);
+}
+
+function normalizeSearchGroups(state: any): any[] {
+  const items: any[] = [];
+  const seen = new Set<string>();
+  const push = (name: string, type: string, extra: Record<string, unknown> = {}) => {
+    const text = (name || '').trim();
+    if (!text || seen.has(`${type}:${text}`)) return;
+    seen.add(`${type}:${text}`);
+    items.push({ rank: items.length + 1, type, name: text, ...extra });
+  };
+  for (const chip of state.chips || []) push(chip, 'tab');
+  for (const sug of state.suggestions || []) push(sug.text || sug.word || sug.keyword || '', sug.type || 'suggestion', {
+    search_type: sug.search_type || sug.searchType || '',
+  });
+  for (const tag of state.tagSearch || []) push(tag.name || tag.text || tag.keyword || '', 'tag', tag);
+  const trending = state.queryTrendingInfo?.queries || state.queryTrendingInfo?.items || state.queryTrendingInfo?.list || [];
+  for (const item of trending) push(item.word || item.query || item.text || item.name || '', 'trending', item);
+  return items;
+}
+
+async function fetchJsonInPage<T = any>(
+  tabId: number,
+  url: string,
+  options: { method?: string; body?: unknown } = {},
+): Promise<T> {
+  const result = await executeInPage(tabId, async (u: string, opts: { method?: string; body?: unknown }) => {
+    const res = await fetch(u, {
+      method: opts.method || 'GET',
+      credentials: 'include',
+      headers: opts.body ? { 'content-type': 'application/json' } : undefined,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    const text = await res.text();
+    let body: any;
+    try { body = JSON.parse(text); } catch { body = { raw: text }; }
+    return { ok: res.ok, status: res.status, body };
+  }, [url, options]);
+
+  const r = result as any;
+  if (!r.ok) throw new Error(`Xiaohongshu Web fetch failed: HTTP ${r.status}`);
+  return r.body as T;
+}
+
+async function fetchProductDetail(skuId: string): Promise<any> {
+  const sku = assertId(skuId, 'sku_id');
+  const tabId = await getTab(goodsUrl(sku));
+  await new Promise(r => setTimeout(r, 2500));
+  const body: any = await fetchJsonInPage(tabId, `https://mall.xiaohongshu.com/api/store/jpd/edith/detail/h5/toc?version=0.0.5&item_id=${encodeURIComponent(sku)}`);
+  if (body?.success === false || (typeof body?.error_code === 'number' && body.error_code !== 0)) {
+    throw new Error(`Xiaohongshu product detail failed: ${body?.msg || body?.error_code || 'unknown error'}`);
+  }
+  const td = body?.data?.template_data?.[0] || {};
+  const serviceItems = td.serviceV5?.list || td.servicePopupV2?.list || [];
+  const specItems = td.variantsParams?.list || [];
+  return {
+    sku_id: sku,
+    url: goodsUrl(sku),
+    title: td.descriptionH5?.name || td.descriptionMain?.name || '',
+    price: td.priceH5?.highlightPrice ?? td.bottomBarMainH5?.price ?? null,
+    sold: td.priceH5?.itemAnalysisDataText || td.sellerH5?.salesVolume || '',
+    seller: compactSeller(td.sellerH5 || td.bottomBarMainH5?.seller),
+    images: (td.carouselH5?.images || []).map((img: any) => pickImage(img)).filter(Boolean).slice(0, 12),
+    services: serviceItems.map((item: any) => compactText(item.title || item.name || item.text)).filter(Boolean).slice(0, 20),
+    shipping: {
+      freight: td.goodsDistributeV4?.freightText || td.goodsDistributeV4?.freight || '',
+      delivery: td.goodsDistributeV4?.deliveryText || td.goodsDistributeV4?.delivery || '',
+    },
+    specs: specItems.map((item: any) => ({
+      name: item.name || item.title || '',
+      values: (item.valueList || item.values || item.list || []).map((v: any) => compactText(v.name || v.value || v.text)).filter(Boolean).slice(0, 20),
+    })).filter((item: any) => item.name || item.values.length).slice(0, 10),
+    raw_keys: Object.keys(body?.data || {}),
+  };
+}
+
+function normalizeCreatorGuidance(raw: any[]): any[] {
+  return (raw || []).map((item, idx) => ({
+    rank: idx + 1,
+    note_id: item.note_id || item.noteId || '',
+    title: compactText(item.title, 200),
+    image: pickImage(item.image || item.cover),
+    link: item.link || '',
+    url: item.note_id
+      ? `https://www.xiaohongshu.com/explore/${item.note_id}${item.xsec_token ? `?xsec_token=${encodeURIComponent(item.xsec_token)}&xsec_source=${encodeURIComponent(item.xsec_source || 'pc_creator')}` : ''}`
+      : '',
+    user_id: item.user_id || item.userId || '',
+    nickname: item.nickname || item.author || '',
+    avatar: pickImage(item.avatar),
+    view_count: item.view_count ?? null,
+    display_count_text: item.display_count_text || '',
+    xsec_source: item.xsec_source || '',
+    xsec_token: item.xsec_token || '',
+  })).filter((item) => item.note_id || item.title);
+}
+
+async function fetchCreatorGuidance(args: { endpoint: string; pageSize?: number; hot?: boolean; input?: Record<string, unknown> }): Promise<XiaohongshuEnvelope> {
+  const tabId = await getTab(creatorHomeUrl());
+  await new Promise(r => setTimeout(r, 2500));
+  const tab = await chrome.tabs.get(tabId);
+  if (tab.url?.includes('/login')) {
+    return unsupported(args.endpoint, args.input || {}, 'creator.xiaohongshu.com returned the login page; sign in to Creator Center before this Web-only endpoint can return inspiration data.');
+  }
+
+  const pageSize = args.pageSize || 12;
+  const body: any = await fetchJsonInPage(
+    tabId,
+    `https://creator.xiaohongshu.com/api/galaxy/creator/data/create_guidance?page=1&page_size=${pageSize}&type=1`,
+  );
+  if (body?.success === false || (typeof body?.code === 'number' && body.code !== 0)) {
+    throw new Error(`Xiaohongshu Creator guidance failed: ${body?.msg || body?.code || 'unknown error'}`);
+  }
+
+  let items = normalizeCreatorGuidance(body?.data?.create_guidance || []);
+  if (args.hot) {
+    items = [...items].sort((a, b) => Number(b.view_count || 0) - Number(a.view_count || 0))
+      .map((item, idx) => ({ ...item, rank: idx + 1 }));
+  }
+
+  return {
+    endpoint: args.endpoint,
+    items,
+    count: items.length,
+    data: {
+      total: body?.data?.total ?? items.length,
+      source_url: creatorHomeUrl(),
+      source_api: '/api/galaxy/creator/data/create_guidance',
+    },
+    input: args.input || {},
+  };
+}
+
 export async function xhsSearchNotes(args: {
   keyword: string;
   page?: number;
@@ -207,39 +519,95 @@ async function scrapeNoteDetail(noteId?: string, shareText?: string): Promise<Xi
 }
 
 export async function xhsSearchUsers(args: { keyword: string; page?: number; source?: string }): Promise<XiaohongshuEnvelope> {
-  return unsupported('search_users', args, 'Xiaohongshu Web user search requires a signed API mapping; only note search is verified.');
+  const state = await scrapeSearchState(args.keyword, 'user');
+  const items = normalizeSearchUsers(state.userLists || []);
+  return {
+    endpoint: 'search_users',
+    items,
+    count: items.length,
+    input: args,
+  };
 }
 
 export async function xhsSearchProducts(args: { keyword: string; page?: number; source?: string }): Promise<XiaohongshuEnvelope> {
-  return unsupported('search_products', args, 'Xiaohongshu Web product search requires mall API signing and has not been mapped yet.');
+  return unsupported('search_products', args, 'Xiaohongshu desktop Web does not expose a product-search tab/API on the public search page; product detail/recommendation work with a real sku_id.');
 }
 
 export async function xhsSearchGroups(args: { keyword: string; source?: string; search_id?: string }): Promise<XiaohongshuEnvelope> {
-  return unsupported('search_groups', args, 'Xiaohongshu group search is app-specific; no stable Web endpoint mapped yet.');
+  const state = await scrapeSearchState(args.keyword);
+  const items = normalizeSearchGroups(state);
+  return {
+    endpoint: 'search_groups',
+    items,
+    count: items.length,
+    input: args,
+  };
 }
 
 export async function xhsGetCreatorHotInspirationFeed(): Promise<XiaohongshuEnvelope> {
-  return unsupported('get_creator_hot_inspiration_feed', {}, 'Creator inspiration feed lives in creator/app APIs; Web mapping not verified.');
+  return fetchCreatorGuidance({
+    endpoint: 'get_creator_hot_inspiration_feed',
+    hot: true,
+    pageSize: 12,
+  });
 }
 
 export async function xhsGetCreatorInspirationFeed(args: { source?: string }): Promise<XiaohongshuEnvelope> {
-  return unsupported('get_creator_inspiration_feed', args, 'Creator inspiration feed lives in creator/app APIs; Web mapping not verified.');
+  return fetchCreatorGuidance({
+    endpoint: 'get_creator_inspiration_feed',
+    pageSize: 12,
+    input: args,
+  });
 }
 
 export async function xhsGetProductRecommendations(args: { region?: string; sku_id?: string }): Promise<XiaohongshuEnvelope> {
-  return unsupported('get_product_recommendations', args, 'Product recommendation endpoint needs signed mall API mapping.');
+  const sku = assertId(args.sku_id, 'sku_id');
+  const tabId = await getTab(goodsUrl(sku));
+  await new Promise(r => setTimeout(r, 2000));
+  const body: any = await fetchJsonInPage(tabId, `https://www.xiaohongshu.com/api/store/rf/skus/shop_recommend?sku_id=${encodeURIComponent(sku)}`);
+  if (body?.success === false || (typeof body?.code === 'number' && body.code !== 0)) {
+    throw new Error(`Xiaohongshu product recommendations failed: ${body?.msg || body?.code || 'unknown error'}`);
+  }
+  const rawItems = Array.isArray(body?.data)
+    ? body.data
+    : body?.data?.items || body?.data?.list || body?.data?.skus || [];
+  const items = rawItems.map((item: any, idx: number) => compactProduct(item, idx + 1));
+  return {
+    endpoint: 'get_product_recommendations',
+    items,
+    count: items.length,
+    input: args,
+  };
 }
 
 export async function xhsGetProductReviews(args: { sku_id?: string; from_page?: string }): Promise<XiaohongshuEnvelope> {
-  return unsupported('get_product_reviews', args, 'Product reviews endpoint needs signed mall API mapping.');
+  const sku = assertId(args.sku_id, 'sku_id');
+  const tabId = await getTab(goodsUrl(sku));
+  await new Promise(r => setTimeout(r, 2000));
+  const body: any = await fetchJsonInPage(tabId, `https://www.xiaohongshu.com/api/store/review/${encodeURIComponent(sku)}/product_review?cursor=&limit=20`);
+  if (body?.success === false) {
+    return dataEnvelope('get_product_reviews', body, args);
+  }
+  const items = body?.data?.reviews || body?.data?.items || body?.data?.list || [];
+  return {
+    endpoint: 'get_product_reviews',
+    items,
+    count: Array.isArray(items) ? items.length : 0,
+    data: body.data,
+    input: args,
+  };
 }
 
 export async function xhsGetProductDetail(args: { sku_id?: string; source?: string; pre_page?: string }): Promise<XiaohongshuEnvelope> {
-  return unsupported('get_product_detail', args, 'Product detail endpoint needs signed mall API mapping.');
+  return dataEnvelope('get_product_detail', await fetchProductDetail(args.sku_id || ''), args);
 }
 
 export async function xhsGetProductReviewOverview(args: { sku_id?: string; tab?: string }): Promise<XiaohongshuEnvelope> {
-  return unsupported('get_product_review_overview', args, 'Product review overview endpoint needs signed mall API mapping.');
+  const sku = assertId(args.sku_id, 'sku_id');
+  const tabId = await getTab(goodsUrl(sku));
+  await new Promise(r => setTimeout(r, 2000));
+  const body: any = await fetchJsonInPage(tabId, `https://www.xiaohongshu.com/api/store/review/${encodeURIComponent(sku)}/review_tags`);
+  return dataEnvelope('get_product_review_overview', body, args);
 }
 
 export async function xhsGetTopicInfo(args: { source?: string; page_id?: string }): Promise<XiaohongshuEnvelope> {

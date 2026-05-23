@@ -54,9 +54,15 @@ async function pruneDeadScraperWindows(): Promise<void> {
   }
 }
 
-chrome.windows.onRemoved.addListener((windowId) => {
-  scraperWindowIds.delete(windowId);
-});
+// Content scripts don't have access to chrome.windows/tabs/debugger — this
+// module gets pulled into the content-script bundle via the wechatActions
+// import chain. Guard top-level listeners so module evaluation doesn't
+// throw `Cannot read properties of undefined (reading 'onRemoved')`.
+if (typeof chrome !== 'undefined' && chrome.windows?.onRemoved) {
+  chrome.windows.onRemoved.addListener((windowId) => {
+    scraperWindowIds.delete(windowId);
+  });
+}
 
 // Track which tabs have the debugger attached (maps tabId -> the CDP targetId we attached to).
 // We attach by targetId, not tabId, because chrome.debugger.attach({tabId}) rejects
@@ -358,43 +364,49 @@ export async function waitForLoad(tabId: number, expectedHost?: string, maxMs = 
   });
 }
 
-// Clean up if tab is closed externally
-chrome.tabs.onRemoved.addListener((tabId) => {
-  for (const [domain, entry] of tabPool.entries()) {
-    if (entry.tabId === tabId) {
-      if (entry.timer) clearTimeout(entry.timer);
-      tabPool.delete(domain);
-    }
-  }
-  // Clean up debugger attachment tracking
-  attachedTabs.delete(tabId);
-});
-
-// Clean up if the whole scraper window is closed externally
-chrome.windows.onRemoved.addListener((windowId) => {
-  for (const [domain, entry] of tabPool.entries()) {
-    if (entry.windowId === windowId) {
-      if (entry.timer) clearTimeout(entry.timer);
-      if (attachedTabs.has(entry.tabId)) attachedTabs.delete(entry.tabId);
-      tabPool.delete(domain);
-    }
-  }
-});
-
-// Also clean up if debugger is detached externally (e.g. user closes DevTools)
-chrome.debugger.onDetach.addListener((source) => {
-  if (source.tabId != null) {
-    attachedTabs.delete(source.tabId);
-  } else if (source.targetId != null) {
-    // Detached by targetId — find and remove the matching entry
-    for (const [tabId, targetId] of attachedTabs.entries()) {
-      if (targetId === source.targetId) {
-        attachedTabs.delete(tabId);
-        break;
+// Clean up if tab is closed externally — guarded for content-script context
+if (typeof chrome !== 'undefined' && chrome.tabs?.onRemoved) {
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    for (const [domain, entry] of tabPool.entries()) {
+      if (entry.tabId === tabId) {
+        if (entry.timer) clearTimeout(entry.timer);
+        tabPool.delete(domain);
       }
     }
-  }
-});
+    // Clean up debugger attachment tracking
+    attachedTabs.delete(tabId);
+  });
+}
+
+// Clean up if the whole scraper window is closed externally
+if (typeof chrome !== 'undefined' && chrome.windows?.onRemoved) {
+  chrome.windows.onRemoved.addListener((windowId) => {
+    for (const [domain, entry] of tabPool.entries()) {
+      if (entry.windowId === windowId) {
+        if (entry.timer) clearTimeout(entry.timer);
+        if (attachedTabs.has(entry.tabId)) attachedTabs.delete(entry.tabId);
+        tabPool.delete(domain);
+      }
+    }
+  });
+}
+
+// Also clean up if debugger is detached externally (e.g. user closes DevTools)
+if (typeof chrome !== 'undefined' && chrome.debugger?.onDetach) {
+  chrome.debugger.onDetach.addListener((source) => {
+    if (source.tabId != null) {
+      attachedTabs.delete(source.tabId);
+    } else if (source.targetId != null) {
+      // Detached by targetId — find and remove the matching entry
+      for (const [tabId, targetId] of attachedTabs.entries()) {
+        if (targetId === source.targetId) {
+          attachedTabs.delete(tabId);
+          break;
+        }
+      }
+    }
+  });
+}
 
 /** Check if tab was redirected to a login page. Call after getTab + wait. */
 export async function checkLoginRedirect(tabId: number, platformName: string): Promise<void> {

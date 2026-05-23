@@ -820,10 +820,6 @@ export async function redditSubredditInfoCommand(subreddit: string) {
   await scrape('SCRAPER_FETCH_RD_SUBREDDIT_INFO', { subreddit });
 }
 
-export async function redditSubredditModeratorsCommand(subreddit: string) {
-  await scrape('SCRAPER_FETCH_RD_SUBREDDIT_MODERATORS', { subreddit });
-}
-
 export async function redditSubredditRulesCommand(subreddit: string) {
   await scrape('SCRAPER_FETCH_RD_SUBREDDIT_RULES', { subreddit });
 }
