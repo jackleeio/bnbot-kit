@@ -3,8 +3,56 @@
  * internal APIs with the user's browser cookies.
  */
 
-export { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe } from './reddit';
-export type { RedditResult, RedditHotResult } from './reddit';
+export {
+  searchReddit,
+  fetchRedditHot,
+  redditUpvote,
+  redditSave,
+  getRedditFrontpage,
+  getRedditPost,
+  getRedditUser,
+  redditSubscribe,
+  getRedditPopularPosts,
+  getRedditTopPopularPosts,
+  getRedditRisingPopularPosts,
+  getRedditBestPopularPosts,
+  getRedditPopularPostsByCountry,
+  getRedditPostsBySubreddit,
+  getRedditTopPostsBySubreddit,
+  getRedditControversialPostsBySubreddit,
+  getRedditCommentsBySubreddit,
+  getRedditSubredditInfo,
+  getRedditSubredditModerators,
+  getRedditSubredditRules,
+  getRedditSimilarSubreddits,
+  getRedditNewSubreddits,
+  getRedditPopularSubreddits,
+  getRedditPostsByUsername,
+  getRedditTopPostsByUsername,
+  getRedditCommentsByUsername,
+  getRedditTopCommentsByUsername,
+  getRedditUserOverview,
+  getRedditUserPostRankInSubreddit,
+  getRedditProfile,
+  getRedditUserStats,
+  searchRedditUsers,
+  searchRedditPosts,
+  searchRedditSubreddits,
+  getRedditPostDetails,
+  getRedditPostComments,
+  getRedditPostCommentsWithSort,
+  getRedditPostDuplicates,
+} from './reddit';
+export type {
+  RedditResult,
+  RedditHotResult,
+  RedditPost,
+  RedditComment,
+  RedditSubreddit,
+  RedditUser,
+  RedditListingResult,
+  RedditPostThread,
+} from './reddit';
 
 export { searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments } from './bilibili';
 export type { BilibiliResult, BilibiliHotResult, BilibiliRankingResult } from './bilibili';

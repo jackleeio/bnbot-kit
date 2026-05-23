@@ -734,6 +734,257 @@ export async function redditHotCommand(options: { limit?: string }) {
   await scrape('SCRAPER_FETCH_REDDIT_HOT', { limit: parseInt(options.limit || '20', 10) });
 }
 
+export async function redditPopularPostsCommand(options: { sort?: string; limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_RD_POPULAR_POSTS', {
+    sort: options.sort || 'hot',
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditTopPopularPostsCommand(options: { time?: string; limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_RD_TOP_POPULAR_POSTS', {
+    time: options.time || 'day',
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditRisingPopularPostsCommand(options: { limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_RD_RISING_POPULAR_POSTS', {
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditBestPopularPostsCommand(options: { limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_RD_BEST_POPULAR_POSTS', {
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditPopularPostsByCountryCommand(
+  country: string,
+  options: { sort?: string; time?: string; limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_RD_POPULAR_POSTS_BY_COUNTRY', {
+    country,
+    sort: options.sort || 'hot',
+    time: options.time || 'day',
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditPostsBySubredditCommand(
+  subreddit: string,
+  options: { sort?: string; time?: string; limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_RD_POSTS_BY_SUBREDDIT', {
+    subreddit,
+    sort: options.sort || 'hot',
+    time: options.time || 'day',
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditTopPostsBySubredditCommand(
+  subreddit: string,
+  options: { time?: string; limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_RD_TOP_POSTS_BY_SUBREDDIT', {
+    subreddit,
+    time: options.time || 'day',
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditControversialPostsBySubredditCommand(
+  subreddit: string,
+  options: { time?: string; limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_RD_CONTROVERSIAL_POSTS_BY_SUBREDDIT', {
+    subreddit,
+    time: options.time || 'all',
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditCommentsBySubredditCommand(
+  subreddit: string,
+  options: { limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_RD_COMMENTS_BY_SUBREDDIT', {
+    subreddit,
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditSubredditInfoCommand(subreddit: string) {
+  await scrape('SCRAPER_FETCH_RD_SUBREDDIT_INFO', { subreddit });
+}
+
+export async function redditSubredditModeratorsCommand(subreddit: string) {
+  await scrape('SCRAPER_FETCH_RD_SUBREDDIT_MODERATORS', { subreddit });
+}
+
+export async function redditSubredditRulesCommand(subreddit: string) {
+  await scrape('SCRAPER_FETCH_RD_SUBREDDIT_RULES', { subreddit });
+}
+
+export async function redditSimilarSubredditsCommand(
+  subreddit: string,
+  options: { limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_RD_SIMILAR_SUBREDDITS', {
+    subreddit,
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditNewSubredditsCommand(options: { limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_RD_NEW_SUBREDDITS', {
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditPopularSubredditsCommand(options: { limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_RD_POPULAR_SUBREDDITS', {
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditPostsByUsernameCommand(
+  username: string,
+  options: { sort?: string; time?: string; limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_RD_POSTS_BY_USERNAME', {
+    username,
+    sort: options.sort || 'new',
+    time: options.time || 'all',
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditTopPostsByUsernameCommand(
+  username: string,
+  options: { time?: string; limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_RD_TOP_POSTS_BY_USERNAME', {
+    username,
+    time: options.time || 'all',
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditCommentsByUsernameCommand(
+  username: string,
+  options: { sort?: string; time?: string; limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_RD_COMMENTS_BY_USERNAME', {
+    username,
+    sort: options.sort || 'new',
+    time: options.time || 'all',
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditTopCommentsByUsernameCommand(
+  username: string,
+  options: { time?: string; limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_RD_TOP_COMMENTS_BY_USERNAME', {
+    username,
+    time: options.time || 'all',
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditUserOverviewCommand(
+  username: string,
+  options: { sort?: string; time?: string; limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_RD_USER_OVERVIEW', {
+    username,
+    sort: options.sort || 'new',
+    time: options.time || 'all',
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditUserPostRankInSubredditCommand(
+  username: string,
+  subreddit: string,
+  options: { sort?: string; limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_RD_USER_POST_RANK_IN_SUBREDDIT', {
+    username,
+    subreddit,
+    sort: options.sort || 'new',
+    limit: parseInt(options.limit || '100', 10),
+  });
+}
+
+export async function redditProfileCommand(username: string) {
+  await scrape('SCRAPER_FETCH_RD_PROFILE', { username });
+}
+
+export async function redditUserStatsCommand(username: string) {
+  await scrape('SCRAPER_FETCH_RD_USER_STATS', { username });
+}
+
+export async function redditSearchUsersCommand(query: string, options: { limit?: string } = {}) {
+  await scrape('SCRAPER_SEARCH_RD_USERS', {
+    query,
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditSearchPostsCommand(
+  query: string,
+  options: { subreddit?: string; sort?: string; time?: string; limit?: string } = {},
+) {
+  await scrape('SCRAPER_SEARCH_RD_POSTS', {
+    query,
+    subreddit: options.subreddit || '',
+    sort: options.sort || 'relevance',
+    time: options.time || 'all',
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditSearchSubredditsCommand(query: string, options: { limit?: string } = {}) {
+  await scrape('SCRAPER_SEARCH_RD_SUBREDDITS', {
+    query,
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
+export async function redditPostDetailsCommand(postUrl: string) {
+  await scrape('SCRAPER_FETCH_RD_POST_DETAILS', { post_url: postUrl });
+}
+
+export async function redditPostCommentsCommand(postUrl: string, options: { limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_RD_POST_COMMENTS', {
+    post_url: postUrl,
+    limit: parseInt(options.limit || '50', 10),
+  });
+}
+
+export async function redditPostCommentsWithSortCommand(
+  postUrl: string,
+  options: { sort?: string; limit?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_RD_POST_COMMENTS_WITH_SORT', {
+    post_url: postUrl,
+    sort: options.sort || 'best',
+    limit: parseInt(options.limit || '50', 10),
+  });
+}
+
+export async function redditPostDuplicatesCommand(postUrl: string, options: { limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_RD_POST_DUPLICATES', {
+    post_url: postUrl,
+    limit: parseInt(options.limit || '25', 10),
+  });
+}
+
 // ── Bilibili ─────────────────────────────────────────────────
 
 export async function bilibiliSearchCommand(query: string, options: { limit?: string }) {

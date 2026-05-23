@@ -651,7 +651,7 @@ async function debugEvalInTab(args: {
   }
   return { tabId, url: tab.url || '', result: res?.result?.value ?? null };
 }
-import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications, getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos, getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData, getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript, getTikTokUserPosts, getTikTokUserFollowers, getTikTokPostDetail, getTikTokPostComments, searchTikTokAccount, getTikTokChallengeInfo, getTikTokChallengePosts, getTikTokMusicInfo, getTikTokMusicPosts, getTikTokMusicUnlimitedSounds, getTikTokUserInfoWithRegion, getTikTokUserInfoById, getTikTokUserFollowings, getTikTokUserLikedPosts, getTikTokUserPlaylist, getTikTokUserRepost, getTikTokUserStory, searchTikTokGeneral, searchTikTokLive, getTikTokOthersSearchedFor, getTikTokPostRelated, getTikTokPostExplore, getTikTokPostDiscover, getTikTokAdsDetail, getTikTokAdsTop, getTikTokTrendingCreator, getTikTokTrendingVideo, getTikTokTrendingHashtag, getTikTokTrendingSong, getTikTokTrendingKeyword, getTikTokTrendingKeywordPosts, getTikTokTrendingKeywordSentence, getTikTokCommercialMusicLibrary, getTikTokCommercialMusicPlaylists, getTikTokCommercialMusicPlaylistDetail, getTikTokTopProducts, getTikTokTopProductDetail, getTikTokTopProductMetrics, getTikTokPlaceInfo, getTikTokPlacePosts, getTikTokEffectInfo, getTikTokEffectPosts, getTikTokCollectionInfo, getTikTokCollectionPosts, getTikTokPostCommentReplies, getDouyinUserInfo, getDouyinUserPosts, getDouyinUserLikedPosts, getDouyinUserFollowers, getDouyinUserFollowing, getDouyinPostComments, searchDouyinGeneral, searchDouyinVideo, searchDouyinAccount, searchDouyinLive, getDouyinChallengePosts, getDouyinMusicPosts } from './services/scrapers/browser';
+import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, getRedditPopularPosts, getRedditTopPopularPosts, getRedditRisingPopularPosts, getRedditBestPopularPosts, getRedditPopularPostsByCountry, getRedditPostsBySubreddit, getRedditTopPostsBySubreddit, getRedditControversialPostsBySubreddit, getRedditCommentsBySubreddit, getRedditSubredditInfo, getRedditSubredditModerators, getRedditSubredditRules, getRedditSimilarSubreddits, getRedditNewSubreddits, getRedditPopularSubreddits, getRedditPostsByUsername, getRedditTopPostsByUsername, getRedditCommentsByUsername, getRedditTopCommentsByUsername, getRedditUserOverview, getRedditUserPostRankInSubreddit, getRedditProfile, getRedditUserStats, searchRedditUsers, searchRedditPosts, searchRedditSubreddits, getRedditPostDetails, getRedditPostComments, getRedditPostCommentsWithSort, getRedditPostDuplicates, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications, getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos, getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData, getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript, getTikTokUserPosts, getTikTokUserFollowers, getTikTokPostDetail, getTikTokPostComments, searchTikTokAccount, getTikTokChallengeInfo, getTikTokChallengePosts, getTikTokMusicInfo, getTikTokMusicPosts, getTikTokMusicUnlimitedSounds, getTikTokUserInfoWithRegion, getTikTokUserInfoById, getTikTokUserFollowings, getTikTokUserLikedPosts, getTikTokUserPlaylist, getTikTokUserRepost, getTikTokUserStory, searchTikTokGeneral, searchTikTokLive, getTikTokOthersSearchedFor, getTikTokPostRelated, getTikTokPostExplore, getTikTokPostDiscover, getTikTokAdsDetail, getTikTokAdsTop, getTikTokTrendingCreator, getTikTokTrendingVideo, getTikTokTrendingHashtag, getTikTokTrendingSong, getTikTokTrendingKeyword, getTikTokTrendingKeywordPosts, getTikTokTrendingKeywordSentence, getTikTokCommercialMusicLibrary, getTikTokCommercialMusicPlaylists, getTikTokCommercialMusicPlaylistDetail, getTikTokTopProducts, getTikTokTopProductDetail, getTikTokTopProductMetrics, getTikTokPlaceInfo, getTikTokPlacePosts, getTikTokEffectInfo, getTikTokEffectPosts, getTikTokCollectionInfo, getTikTokCollectionPosts, getTikTokPostCommentReplies, getDouyinUserInfo, getDouyinUserPosts, getDouyinUserLikedPosts, getDouyinUserFollowers, getDouyinUserFollowing, getDouyinPostComments, searchDouyinGeneral, searchDouyinVideo, searchDouyinAccount, searchDouyinLive, getDouyinChallengePosts, getDouyinMusicPosts } from './services/scrapers/browser';
 
 // GOOGLE_CLIENT_ID / OAUTH_REDIRECT_URI removed — see handleGoogleLogin
 // removal note. chrome.identity.getRedirectURL() also no longer needed.
@@ -1354,6 +1354,37 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   fetch_wechat_article: (m) => fetchWeixinArticle(m.url),
   SCRAPER_FETCH_YAHOO_FINANCE: (m) => fetchYahooFinanceQuote(m.symbol),
   SCRAPER_FETCH_REDDIT_HOT: (m) => fetchRedditHot(m.limit),
+  // Reddit34-compatible GET surface.
+  SCRAPER_FETCH_RD_POPULAR_POSTS: (m) => getRedditPopularPosts({ sort: m.sort, limit: m.limit }),
+  SCRAPER_FETCH_RD_TOP_POPULAR_POSTS: (m) => getRedditTopPopularPosts({ time: m.time, limit: m.limit }),
+  SCRAPER_FETCH_RD_RISING_POPULAR_POSTS: (m) => getRedditRisingPopularPosts({ limit: m.limit }),
+  SCRAPER_FETCH_RD_BEST_POPULAR_POSTS: (m) => getRedditBestPopularPosts({ limit: m.limit }),
+  SCRAPER_FETCH_RD_POPULAR_POSTS_BY_COUNTRY: (m) => getRedditPopularPostsByCountry({ country: m.country, sort: m.sort, time: m.time, limit: m.limit }),
+  SCRAPER_FETCH_RD_POSTS_BY_SUBREDDIT: (m) => getRedditPostsBySubreddit(m.subreddit || m.sub, { sort: m.sort, time: m.time, limit: m.limit }),
+  SCRAPER_FETCH_RD_TOP_POSTS_BY_SUBREDDIT: (m) => getRedditTopPostsBySubreddit(m.subreddit || m.sub, { time: m.time, limit: m.limit }),
+  SCRAPER_FETCH_RD_CONTROVERSIAL_POSTS_BY_SUBREDDIT: (m) => getRedditControversialPostsBySubreddit(m.subreddit || m.sub, { time: m.time, limit: m.limit }),
+  SCRAPER_FETCH_RD_COMMENTS_BY_SUBREDDIT: (m) => getRedditCommentsBySubreddit(m.subreddit || m.sub, { limit: m.limit }),
+  SCRAPER_FETCH_RD_SUBREDDIT_INFO: (m) => getRedditSubredditInfo(m.subreddit || m.sub),
+  SCRAPER_FETCH_RD_SUBREDDIT_MODERATORS: (m) => getRedditSubredditModerators(m.subreddit || m.sub),
+  SCRAPER_FETCH_RD_SUBREDDIT_RULES: (m) => getRedditSubredditRules(m.subreddit || m.sub),
+  SCRAPER_FETCH_RD_SIMILAR_SUBREDDITS: (m) => getRedditSimilarSubreddits(m.subreddit || m.sub, { limit: m.limit }),
+  SCRAPER_FETCH_RD_NEW_SUBREDDITS: (m) => getRedditNewSubreddits({ limit: m.limit }),
+  SCRAPER_FETCH_RD_POPULAR_SUBREDDITS: (m) => getRedditPopularSubreddits({ limit: m.limit }),
+  SCRAPER_FETCH_RD_POSTS_BY_USERNAME: (m) => getRedditPostsByUsername(m.username || m.user, { sort: m.sort, time: m.time, limit: m.limit }),
+  SCRAPER_FETCH_RD_TOP_POSTS_BY_USERNAME: (m) => getRedditTopPostsByUsername(m.username || m.user, { time: m.time, limit: m.limit }),
+  SCRAPER_FETCH_RD_COMMENTS_BY_USERNAME: (m) => getRedditCommentsByUsername(m.username || m.user, { sort: m.sort, time: m.time, limit: m.limit }),
+  SCRAPER_FETCH_RD_TOP_COMMENTS_BY_USERNAME: (m) => getRedditTopCommentsByUsername(m.username || m.user, { time: m.time, limit: m.limit }),
+  SCRAPER_FETCH_RD_USER_OVERVIEW: (m) => getRedditUserOverview(m.username || m.user, { sort: m.sort, time: m.time, limit: m.limit }),
+  SCRAPER_FETCH_RD_USER_POST_RANK_IN_SUBREDDIT: (m) => getRedditUserPostRankInSubreddit(m.username || m.user, m.subreddit || m.sub, { sort: m.sort, limit: m.limit }),
+  SCRAPER_FETCH_RD_PROFILE: (m) => getRedditProfile(m.username || m.user),
+  SCRAPER_FETCH_RD_USER_STATS: (m) => getRedditUserStats(m.username || m.user),
+  SCRAPER_SEARCH_RD_USERS: (m) => searchRedditUsers(m.query || m.username, { limit: m.limit }),
+  SCRAPER_SEARCH_RD_POSTS: (m) => searchRedditPosts(m.query || m.keyword, { subreddit: m.subreddit || m.sub, sort: m.sort, time: m.time, limit: m.limit }),
+  SCRAPER_SEARCH_RD_SUBREDDITS: (m) => searchRedditSubreddits(m.query || m.subreddit, { limit: m.limit }),
+  SCRAPER_FETCH_RD_POST_DETAILS: (m) => getRedditPostDetails(m.post_url || m.postUrl || m.url || m.postId || m.id),
+  SCRAPER_FETCH_RD_POST_COMMENTS: (m) => getRedditPostComments(m.post_url || m.postUrl || m.url || m.postId || m.id, { limit: m.limit }),
+  SCRAPER_FETCH_RD_POST_COMMENTS_WITH_SORT: (m) => getRedditPostCommentsWithSort(m.post_url || m.postUrl || m.url || m.postId || m.id, { sort: m.sort, limit: m.limit }),
+  SCRAPER_FETCH_RD_POST_DUPLICATES: (m) => getRedditPostDuplicates(m.post_url || m.postUrl || m.url || m.postId || m.id, { limit: m.limit }),
   SCRAPER_FETCH_BILIBILI_HOT: (m) => fetchBilibiliHot(m.limit),
   SCRAPER_FETCH_BILIBILI_RANKING: (m) => fetchBilibiliRanking(m.limit),
   SCRAPER_FETCH_TIKTOK_EXPLORE: (m) => fetchTikTokExplore(m.limit),
@@ -1554,6 +1585,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 Object.assign(self, {
   searchTikTok, searchYouTube, fetchTikTokExplore,
   searchReddit, fetchRedditHot,
+  getRedditPopularPosts, getRedditTopPopularPosts, getRedditRisingPopularPosts,
+  getRedditBestPopularPosts, getRedditPopularPostsByCountry,
+  getRedditPostsBySubreddit, getRedditTopPostsBySubreddit,
+  getRedditControversialPostsBySubreddit, getRedditCommentsBySubreddit,
+  getRedditSubredditInfo, getRedditSubredditModerators, getRedditSubredditRules,
+  getRedditSimilarSubreddits, getRedditNewSubreddits, getRedditPopularSubreddits,
+  getRedditPostsByUsername, getRedditTopPostsByUsername,
+  getRedditCommentsByUsername, getRedditTopCommentsByUsername,
+  getRedditUserOverview, getRedditUserPostRankInSubreddit,
+  getRedditProfile, getRedditUserStats, searchRedditUsers, searchRedditPosts,
+  searchRedditSubreddits, getRedditPostDetails, getRedditPostComments,
+  getRedditPostCommentsWithSort, getRedditPostDuplicates,
   searchBilibili, fetchBilibiliHot, fetchBilibiliRanking,
   searchZhihu, fetchZhihuHot,
   searchXueqiu, fetchXueqiuHot,

@@ -101,6 +101,21 @@ import {
   youtubeChannelSearchCommand, youtubeStreamingDataCommand, youtubeRelatedCommand,
   youtubeCommentsCommand,
   redditSearchCommand, redditHotCommand,
+  redditPopularPostsCommand, redditTopPopularPostsCommand,
+  redditRisingPopularPostsCommand, redditBestPopularPostsCommand,
+  redditPopularPostsByCountryCommand, redditPostsBySubredditCommand,
+  redditTopPostsBySubredditCommand, redditControversialPostsBySubredditCommand,
+  redditCommentsBySubredditCommand, redditSubredditInfoCommand,
+  redditSubredditModeratorsCommand, redditSubredditRulesCommand,
+  redditSimilarSubredditsCommand, redditNewSubredditsCommand,
+  redditPopularSubredditsCommand, redditPostsByUsernameCommand,
+  redditTopPostsByUsernameCommand, redditCommentsByUsernameCommand,
+  redditTopCommentsByUsernameCommand, redditUserOverviewCommand,
+  redditUserPostRankInSubredditCommand, redditProfileCommand,
+  redditUserStatsCommand, redditSearchUsersCommand, redditSearchPostsCommand,
+  redditSearchSubredditsCommand, redditPostDetailsCommand,
+  redditPostCommentsCommand, redditPostCommentsWithSortCommand,
+  redditPostDuplicatesCommand,
   bilibiliSearchCommand, bilibiliHotCommand, bilibiliRankingCommand,
   zhihuSearchCommand, zhihuHotCommand,
   xueqiuSearchCommand, xueqiuHotCommand,
@@ -1167,6 +1182,105 @@ function buildProgram(): Command {
   const reddit = program.command('reddit').description('Reddit');
   reddit.command('search <query>').description('Search Reddit posts').option('-l, --limit <n>', 'Max results', '10').action(redditSearchCommand);
   reddit.command('hot').description('Reddit frontpage hot posts').option('-l, --limit <n>', 'Max results', '20').action(redditHotCommand);
+  reddit.command('popular-posts').description('Reddit popular posts')
+    .option('--sort <sort>', 'hot | new | top | rising | controversial | best', 'hot')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditPopularPostsCommand);
+  reddit.command('top-popular-posts').description('Reddit top popular posts')
+    .option('--time <time>', 'hour | day | week | month | year | all', 'day')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditTopPopularPostsCommand);
+  reddit.command('rising-popular-posts').description('Reddit rising popular posts')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditRisingPopularPostsCommand);
+  reddit.command('best-popular-posts').description('Reddit best popular posts')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditBestPopularPostsCommand);
+  reddit.command('popular-posts-by-country <country>').description('Reddit popular posts by country')
+    .option('--sort <sort>', 'hot | new | top | rising | controversial | best', 'hot')
+    .option('--time <time>', 'hour | day | week | month | year | all', 'day')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditPopularPostsByCountryCommand);
+  reddit.command('posts-by-subreddit <subreddit>').description('Reddit posts by subreddit')
+    .option('--sort <sort>', 'hot | new | top | rising | controversial | best', 'hot')
+    .option('--time <time>', 'hour | day | week | month | year | all', 'day')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditPostsBySubredditCommand);
+  reddit.command('top-posts-by-subreddit <subreddit>').description('Top posts by subreddit')
+    .option('--time <time>', 'hour | day | week | month | year | all', 'day')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditTopPostsBySubredditCommand);
+  reddit.command('controversial-posts-by-subreddit <subreddit>').description('Controversial posts by subreddit')
+    .option('--time <time>', 'hour | day | week | month | year | all', 'all')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditControversialPostsBySubredditCommand);
+  reddit.command('comments-by-subreddit <subreddit>').description('Latest comments by subreddit')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditCommentsBySubredditCommand);
+  reddit.command('subreddit-info <subreddit>').description('Fetch subreddit info').action(redditSubredditInfoCommand);
+  reddit.command('subreddit-moderators <subreddit>').description('Fetch subreddit moderators').action(redditSubredditModeratorsCommand);
+  reddit.command('subreddit-rules <subreddit>').description('Fetch subreddit rules').action(redditSubredditRulesCommand);
+  reddit.command('similar-subreddits <subreddit>').description('Find similar subreddits')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditSimilarSubredditsCommand);
+  reddit.command('new-subreddits').description('New subreddits')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditNewSubredditsCommand);
+  reddit.command('popular-subreddits').description('Popular subreddits')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditPopularSubredditsCommand);
+  reddit.command('posts-by-username <username>').description('Posts by Reddit username')
+    .option('--sort <sort>', 'hot | new | top | rising | controversial | best', 'new')
+    .option('--time <time>', 'hour | day | week | month | year | all', 'all')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditPostsByUsernameCommand);
+  reddit.command('top-posts-by-username <username>').description('Top posts by Reddit username')
+    .option('--time <time>', 'hour | day | week | month | year | all', 'all')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditTopPostsByUsernameCommand);
+  reddit.command('comments-by-username <username>').description('Comments by Reddit username')
+    .option('--sort <sort>', 'hot | new | top | rising | controversial | best', 'new')
+    .option('--time <time>', 'hour | day | week | month | year | all', 'all')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditCommentsByUsernameCommand);
+  reddit.command('top-comments-by-username <username>').description('Top comments by Reddit username')
+    .option('--time <time>', 'hour | day | week | month | year | all', 'all')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditTopCommentsByUsernameCommand);
+  reddit.command('user-overview <username>').description('User overview')
+    .option('--sort <sort>', 'hot | new | top | rising | controversial | best', 'new')
+    .option('--time <time>', 'hour | day | week | month | year | all', 'all')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditUserOverviewCommand);
+  reddit.command('user-post-rank-in-subreddit <username> <subreddit>').description('Rank a user posts within a subreddit')
+    .option('--sort <sort>', 'hot | new | top | rising | controversial | best', 'new')
+    .option('-l, --limit <n>', 'Max scanned posts', '100')
+    .action(redditUserPostRankInSubredditCommand);
+  reddit.command('profile <username>').description('Fetch Reddit profile').action(redditProfileCommand);
+  reddit.command('user-stats <username>').description('Fetch Reddit user stats').action(redditUserStatsCommand);
+  reddit.command('search-users <query>').description('Search Reddit users')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditSearchUsersCommand);
+  reddit.command('search-posts <query>').description('Search Reddit posts')
+    .option('--subreddit <subreddit>', 'Restrict search to a subreddit')
+    .option('--sort <sort>', 'relevance | hot | top | new | comments', 'relevance')
+    .option('--time <time>', 'hour | day | week | month | year | all', 'all')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditSearchPostsCommand);
+  reddit.command('search-subreddits <query>').description('Search Reddit subreddits')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditSearchSubredditsCommand);
+  reddit.command('post-details <post-url-or-id>').description('Fetch Reddit post details').action(redditPostDetailsCommand);
+  reddit.command('post-comments <post-url-or-id>').description('Fetch Reddit post comments')
+    .option('-l, --limit <n>', 'Max comments', '50')
+    .action(redditPostCommentsCommand);
+  reddit.command('post-comments-with-sort <post-url-or-id>').description('Fetch Reddit post comments with sort')
+    .option('--sort <sort>', 'best | top | new | controversial | old | q&a', 'best')
+    .option('-l, --limit <n>', 'Max comments', '50')
+    .action(redditPostCommentsWithSortCommand);
+  reddit.command('post-duplicates <post-url-or-id>').description('Fetch Reddit post duplicates')
+    .option('-l, --limit <n>', 'Max results', '25')
+    .action(redditPostDuplicatesCommand);
 
   const bilibili = program.command('bilibili').description('Bilibili');
   bilibili.command('search <query>').description('Search Bilibili videos').option('-l, --limit <n>', 'Max results', '10').action(bilibiliSearchCommand);
