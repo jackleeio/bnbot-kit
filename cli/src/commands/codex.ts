@@ -33,6 +33,7 @@ interface CodexAskOptions extends CodexReadOptions {
 
 interface CodexImageGenerateOptions extends CodexConnectionOptions {
   size?: string;
+  quality?: string;
   timeout?: string;
   responseFormat?: string;
   artifactDir?: string;
@@ -472,7 +473,7 @@ export async function codexImageGenerateCommand(
     const beforeArtifactSources = new Set(
       (await extractArtifacts(connected.client)).map((artifact) => artifact.source),
     );
-    const text = buildImageGeneratePrompt(prompt, options.size);
+    const text = buildImageGeneratePrompt(prompt, options.size, options.quality);
     const injected = await injectComposerText(connected.client, text);
     if (!injected.ok) throw new Error(injected.error || 'Could not find Codex composer input');
     await sleep(350);
@@ -500,6 +501,7 @@ export async function codexImageGenerateCommand(
       status: images.length > 0 ? 'complete' : response.status,
       prompt,
       size: options.size || null,
+      quality: options.quality || null,
       response_format: responseFormat,
       response: response.text,
       submit,
@@ -1104,11 +1106,12 @@ function collectLocalImageArtifacts(text: string, inlineArtifacts = false): Imag
   return artifacts;
 }
 
-function buildImageGeneratePrompt(prompt: string, size?: string): string {
+function buildImageGeneratePrompt(prompt: string, size?: string, quality?: string): string {
   return [
     '$imagegen',
     'Generate one real raster image file (PNG/JPG/WebP), not SVG, HTML, canvas code, Python drawing, or a placeholder.',
     size ? `Target size/aspect: ${size}.` : '',
+    quality ? `Rendering quality target: ${quality}.` : '',
     'Do not add text, captions, logos, or watermarks unless the user explicitly asked for them.',
     'After the image is generated, do not do extra reasoning; just leave the generated image visible in the chat.',
     '',

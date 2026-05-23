@@ -321,6 +321,7 @@ function buildProgram(): Command {
     .command('image-generate <prompt>')
     .description('Generate a real image through Codex Desktop Image Gen and return image artifacts. Use "-" to read stdin.')
     .option('--size <size>', 'Requested image size/aspect hint, e.g. 1024x576')
+    .option('--quality <quality>', 'Rendering quality hint, e.g. low, medium, high, auto')
     .option('--timeout <seconds>', 'Max seconds to wait for image generation', '300')
     .option('--response-format <format>', 'path | b64_json', 'path')
     .option('--port <port>', 'Codex remote debugging port', '9238')

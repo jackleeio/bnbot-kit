@@ -1,6 +1,6 @@
 {
   "name": "@bnbot/cli",
-  "version": "0.3.43",
+  "version": "0.3.44",
   "description": "AI Growth Agent for social platforms. Find trends, create content, and automate growth.",
   "main": "dist/index.js",
   "bin": {
