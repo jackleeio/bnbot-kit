@@ -1139,9 +1139,11 @@ export async function searchDouyinLive(
       };
       if (list.length > 0) {
         const first = list[0];
-        out._debug_entry_keys = Object.keys(first || {});
-        out._debug_lives_keys = Object.keys(first?.lives || {});
-        out._debug_tail = JSON.stringify(first).slice(-3500);
+        const rawStr = first?.lives?.rawdata;
+        let raw: any = null;
+        try { raw = typeof rawStr === 'string' ? JSON.parse(rawStr) : rawStr; } catch {}
+        out._debug_rawdata_keys = raw ? Object.keys(raw) : null;
+        out._debug_rawdata_sample = JSON.stringify(raw, null, 0).slice(0, 3500);
       }
       return out;
     } catch (e: any) {
