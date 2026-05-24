@@ -70,12 +70,14 @@ import {
 } from './commands/codex.js';
 import {
   chatgptAskCommand,
+  chatgptImageGenerateCommand,
   chatgptModelCommand,
   chatgptNewCommand,
   chatgptReadCommand,
   chatgptSendCommand,
   chatgptStatusCommand,
 } from './commands/chatgpt.js';
+import { geminiImageGenerateCommand } from './commands/gemini.js';
 import { debugEvalCommand, debugUploadCommand, debugClickCommand, debugShowCommand, debugDragCommand, debugRecordCommand } from './commands/debug.js';
 import { xhsPostCommand, xhsStatsNoteCommand, xhsStatsAccountCommand } from './commands/xhs.js';
 import { wxmpPostCommand } from './commands/wxmp.js';
@@ -330,6 +332,7 @@ function buildProgram(): Command {
     .description('Generate a real image through Codex Desktop Image Gen and return image artifacts. Use "-" to read stdin.')
     .option('--size <size>', 'Requested image size/aspect hint, e.g. 1024x576')
     .option('--quality <quality>', 'Rendering quality hint, e.g. low, medium, high, auto')
+    .option('--image <path-or-url>', 'Reference image path, URL, or data URL (repeatable)', collectMedia, [])
     .option('--timeout <seconds>', 'Max seconds to wait for image generation', '300')
     .option('--response-format <format>', 'path | b64_json', 'path')
     .option('--port <port>', 'Codex remote debugging port', '9238')
@@ -399,6 +402,24 @@ function buildProgram(): Command {
     .action(chatgptAskCommand);
 
   chatgpt
+    .command('image-generate <prompt>')
+    .description('Generate a real image through ChatGPT Desktop and return image artifacts. Use "-" to read stdin.')
+    .option('--size <size>', 'Requested image size/aspect hint, e.g. 1024x576')
+    .option('--quality <quality>', 'Rendering quality hint, e.g. low, medium, high, auto')
+    .option('--image <path-or-url>', 'Reference image path, URL, or data URL (repeatable)', collectMedia, [])
+    .option('--timeout <seconds>', 'Max seconds to wait for image generation', '300')
+    .option('--response-format <format>', 'path | b64_json', 'path')
+    .option('--model <model>', 'Model/mode to use: auto, instant, thinking, 5.2-instant, 5.2-thinking')
+    .option('--port <port>', 'ChatGPT remote debugging port', '9236')
+    .option('--endpoint <url>', 'CDP endpoint override (http://127.0.0.1:9236 or ws://...)')
+    .option('--no-launch', 'Do not auto-launch ChatGPT when CDP is not reachable')
+    .option('--restart', 'Quit/relaunch ChatGPT if it is already running without CDP')
+    .option('--new', 'Start a fresh ChatGPT conversation before generating')
+    .option('--artifact-dir <path>', 'Directory for extracted artifacts (default /tmp/bnbot-chatgpt-artifacts)')
+    .option('--inline-artifacts', 'Include artifact base64 in JSON output')
+    .action(chatgptImageGenerateCommand);
+
+  chatgpt
     .command('read')
     .description('Read the current ChatGPT Desktop conversation')
     .option('--limit <n>', 'Max recent visible messages to return', '20')
@@ -408,6 +429,27 @@ function buildProgram(): Command {
     .command('model [model-name]')
     .description('List or switch ChatGPT Desktop model/mode')
     .action(chatgptModelCommand);
+
+  // ── Gemini API image generation ───────────────────────
+  const gemini = program
+    .command('gemini')
+    .description('Call Gemini API helpers');
+
+  gemini
+    .command('image-generate <prompt>')
+    .description('Generate or edit an image through Gemini API. Use "-" to read stdin.')
+    .option('--api-key <key>', 'Gemini API key (defaults to GEMINI_API_KEY or GOOGLE_API_KEY)')
+    .option('--model <model>', 'Gemini image model or alias: nano-banana, nano-banana-2, nano-banana-pro')
+    .option('--image <path-or-url>', 'Reference image path, URL, or data URL (repeatable)', collectMedia, [])
+    .option('--aspect-ratio <ratio>', 'Image aspect ratio, e.g. 1:1, 16:9, 9:16, 21:9')
+    .option('--image-size <size>', 'Resolution hint: 512, 1K, 2K, 4K')
+    .option('--quality <quality>', 'Prompt-level rendering quality hint')
+    .option('--timeout <seconds>', 'Max seconds to wait for image generation', '300')
+    .option('--response-format <format>', 'path | b64_json', 'path')
+    .option('--artifact-dir <path>', 'Directory for extracted artifacts (default /tmp/bnbot-gemini-artifacts)')
+    .option('--inline-artifacts', 'Include artifact base64 in JSON output')
+    .option('--google-search', 'Allow Gemini to ground image generation with Google Search when supported')
+    .action(geminiImageGenerateCommand);
 
   // ── Screenshot (any tab, any URL) ──────────────────────
   program

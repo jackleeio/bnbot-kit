@@ -39,6 +39,7 @@ interface CodexImageGenerateOptions extends CodexConnectionOptions {
   artifactDir?: string;
   inlineArtifacts?: boolean;
   new?: boolean;
+  image?: string[];
 }
 
 interface CodexHistoryOptions extends CodexConnectionOptions {
@@ -254,6 +255,65 @@ class CDPClient {
       windowsVirtualKeyCode: modifier === 'Meta' ? 91 : 17,
       nativeVirtualKeyCode: modifier === 'Meta' ? 91 : 17,
     });
+  }
+
+  async pressPasteShortcut(): Promise<void> {
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    const modifiers = process.platform === 'darwin' ? 4 : 2;
+    await this.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: modifier,
+      code: modifier === 'Meta' ? 'MetaLeft' : 'ControlLeft',
+      windowsVirtualKeyCode: modifier === 'Meta' ? 91 : 17,
+      nativeVirtualKeyCode: modifier === 'Meta' ? 91 : 17,
+      modifiers,
+    });
+    await this.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'v',
+      code: 'KeyV',
+      windowsVirtualKeyCode: 86,
+      nativeVirtualKeyCode: 86,
+      modifiers,
+    });
+    await this.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'v',
+      code: 'KeyV',
+      windowsVirtualKeyCode: 86,
+      nativeVirtualKeyCode: 86,
+      modifiers,
+    });
+    await this.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: modifier,
+      code: modifier === 'Meta' ? 'MetaLeft' : 'ControlLeft',
+      windowsVirtualKeyCode: modifier === 'Meta' ? 91 : 17,
+      nativeVirtualKeyCode: modifier === 'Meta' ? 91 : 17,
+    });
+  }
+
+  async setFileInputFiles(files: string[], selector = 'input[type="file"]'): Promise<void> {
+    await this.send('DOM.enable').catch(() => undefined);
+    const doc = await this.send<{ root?: { nodeId?: number } }>('DOM.getDocument', {
+      depth: -1,
+      pierce: true,
+    });
+    const rootNodeId = doc.root?.nodeId;
+    if (!rootNodeId) throw new Error('Could not read DOM root for file upload');
+
+    const queried = await this.send<{ nodeId?: number }>('DOM.querySelector', {
+      nodeId: rootNodeId,
+      selector,
+    });
+    if (!queried.nodeId) {
+      throw new Error(`Could not find file input matching ${selector}`);
+    }
+
+    await this.send('DOM.setFileInputFiles', {
+      nodeId: queried.nodeId,
+      files,
+    }, 60_000);
   }
 
   private handleMessage(raw: RawData): void {
@@ -473,7 +533,10 @@ export async function codexImageGenerateCommand(
     const beforeArtifactSources = new Set(
       (await extractArtifacts(connected.client)).map((artifact) => artifact.source),
     );
-    const text = buildImageGeneratePrompt(prompt, options.size, options.quality);
+    const referenceImages = await resolveImageInputs(options.image ?? [], options.artifactDir);
+    const attachments = await attachComposerFiles(connected.client, referenceImages);
+    if (!attachments.ok) throw new Error(attachments.error || 'Failed to attach reference image(s)');
+    const text = buildImageGeneratePrompt(prompt, options.size, options.quality, referenceImages.length);
     const injected = await injectComposerText(connected.client, text);
     if (!injected.ok) throw new Error(injected.error || 'Could not find Codex composer input');
     await sleep(350);
@@ -502,9 +565,11 @@ export async function codexImageGenerateCommand(
       prompt,
       size: options.size || null,
       quality: options.quality || null,
+      reference_images: referenceImages.length,
       response_format: responseFormat,
       response: response.text,
       submit,
+      attachments,
       images,
       artifacts,
       error: images.length > 0 ? undefined : 'No raster image artifact was produced by Codex Desktop.',
@@ -1106,17 +1171,152 @@ function collectLocalImageArtifacts(text: string, inlineArtifacts = false): Imag
   return artifacts;
 }
 
-function buildImageGeneratePrompt(prompt: string, size?: string, quality?: string): string {
+function buildImageGeneratePrompt(
+  prompt: string,
+  size?: string,
+  quality?: string,
+  referenceCount = 0,
+): string {
   return [
     '$imagegen',
     'Generate one real raster image file (PNG/JPG/WebP), not SVG, HTML, canvas code, Python drawing, or a placeholder.',
     size ? `Target size/aspect: ${size}.` : '',
     quality ? `Rendering quality target: ${quality}.` : '',
+    referenceCount > 0 ? `Use the ${referenceCount} attached reference image(s) as visual references where relevant.` : '',
     'Do not add text, captions, logos, or watermarks unless the user explicitly asked for them.',
     'After the image is generated, do not do extra reasoning; just leave the generated image visible in the chat.',
     '',
     `Prompt: ${prompt}`,
   ].filter(Boolean).join('\n');
+}
+
+async function attachComposerFiles(
+  client: CDPClient,
+  files: string[],
+): Promise<{ ok: boolean; attached: number; files: string[]; method: string; error?: string }> {
+  if (!files.length) {
+    return { ok: true, attached: 0, files: [], method: 'none' };
+  }
+
+  await revealFileInput(client).catch(() => undefined);
+  await sleep(500);
+  try {
+    await client.setFileInputFiles(files);
+    await sleep(1_500);
+    return { ok: true, attached: files.length, files, method: 'DOM.setFileInputFiles' };
+  } catch (error) {
+    const domError = getErrorMessage(error);
+    try {
+      setClipboardFiles(files);
+      await focusComposer(client);
+      await client.pressPasteShortcut();
+      await sleep(2_500);
+      return { ok: true, attached: files.length, files, method: 'pasteboard', error: domError };
+    } catch (pasteError) {
+      return {
+        ok: false,
+        attached: 0,
+        files,
+        method: 'pasteboard',
+        error: `${domError}; paste fallback failed: ${getErrorMessage(pasteError)}`,
+      };
+    }
+  }
+}
+
+async function revealFileInput(client: CDPClient): Promise<void> {
+  await client.evaluate<void>(`
+    (() => {
+      const clean = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const visible = (el) => {
+        const rect = el.getBoundingClientRect?.();
+        return !!rect && rect.width > 0 && rect.height > 0;
+      };
+      if (document.querySelector('input[type="file"]')) return;
+      const buttons = Array.from(document.querySelectorAll('button, [role="button"]')).filter(visible);
+      const button = buttons.find((btn) => {
+        const label = clean(btn.innerText || btn.textContent || btn.getAttribute('aria-label') || btn.getAttribute('title') || '');
+        return /attach|upload|file|image|photo|添加|附件|上传|圖片|图片/i.test(label);
+      });
+      button?.click();
+    })()
+  `);
+}
+
+async function focusComposer(client: CDPClient): Promise<void> {
+  const focused = await client.evaluate<{ ok: boolean; error?: string }>(`
+    (() => {
+      const visible = (el) => {
+        const rect = el.getBoundingClientRect?.();
+        return !rect || (rect.width > 0 && rect.height > 0);
+      };
+      const editables = Array.from(document.querySelectorAll('[contenteditable="true"]')).filter(visible);
+      const textarea = Array.from(document.querySelectorAll('textarea')).filter(visible).pop();
+      const composer = editables.length ? editables[editables.length - 1] : textarea;
+      if (!composer) return { ok: false, error: 'composer_not_found' };
+      composer.focus();
+      return { ok: true };
+    })()
+  `);
+  if (!focused.ok) throw new Error(focused.error || 'Could not focus composer');
+}
+
+function setClipboardFiles(files: string[]): void {
+  if (process.platform !== 'darwin') {
+    throw new Error('file paste fallback requires macOS');
+  }
+  const fileList = files
+    .map((file) => `POSIX file ${JSON.stringify(file)}`)
+    .join(', ');
+  execFileSync('osascript', ['-e', `set the clipboard to {${fileList}}`], {
+    stdio: 'ignore',
+    timeout: 10_000,
+  });
+}
+
+async function resolveImageInputs(values: string[], artifactDir?: string): Promise<string[]> {
+  const out: string[] = [];
+  const dir = artifactDir || join(tmpdir(), 'bnbot-codex-artifacts');
+  for (const value of values) {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) continue;
+    out.push(await resolveImageInput(trimmed, dir));
+  }
+  return out;
+}
+
+async function resolveImageInput(value: string, dir: string): Promise<string> {
+  if (value.startsWith('data:image/')) return writeDataUrlImage(value, dir);
+  if (/^https?:\/\//i.test(value)) return downloadImage(value, dir);
+
+  const path = value.replace(/^~/, homedir());
+  if (!existsSync(path)) {
+    throw new Error(`reference image not found: ${value}`);
+  }
+  return path;
+}
+
+function writeDataUrlImage(value: string, dir: string): string {
+  const match = value.match(/^data:(image\/[^;]+);base64,(.+)$/);
+  if (!match) throw new Error('invalid data URL reference image');
+  mkdirSync(dir, { recursive: true });
+  const ext = mimeToExt(match[1]);
+  const path = join(dir, `codex-reference-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`);
+  writeFileSync(path, Buffer.from(match[2], 'base64'));
+  return path;
+}
+
+async function downloadImage(url: string, dir: string): Promise<string> {
+  mkdirSync(dir, { recursive: true });
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`failed to download reference image ${url}: ${response.status}`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const mime = response.headers.get('content-type') || 'image/png';
+  if (!/^image\//i.test(mime)) throw new Error(`reference URL is not an image: ${url}`);
+  const ext = mimeToExt(mime);
+  const path = join(dir, `codex-reference-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`);
+  writeFileSync(path, bytes);
+  return path;
 }
 
 function imageArtifactToApiImage(
