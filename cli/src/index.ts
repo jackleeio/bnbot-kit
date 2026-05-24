@@ -68,6 +68,14 @@ import {
   codexSendCommand,
   codexStatusCommand,
 } from './commands/codex.js';
+import {
+  chatgptAskCommand,
+  chatgptModelCommand,
+  chatgptNewCommand,
+  chatgptReadCommand,
+  chatgptSendCommand,
+  chatgptStatusCommand,
+} from './commands/chatgpt.js';
 import { debugEvalCommand, debugUploadCommand, debugClickCommand, debugShowCommand, debugDragCommand, debugRecordCommand } from './commands/debug.js';
 import { xhsPostCommand, xhsStatsNoteCommand, xhsStatsAccountCommand } from './commands/xhs.js';
 import { wxmpPostCommand } from './commands/wxmp.js';
@@ -361,6 +369,45 @@ function buildProgram(): Command {
     .option('--no-launch', 'Do not auto-launch Codex when CDP is not reachable')
     .option('--restart', 'Quit/relaunch Codex if it is already running without CDP')
     .action(codexModelCommand);
+
+  // ── ChatGPT Desktop (macOS Accessibility bridge) ──────
+  const chatgpt = program
+    .command('chatgpt')
+    .description('Control ChatGPT Desktop through macOS Accessibility');
+
+  chatgpt
+    .command('status')
+    .description('Check whether ChatGPT Desktop is running')
+    .action(chatgptStatusCommand);
+
+  chatgpt
+    .command('new')
+    .description('Start a new ChatGPT Desktop conversation')
+    .action(chatgptNewCommand);
+
+  chatgpt
+    .command('send <text>')
+    .description('Send text to the current ChatGPT Desktop conversation. Use "-" to read stdin.')
+    .option('--model <model>', 'Model/mode to use: auto, instant, thinking, 5.2-instant, 5.2-thinking')
+    .action(chatgptSendCommand);
+
+  chatgpt
+    .command('ask <text>')
+    .description('Send a prompt to ChatGPT Desktop and wait for the next response. Use "-" to read stdin.')
+    .option('--timeout <seconds>', 'Max seconds to wait for the response', '30')
+    .option('--model <model>', 'Model/mode to use: auto, instant, thinking, 5.2-instant, 5.2-thinking')
+    .action(chatgptAskCommand);
+
+  chatgpt
+    .command('read')
+    .description('Read the current ChatGPT Desktop conversation')
+    .option('--limit <n>', 'Max recent visible messages to return', '20')
+    .action(chatgptReadCommand);
+
+  chatgpt
+    .command('model [model-name]')
+    .description('List or switch ChatGPT Desktop model/mode')
+    .action(chatgptModelCommand);
 
   // ── Screenshot (any tab, any URL) ──────────────────────
   program
