@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import WebSocket, { type RawData } from 'ws';
 
 const DEFAULT_CODEX_PORT = 9238;
@@ -12,6 +12,8 @@ const DEFAULT_CDP_TIMEOUT_MS = 30_000;
 const DEFAULT_POLL_MS = 2_000;
 const ARTIFACT_LIMIT = 10;
 const MAX_ARTIFACT_BYTES = 8 * 1024 * 1024;
+const CODEX_UI_LOCK_PATH = join(tmpdir(), 'bnbot-codex-ui.lock');
+const CODEX_UI_LOCK_STALE_MS = 120_000;
 
 interface CodexConnectionOptions {
   port?: string;
@@ -93,6 +95,12 @@ interface TurnSnapshot {
   busy: boolean;
   title: string;
   url: string;
+}
+
+interface CodexThreadInfo {
+  threadId: string;
+  title: string;
+  busy: boolean;
 }
 
 interface ImageArtifact {
@@ -524,36 +532,53 @@ export async function codexImageGenerateCommand(
   const connected = await connectCodex(options);
 
   try {
-    if (options.new) {
-      await connected.client.pressNewConversationShortcut();
-      await sleep(1_000);
-    }
-
-    const before = await readConversation(connected.client, 1);
-    const beforeArtifactSources = new Set(
-      (await extractArtifacts(connected.client)).map((artifact) => artifact.source),
-    );
     const referenceImages = await resolveImageInputs(options.image ?? [], options.artifactDir);
-    const attachments = await attachComposerFiles(connected.client, referenceImages);
-    if (!attachments.ok) throw new Error(attachments.error || 'Failed to attach reference image(s)');
-    const text = buildImageGeneratePrompt(prompt, options.size, options.quality, referenceImages.length);
-    const injected = await injectComposerText(connected.client, text);
-    if (!injected.ok) throw new Error(injected.error || 'Could not find Codex composer input');
-    await sleep(350);
-    const submit = await submitComposer(connected.client);
+    const prepared = await withCodexUiLock(async () => {
+      const previousThread = await getActiveCodexThread(connected.client);
+      if (options.new) {
+        await startNewCodexConversation(connected.client);
+      }
+      await waitForCodexComposer(connected.client);
 
-    const baselineIndex = before.turns[before.turns.length - 1]?.index ?? before.count;
-    const response = await waitForResponse(
+      const before = await readConversation(connected.client, 1);
+      const activeBeforeSubmit = await getActiveCodexThread(connected.client);
+      const beforeArtifactSources = new Set([
+        ...(await extractArtifacts(connected.client)).map((artifact) => artifact.source),
+        ...collectGeneratedImageArtifacts(activeBeforeSubmit.threadId, inlineArtifacts).map((artifact) => artifact.source),
+      ]);
+      const attachments = await attachComposerFiles(connected.client, referenceImages);
+      if (!attachments.ok) throw new Error(attachments.error || 'Failed to attach reference image(s)');
+      const text = buildImageGeneratePrompt(prompt, options.size, options.quality, referenceImages.length);
+      const injected = await injectComposerText(connected.client, text);
+      if (!injected.ok) throw new Error(injected.error || 'Could not find Codex composer input');
+      await sleep(350);
+      const submit = await submitComposer(connected.client);
+      const thread = options.new
+        ? await waitForCodexThreadAfterSubmit(connected.client, previousThread.threadId)
+        : await getActiveCodexThread(connected.client);
+      return {
+        before,
+        beforeArtifactSources,
+        attachments,
+        injected,
+        submit,
+        thread,
+      };
+    }, Math.min(90_000, Math.max(30_000, timeoutMs)));
+
+    const baselineIndex = prepared.before.turns[prepared.before.turns.length - 1]?.index ?? prepared.before.count;
+    const response = await waitForCodexThreadResponse(
       connected.client,
+      prepared.thread.threadId,
       baselineIndex,
       timeoutMs,
-      async () => (await extractArtifacts(connected.client)).some((artifact) => !beforeArtifactSources.has(artifact.source)),
+      prepared.beforeArtifactSources,
+      inlineArtifacts,
     );
-    const domArtifacts = filterNewArtifacts(await extractArtifacts(connected.client), beforeArtifactSources);
-    const artifacts = renumberArtifacts([
+    const artifacts = renumberArtifacts(dedupeArtifacts([
       ...collectLocalImageArtifacts(response.text, inlineArtifacts),
-      ...persistArtifacts(domArtifacts, options.artifactDir, inlineArtifacts),
-    ]);
+      ...persistArtifacts(filterNewArtifacts(response.artifacts, prepared.beforeArtifactSources), options.artifactDir, inlineArtifacts),
+    ]));
     const images = artifacts
       .filter((artifact) => isRasterImageMime(artifact.mime))
       .map((artifact) => imageArtifactToApiImage(artifact, responseFormat));
@@ -568,8 +593,10 @@ export async function codexImageGenerateCommand(
       reference_images: referenceImages.length,
       response_format: responseFormat,
       response: response.text,
-      submit,
-      attachments,
+      submit: prepared.submit,
+      attachments: prepared.attachments,
+      composer: prepared.injected,
+      thread: response.thread || prepared.thread,
       images,
       artifacts,
       error: images.length > 0 ? undefined : 'No raster image artifact was produced by Codex Desktop.',
@@ -584,11 +611,17 @@ export async function codexNewCommand(options: CodexConnectionOptions): Promise<
   const connected = await connectCodex(options);
 
   try {
-    await connected.client.pressNewConversationShortcut();
-    await sleep(1_000);
+    const result = await withCodexUiLock(async () => {
+      const before = await getActiveCodexThread(connected.client);
+      const created = await startNewCodexConversation(connected.client);
+      await waitForCodexComposer(connected.client);
+      const after = await getActiveCodexThread(connected.client);
+      return { before, after, created };
+    });
     printJson({
       success: true,
       action: 'new',
+      ...result,
       target: summarizeTarget(connected.target),
     });
   } finally {
@@ -930,6 +963,217 @@ async function readConversation(client: CDPClient, limit: number): Promise<TurnS
   return client.evaluate<TurnSnapshot>(conversationScript(limit));
 }
 
+async function withCodexUiLock<T>(fn: () => Promise<T>, timeoutMs = 90_000): Promise<T> {
+  const fd = await acquireCodexUiLock(timeoutMs);
+  try {
+    return await fn();
+  } finally {
+    closeSync(fd);
+    try {
+      unlinkSync(CODEX_UI_LOCK_PATH);
+    } catch {
+      // Another process may have already removed a stale lock.
+    }
+  }
+}
+
+async function acquireCodexUiLock(timeoutMs: number): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const fd = openSync(CODEX_UI_LOCK_PATH, 'wx');
+      writeFileSync(fd, JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }));
+      return fd;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      if (isCodexUiLockStale()) {
+        try { unlinkSync(CODEX_UI_LOCK_PATH); } catch { /* ignore */ }
+        continue;
+      }
+      await sleep(250);
+    }
+  }
+  throw new Error(`Timed out waiting for Codex UI lock after ${timeoutMs / 1000}s`);
+}
+
+function isCodexUiLockStale(): boolean {
+  try {
+    return Date.now() - statSync(CODEX_UI_LOCK_PATH).mtimeMs > CODEX_UI_LOCK_STALE_MS;
+  } catch {
+    return true;
+  }
+}
+
+async function getActiveCodexThread(client: CDPClient): Promise<CodexThreadInfo> {
+  return client.evaluate<CodexThreadInfo>(`
+    (() => {
+      const clean = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const active = document.querySelector('[data-app-action-sidebar-thread-active="true"]');
+      const buttons = Array.from(document.querySelectorAll('button'));
+      const busy = buttons.some((button) => {
+        const label = clean(button.innerText || button.textContent || button.getAttribute('aria-label') || '');
+        return /stop|cancel|停止|中止/i.test(label);
+      });
+      return {
+        threadId: active?.getAttribute('data-app-action-sidebar-thread-id') || '',
+        title: clean(active?.innerText || active?.textContent || ''),
+        busy
+      };
+    })()
+  `);
+}
+
+async function startNewCodexConversation(client: CDPClient): Promise<{ ok: boolean; method: string; label?: string; error?: string }> {
+  const clicked = await client.evaluate<{ ok: boolean; method: string; label?: string; error?: string }>(`
+    (() => {
+      const visible = (el) => {
+        const rect = el.getBoundingClientRect?.();
+        return !!rect && rect.width > 0 && rect.height > 0;
+      };
+      const activeThread = document.querySelector('[data-app-action-sidebar-thread-active="true"]');
+      const projectContainer =
+        activeThread?.closest('[role="listitem"][aria-label]') ||
+        activeThread?.parentElement?.closest('[role="listitem"][aria-label]');
+      const projectButton = projectContainer
+        ? Array.from(projectContainer.querySelectorAll('button')).find((button) => (
+            visible(button) && /^Start new chat in /i.test(button.getAttribute('aria-label') || '')
+          ))
+        : null;
+      const fallback = Array.from(document.querySelectorAll('button')).find((button) => (
+        visible(button) && /^Start new chat in /i.test(button.getAttribute('aria-label') || '')
+      )) || Array.from(document.querySelectorAll('button')).find((button) => (
+        visible(button) && /^(New chat|新聊天)/i.test(String(button.innerText || button.textContent || button.getAttribute('aria-label') || '').trim())
+      ));
+      const button = projectButton || fallback;
+      if (!button) return { ok: false, method: 'dom-click', error: 'new_chat_button_not_found' };
+      const label = button.getAttribute('aria-label') || button.innerText || button.textContent || '';
+      button.click();
+      return { ok: true, method: projectButton ? 'project-new-chat' : 'new-chat', label };
+    })()
+  `);
+  if (clicked.ok) return clicked;
+
+  await client.pressNewConversationShortcut();
+  return { ok: true, method: 'shortcut', error: clicked.error };
+}
+
+async function waitForCodexComposer(client: CDPClient, timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const ready = await client.evaluate<{ ok: boolean }>(`
+      (() => {
+        const visible = (el) => {
+          const rect = el.getBoundingClientRect?.();
+          return !!rect && rect.width > 0 && rect.height > 0;
+        };
+        return {
+          ok: Array.from(document.querySelectorAll('[contenteditable="true"], textarea')).some(visible)
+        };
+      })()
+    `).catch(() => ({ ok: false }));
+    if (ready.ok) return;
+    await sleep(300);
+  }
+  throw new Error('Codex composer did not become ready before timeout');
+}
+
+async function waitForCodexThreadAfterSubmit(
+  client: CDPClient,
+  previousThreadId: string,
+  timeoutMs = 15_000,
+): Promise<CodexThreadInfo> {
+  const deadline = Date.now() + timeoutMs;
+  let last = await getActiveCodexThread(client);
+  while (Date.now() < deadline) {
+    last = await getActiveCodexThread(client);
+    if (last.threadId && last.threadId !== previousThreadId) return last;
+    await sleep(300);
+  }
+  if (last.threadId) return last;
+  throw new Error('Codex did not expose a thread id after submit');
+}
+
+async function activateCodexThread(client: CDPClient, threadId: string): Promise<CodexThreadInfo> {
+  const current = await getActiveCodexThread(client);
+  if (!threadId || current.threadId === threadId) return current;
+
+  const clicked = await client.evaluate<{ ok: boolean; error?: string }>(`
+    ((threadId) => {
+      const selector = '[data-app-action-sidebar-thread-id="' + CSS.escape(threadId) + '"]';
+      const row = document.querySelector(selector);
+      if (!row) return { ok: false, error: 'thread_not_found' };
+      row.click();
+      return { ok: true };
+    })(${JSON.stringify(threadId)})
+  `);
+  if (!clicked.ok) throw new Error(clicked.error || `Could not activate Codex thread ${threadId}`);
+
+  const deadline = Date.now() + 10_000;
+  let active = await getActiveCodexThread(client);
+  while (Date.now() < deadline) {
+    active = await getActiveCodexThread(client);
+    if (active.threadId === threadId) return active;
+    await sleep(250);
+  }
+  return active;
+}
+
+async function waitForCodexThreadResponse(
+  client: CDPClient,
+  threadId: string,
+  previousTurnIndex: number,
+  timeoutMs: number,
+  beforeArtifactSources: Set<string>,
+  inlineArtifacts: boolean,
+): Promise<{ status: 'complete' | 'timeout'; text: string; artifacts: ImageArtifact[]; thread?: CodexThreadInfo }> {
+  const deadline = Date.now() + timeoutMs;
+  let lastText = '';
+  let stableSince = 0;
+  let lastArtifacts: ImageArtifact[] = [];
+  let lastThread: CodexThreadInfo | undefined;
+
+  while (Date.now() < deadline) {
+    await sleep(DEFAULT_POLL_MS);
+    const poll = await withCodexUiLock(async () => {
+      const active = await activateCodexThread(client, threadId);
+      const snapshot = await readConversation(client, 10);
+      const responseTurn = [...snapshot.turns]
+        .reverse()
+        .find((turn) => turn.index > previousTurnIndex && turn.role === 'assistant');
+      const text = responseTurn?.text || '';
+      const localArtifacts = filterNewArtifacts(
+        collectGeneratedImageArtifacts(threadId, inlineArtifacts),
+        beforeArtifactSources,
+      );
+      const domArtifacts = filterNewArtifacts(await extractArtifacts(client), beforeArtifactSources);
+      return {
+        busy: snapshot.busy,
+        thread: { ...active, busy: snapshot.busy },
+        text,
+        artifacts: [...localArtifacts, ...domArtifacts],
+      };
+    }, 30_000);
+    lastArtifacts = poll.artifacts;
+    lastThread = poll.thread;
+
+    if (poll.text === lastText) {
+      stableSince += DEFAULT_POLL_MS;
+    } else {
+      lastText = poll.text;
+      stableSince = 0;
+    }
+
+    if (!poll.busy && poll.artifacts.length > 0) {
+      return { status: 'complete', text: poll.text, artifacts: poll.artifacts, thread: poll.thread };
+    }
+    if (poll.text && !poll.busy && stableSince >= DEFAULT_POLL_MS) {
+      return { status: 'complete', text: poll.text, artifacts: poll.artifacts, thread: poll.thread };
+    }
+  }
+
+  return { status: 'timeout', text: lastText, artifacts: lastArtifacts, thread: lastThread };
+}
+
 function conversationScript(limit: number): string {
   return `
     (() => {
@@ -1171,6 +1415,45 @@ function collectLocalImageArtifacts(text: string, inlineArtifacts = false): Imag
   return artifacts;
 }
 
+function collectGeneratedImageArtifacts(threadId: string, inlineArtifacts = false): ImageArtifact[] {
+  const id = normalizeCodexThreadId(threadId);
+  if (!id) return [];
+
+  const dir = join(homedir(), '.codex', 'generated_images', id);
+  if (!existsSync(dir)) return [];
+
+  const artifacts: ImageArtifact[] = [];
+  for (const file of readdirSync(dir).sort()) {
+    if (!/\.(?:png|jpe?g|webp|gif)$/i.test(file)) continue;
+    const path = join(dir, file);
+    let stat;
+    try {
+      stat = statSync(path);
+    } catch {
+      continue;
+    }
+    if (!stat.isFile()) continue;
+
+    const artifact: ImageArtifact = {
+      index: artifacts.length + 1,
+      type: 'file',
+      source: path,
+      path,
+      mime: mimeFromPath(path),
+      bytes: stat.size,
+    };
+    if (inlineArtifacts && stat.size <= MAX_ARTIFACT_BYTES) {
+      artifact.base64 = readFileSync(path).toString('base64');
+    }
+    artifacts.push(artifact);
+  }
+  return artifacts;
+}
+
+function normalizeCodexThreadId(threadId: string): string {
+  return String(threadId || '').replace(/^local:/, '').trim();
+}
+
 function buildImageGeneratePrompt(
   prompt: string,
   size?: string,
@@ -1198,30 +1481,101 @@ async function attachComposerFiles(
     return { ok: true, attached: 0, files: [], method: 'none' };
   }
 
-  await revealFileInput(client).catch(() => undefined);
-  await sleep(500);
   try {
-    await client.setFileInputFiles(files);
-    await sleep(1_500);
-    return { ok: true, attached: files.length, files, method: 'DOM.setFileInputFiles' };
-  } catch (error) {
-    const domError = getErrorMessage(error);
+    const attached = await attachFilesViaDomPaste(client, files);
+    if (attached >= files.length) {
+      return { ok: true, attached, files, method: 'dom-paste' };
+    }
+    return {
+      ok: false,
+      attached,
+      files,
+      method: 'dom-paste',
+      error: `Only ${attached}/${files.length} reference image(s) appeared in the composer`,
+    };
+  } catch (domPasteError) {
+    const pasteError = getErrorMessage(domPasteError);
     try {
-      setClipboardFiles(files);
-      await focusComposer(client);
-      await client.pressPasteShortcut();
-      await sleep(2_500);
-      return { ok: true, attached: files.length, files, method: 'pasteboard', error: domError };
-    } catch (pasteError) {
-      return {
-        ok: false,
-        attached: 0,
-        files,
-        method: 'pasteboard',
-        error: `${domError}; paste fallback failed: ${getErrorMessage(pasteError)}`,
-      };
+      await revealFileInput(client).catch(() => undefined);
+      await sleep(500);
+      await client.setFileInputFiles(files);
+      await sleep(1_500);
+      return { ok: true, attached: files.length, files, method: 'DOM.setFileInputFiles', error: pasteError };
+    } catch (error) {
+      const domError = getErrorMessage(error);
+      try {
+        setClipboardFiles(files);
+        await focusComposer(client);
+        await client.pressPasteShortcut();
+        await sleep(2_500);
+        return { ok: true, attached: files.length, files, method: 'pasteboard', error: `${pasteError}; ${domError}` };
+      } catch (fallbackError) {
+        return {
+          ok: false,
+          attached: 0,
+          files,
+          method: 'pasteboard',
+          error: `${pasteError}; ${domError}; paste fallback failed: ${getErrorMessage(fallbackError)}`,
+        };
+      }
     }
   }
+}
+
+async function attachFilesViaDomPaste(client: CDPClient, files: string[]): Promise<number> {
+  const payload = files.map((file) => ({
+    name: basename(file),
+    mime: mimeFromPath(file),
+    base64: readFileSync(file).toString('base64'),
+  }));
+
+  const result = await client.evaluate<{ ok: boolean; attached: number; error?: string }>(`
+    (async (payload) => {
+      const visible = (el) => {
+        const rect = el.getBoundingClientRect?.();
+        return !rect || (rect.width > 0 && rect.height > 0);
+      };
+      const editables = Array.from(document.querySelectorAll('[contenteditable="true"], .ProseMirror, textarea')).filter(visible);
+      const target = editables.length ? editables[editables.length - 1] : document.body;
+      if (!target) return { ok: false, attached: 0, error: 'composer_not_found' };
+
+      const countAttached = () => {
+        const removeLabels = Array.from(document.querySelectorAll('button[aria-label]'))
+          .map((el) => el.getAttribute('aria-label') || '');
+        return payload.reduce((count, item) => (
+          count + removeLabels.filter((label) => label === 'Remove ' + item.name).length
+        ), 0);
+      };
+
+      const before = countAttached();
+      const dataTransfer = new DataTransfer();
+      for (const item of payload) {
+        const binary = atob(item.base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        dataTransfer.items.add(new File([bytes], item.name, { type: item.mime }));
+      }
+
+      target.focus?.();
+      const event = new ClipboardEvent('paste', {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dataTransfer,
+      });
+      target.dispatchEvent(event);
+
+      const deadline = Date.now() + 8_000;
+      while (Date.now() < deadline) {
+        const attached = countAttached() - before;
+        if (attached >= payload.length) return { ok: true, attached };
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      return { ok: false, attached: Math.max(0, countAttached() - before), error: 'attachment_preview_timeout' };
+    })(${JSON.stringify(payload)})
+  `, 15_000);
+
+  if (!result.ok) throw new Error(result.error || 'DOM paste attachment failed');
+  return result.attached;
 }
 
 async function revealFileInput(client: CDPClient): Promise<void> {
@@ -1392,6 +1746,37 @@ function filterNewArtifacts(artifacts: ImageArtifact[], beforeSources: Set<strin
 
 function renumberArtifacts(artifacts: ImageArtifact[]): ImageArtifact[] {
   return artifacts.map((artifact, index) => ({ ...artifact, index: index + 1 }));
+}
+
+function dedupeArtifacts(artifacts: ImageArtifact[]): ImageArtifact[] {
+  const seen = new Set<string>();
+  const indexByKey = new Map<string, number>();
+  const out: ImageArtifact[] = [];
+  for (const artifact of artifacts) {
+    const key = artifact.path || localPathFromArtifactSource(artifact.source) || artifact.source;
+    if (key && seen.has(key)) {
+      const index = indexByKey.get(key);
+      if (index !== undefined) {
+        const existing = out[index];
+        out[index] = {
+          ...existing,
+          width: existing.width ?? artifact.width,
+          height: existing.height ?? artifact.height,
+          alt: existing.alt ?? artifact.alt,
+          bytes: existing.bytes ?? artifact.bytes,
+          base64: existing.base64 ?? artifact.base64,
+          path: existing.path ?? artifact.path,
+        };
+      }
+      continue;
+    }
+    if (key) {
+      seen.add(key);
+      indexByKey.set(key, out.length);
+    }
+    out.push(artifact);
+  }
+  return out;
 }
 
 function historyScript(): string {

@@ -1045,3 +1045,204 @@ export async function getTwitterNotifications(limit = 40): Promise<any[]> {
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return (data as any[]) || [];
 }
+
+/**
+ * Followers / Following list scraper — DOM-based (ported from opencli
+ * twitter/followers.js + following.js). The SPA follower-list view does
+ * NOT expose a GraphQL-friendly count, so we navigate to the list page,
+ * scroll, and read `[data-testid="UserCell"]` cells. Locale-independent:
+ * strips i18n button/badge texts rather than matching "Follow"/"关注".
+ */
+async function scrapeTwitterUserList(
+  kind: 'followers' | 'following',
+  username: string,
+  limit = 50,
+): Promise<any[]> {
+  const handle = String(username || '').trim().replace(/^@/, '').split(/[/?\s]/)[0];
+  if (!handle) throw new Error(`twitter ${kind}: username is required`);
+  const tabId = await getTab(`https://x.com/${handle}/${kind}`);
+  await new Promise(r => setTimeout(r, 4000));
+  await checkLoginRedirect(tabId, 'Twitter');
+
+  const data = await executeInPage(tabId, async (lim: number) => {
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+    try {
+      const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
+      if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
+
+      const extract = (): any[] => {
+        const out: any[] = [];
+        const cells = document.querySelectorAll('[data-testid="UserCell"]');
+        cells.forEach((cell: Element) => {
+          const strip = new Set<string>();
+          cell.querySelectorAll('[data-testid$="-follow"],[data-testid$="-unfollow"],[data-testid="userFollowIndicator"]').forEach((el) => {
+            const t = ((el as HTMLElement).innerText || '').trim();
+            if (t) strip.add(t);
+          });
+          const lines = (((cell as HTMLElement).innerText) || '')
+            .split('\n').map(s => s.trim()).filter(Boolean).filter(l => !strip.has(l));
+          let screen_name = '';
+          const remaining: string[] = [];
+          for (const l of lines) {
+            if (!screen_name && l.startsWith('@')) screen_name = l.slice(1).split(/\s/)[0];
+            else remaining.push(l);
+          }
+          if (!screen_name) {
+            const av = cell.querySelector('[data-testid^="UserAvatar-Container-"]');
+            const tid = av ? (av.getAttribute('data-testid') || '') : '';
+            if (tid.startsWith('UserAvatar-Container-')) screen_name = tid.slice('UserAvatar-Container-'.length);
+          }
+          const name = remaining[0] || screen_name;
+          const bio = remaining.slice(1).join(' ').replace(/\s+/g, ' ').trim();
+          if (screen_name) out.push({ screen_name, name, bio });
+        });
+        return out;
+      };
+
+      const all: any[] = [];
+      const seen = new Set<string>();
+      let sameCount = 0;
+      while (all.length < lim && sameCount < 3) {
+        const rows = extract();
+        const fresh = rows.filter(r => !seen.has(r.screen_name));
+        for (const r of fresh) { seen.add(r.screen_name); all.push(r); }
+        if (fresh.length === 0) sameCount++; else sameCount = 0;
+        if (all.length >= lim) break;
+        window.scrollTo(0, document.body.scrollHeight);
+        await sleep(1500);
+      }
+      if (all.length === 0) return { error: `No ${'' + 'list'} rows found (account may be private or page changed)` };
+      return all.slice(0, lim);
+    } catch (e: any) { return { error: e.message || 'Twitter user-list scraper failed' }; }
+  }, [limit]);
+
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return (data as any[]) || [];
+}
+
+export async function getTwitterFollowers(username: string, limit = 50): Promise<any[]> {
+  return scrapeTwitterUserList('followers', username, limit);
+}
+
+export async function getTwitterFollowing(username: string, limit = 50): Promise<any[]> {
+  return scrapeTwitterUserList('following', username, limit);
+}
+
+/**
+ * Twitter Article (long-form) scraper — GraphQL TweetResultByRestId, ported
+ * from opencli twitter/article.js. Resolves the article's parent tweet id,
+ * fetches the article rich-content blocks, and renders draft.js blocks to
+ * Markdown.
+ */
+export async function getTwitterArticle(tweetIdOrUrl: string, queryIds: QueryIds = {}): Promise<any> {
+  // article URLs (x.com/i/article/<id>) need their parent tweet id resolved
+  let rawId = String(tweetIdOrUrl || '').trim();
+  const isArticleUrl = /\/article\/\d+/.test(rawId);
+  const m = rawId.match(/\/(?:status|article)\/(\d+)/);
+  if (m) rawId = m[1];
+
+  // opencli's hardcoded fallback queryId for TweetResultByRestId
+  const fb: QueryIds = { TweetResultByRestId: '7xflPyRiUxGVbJd4uWmbfg', ...queryIds };
+
+  const tabId = await getTab(isArticleUrl ? `https://x.com/i/article/${rawId}` : `https://x.com/i/status/${rawId}`);
+  await new Promise(r => setTimeout(r, 3000));
+  await checkLoginRedirect(tabId, 'Twitter');
+
+  const data = await executeInPage(tabId, async (bearer: string, fallbacks: QueryIds, idIn: string, articleUrl: boolean) => {
+    try {
+      let tweetId = idIn;
+      if (articleUrl) {
+        const links = Array.from(document.querySelectorAll('a[href*="/status/"]')) as HTMLAnchorElement[];
+        let resolved = '';
+        for (const a of links) { const mm = a.href.match(/\/status\/(\d+)/); if (mm) { resolved = mm[1]; break; } }
+        if (!resolved) {
+          const og = document.querySelector('meta[property="og:url"]') as HTMLMetaElement | null;
+          const mm = og?.content?.match(/\/status\/(\d+)/); if (mm) resolved = mm[1];
+        }
+        if (!resolved) return { error: `Could not resolve article ${tweetId} to a tweet id` };
+        tweetId = resolved;
+      }
+      const ct0 = document.cookie.split(';').map((c: string) => c.trim()).find((c: string) => c.startsWith('ct0='))?.split('=')[1];
+      if (!ct0) return { error: 'Not logged into x.com (no ct0 cookie)' };
+
+      const resolveQueryId = async (operationName: string): Promise<string> => {
+        try {
+          const cached = JSON.parse(sessionStorage.getItem('__bnbot_x_qids') || 'null');
+          if (cached?.ts && Date.now() - cached.ts < 3600_000 && cached.ids?.[operationName]) return cached.ids[operationName];
+        } catch {}
+        const ops = ['TweetResultByRestId', 'TweetDetail'];
+        const ids: Record<string, string> = {};
+        const startedAt = Date.now();
+        let scriptUrls: string[] = [];
+        while (Date.now() - startedAt < 6000) {
+          scriptUrls = (Array.from(document.querySelectorAll('script[src]')) as HTMLScriptElement[])
+            .map(s => s.src).filter(src => src.endsWith('.js') && (src.includes('abs.twimg.com') || src.includes('client-web') || src.startsWith('/')));
+          if (scriptUrls.length > 0) break;
+          await new Promise(r => setTimeout(r, 300));
+        }
+        for (const url of scriptUrls.slice(0, 20)) {
+          try {
+            const code = await (await fetch(url)).text();
+            for (const op of ops) {
+              if (ids[op]) continue;
+              const mm = code.match(new RegExp('queryId:"([A-Za-z0-9_-]+)"[^}]{0,200}operationName:"' + op + '"'));
+              if (mm) ids[op] = mm[1];
+            }
+          } catch {}
+        }
+        if (ids[operationName]) return ids[operationName];
+        const f = fallbacks[operationName];
+        if (f) return f;
+        throw new Error('queryId for ' + operationName + ' missing');
+      };
+
+      const queryId = await resolveQueryId('TweetResultByRestId');
+      const headers: Record<string, string> = {
+        'Authorization': 'Bearer ' + decodeURIComponent(bearer),
+        'X-Csrf-Token': ct0, 'X-Twitter-Auth-Type': 'OAuth2Session', 'X-Twitter-Active-User': 'yes',
+      };
+      const variables = JSON.stringify({ tweetId, withCommunity: false, includePromotedContent: false, withVoice: false });
+      const features = JSON.stringify({ longform_notetweets_consumption_enabled: true, responsive_web_twitter_article_tweet_consumption_enabled: true, longform_notetweets_rich_text_read_enabled: true, longform_notetweets_inline_media_enabled: true, articles_preview_enabled: true, responsive_web_graphql_exclude_directive_enabled: true, verified_phone_label_enabled: false });
+      const fieldToggles = JSON.stringify({ withArticleRichContentState: true, withArticlePlainText: true });
+      const url = `/i/api/graphql/${queryId}/TweetResultByRestId?variables=${encodeURIComponent(variables)}&features=${encodeURIComponent(features)}&fieldToggles=${encodeURIComponent(fieldToggles)}`;
+      const resp = await fetch(url, { headers, credentials: 'include' });
+      if (!resp.ok) return { error: 'TweetResultByRestId HTTP ' + resp.status };
+      const d = await resp.json();
+      const result = d?.data?.tweetResult?.result;
+      if (!result) return { error: 'Article not found' };
+      const tw = result.tweet || result;
+      const legacy = tw.legacy || {};
+      const user = tw.core?.user_results?.result;
+      const screenName = user?.legacy?.screen_name || user?.core?.screen_name || 'unknown';
+      const articleResults = tw.article?.article_results?.result;
+      if (!articleResults) {
+        const noteText = tw.note_tweet?.note_tweet_results?.result?.text;
+        if (noteText) return { title: '(Note Tweet)', author: screenName, content: noteText, url: `https://x.com/${screenName}/status/${tweetId}` };
+        return { error: 'Tweet ' + tweetId + ' has no article content' };
+      }
+      const title = articleResults.title || '(Untitled)';
+      const blocks = articleResults.content_state?.blocks || [];
+      const parts: string[] = [];
+      let ordered = 0;
+      for (const block of blocks) {
+        const bt = block.type || 'unstyled';
+        if (bt === 'atomic') continue;
+        const text = block.text || '';
+        if (!text) continue;
+        if (bt !== 'ordered-list-item') ordered = 0;
+        if (bt === 'header-one') parts.push('# ' + text);
+        else if (bt === 'header-two') parts.push('## ' + text);
+        else if (bt === 'header-three') parts.push('### ' + text);
+        else if (bt === 'blockquote') parts.push('> ' + text);
+        else if (bt === 'unordered-list-item') parts.push('- ' + text);
+        else if (bt === 'ordered-list-item') { ordered++; parts.push(ordered + '. ' + text); }
+        else if (bt === 'code-block') parts.push('```\n' + text + '\n```');
+        else parts.push(text);
+      }
+      return { title, author: screenName, content: parts.join('\n\n') || legacy.full_text || '', url: `https://x.com/${screenName}/status/${tweetId}` };
+    } catch (e: any) { return { error: e.message || 'Twitter article scraper failed' }; }
+  }, [BEARER, fb, rawId, isArticleUrl]);
+
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return data;
+}

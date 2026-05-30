@@ -60,6 +60,7 @@ interface LocalStatusResponse {
   type: 'status';
   extensionConnected: true;
   version: string;
+  features?: string[];
 }
 
 type LocalOutgoingMessage = LocalActionResult | LocalHeartbeat | LocalStatusResponse | LocalSourceCapture;
@@ -134,6 +135,7 @@ class LocalRelayManager {
           type: 'status',
           extensionConnected: true,
           version: chrome.runtime.getManifest().version,
+          features: ['background_local_actions'],
         });
       };
 
@@ -152,6 +154,16 @@ class LocalRelayManager {
         this.callbacks?.onConnectionChange?.(false);
         this.stopHeartbeat();
         this.ws = null;
+        // Special close code 4029 = server already has an active extension
+        // connection and is rejecting us as a duplicate (Chrome SW
+        // reconnect-race defense). Don't fight back — sleep long enough
+        // that we don't keep churning the primary session.
+        if (event.code === 4029) {
+          console.log('[LocalRelay] Server says another SW instance is active; backing off 60s before retrying');
+          this.clearReconnectTimer();
+          this.reconnectTimer = setTimeout(() => this.connect(), 60_000);
+          return;
+        }
         this.scheduleReconnect();
       };
 
@@ -216,6 +228,7 @@ class LocalRelayManager {
           type: 'status',
           extensionConnected: true,
           version: chrome.runtime.getManifest().version,
+          features: ['background_local_actions'],
         });
         break;
 

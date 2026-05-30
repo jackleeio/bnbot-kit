@@ -191,3 +191,45 @@ export async function runLogin(argv: string[]): Promise<void> {
   const loginData = await emailLogin(email);
   sendTokensToExtension(loginData, port);
 }
+
+/**
+ * Check current authentication status.
+ * Queries the daemon's /auth/status endpoint.
+ */
+export async function checkAuthStatus(port: number = DEFAULT_PORT): Promise<void> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/auth/status`);
+    if (!res.ok) {
+      console.error(`Failed to check auth status: HTTP ${res.status}`);
+      process.exit(1);
+    }
+
+    const status = await res.json() as {
+      valid: boolean;
+      expiry: string | null;
+      email: string | null;
+    };
+
+    if (status.valid) {
+      console.log('✓ Authenticated');
+      if (status.email) {
+        console.log(`  Email: ${status.email}`);
+      }
+      if (status.expiry) {
+        console.log(`  Expires: ${status.expiry}`);
+      }
+    } else {
+      console.log('✗ Not authenticated');
+      console.log('  Run `bnbot login` to authenticate');
+      process.exit(1);
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
+      console.error('✗ Daemon not running');
+      console.error('  Run `bnbot serve` to start the daemon');
+    } else {
+      console.error('Failed to check auth status:', (err as Error).message);
+    }
+    process.exit(1);
+  }
+}

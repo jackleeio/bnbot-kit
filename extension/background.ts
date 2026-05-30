@@ -8,7 +8,7 @@ import { localRelayManager, LocalActionRequest } from './utils/localRelayManager
 // taskAlarmScheduler + draftService removed — scheduling moved to the
 // bnbot main repo's auto-publish loop (see bnbot/src/services/autoPublish/),
 // and the server-side draft product line was retired.
-import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, IDLE_BONUS_EXPLORE, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok, ensureDebuggerAttached, debuggerSend, getPoolTabs, openTabInScraperWindow, getTab } from './services/scraperService';
+import { searchTikTok, searchYouTube, fetchTikTokExplore, startAllIdleTimers, IDLE_BONUS_EXPLORE, likeYoutubeVideo, unlikeYoutubeVideo, subscribeYoutubeChannel, unsubscribeYoutubeChannel, getYoutubeFeed, getYoutubeHistory, getYoutubeWatchLater, getYoutubeSubscriptions, getTikTokProfile, likeTikTok, ensureDebuggerAttached, debuggerSend, getPoolTabs, getScraperWindowIds, openTabInScraperWindow, getTab } from './services/scraperService';
 import { debuggerWriteHandlers } from './services/debugger';
 import { setFileInputFilesViaChooser, setFilesViaBlob, registerEventListener } from './services/debugger/debuggerOps';
 import { getAccountAnalytics as bgAccountAnalytics, getReplyImpressions as bgReplyImpressions } from './utils/BackgroundTwitterClient';
@@ -153,18 +153,40 @@ async function captureTabScreenshot(args: {
 async function navigateTabViaCdp(args: {
   url: string;
   tabId?: number;
-}): Promise<{ tabId: number; url: string; title: string }> {
+  /**
+   * When true, ALWAYS create a fresh isolated tab for this URL instead
+   * of reusing the host's pool entry. Use this when a workflow needs
+   * its own Slate composer / submit button / generation state and
+   * can't share with other tasks on the same site (Flow video, Gemini
+   * image-gen, ChatGPT, etc). The returned tabId is the caller's to
+   * manage — pin every subsequent action to it via tabId/--tab-id.
+   *
+   * Spawned tabs do NOT register in the per-host tabPool, so the host
+   * fallback selector (--host) still hits the original pool tab.
+   */
+  spawn?: boolean;
+}): Promise<{ tabId: number; url: string; title: string; spawned: boolean }> {
   if (!args.url) throw new Error('navigate_to_url: missing url');
   const fullUrl = args.url.startsWith('http') ? args.url : `https://x.com${args.url.startsWith('/') ? '' : '/'}${args.url}`;
 
-  // Default to the pool's tab for this host (creates+minimizes one if
-  // missing, reuses+refreshes it if it's already open). This way multiple
-  // navigate calls in a row land on the same tab instead of piling up.
-  const tabId = args.tabId ?? await getTab(fullUrl);
+  // Tab selection:
+  //   - explicit tabId → use it as-is
+  //   - spawn=true → create a brand-new isolated tab (not in tabPool)
+  //   - default → host-pool tab (creates one if missing, reuses if open)
+  let tabId: number;
+  let spawned = false;
+  if (args.tabId) {
+    tabId = args.tabId;
+  } else if (args.spawn) {
+    tabId = await openTabInScraperWindow(fullUrl);
+    spawned = true;
+  } else {
+    tabId = await getTab(fullUrl);
+  }
 
   const currentTab = await chrome.tabs.get(tabId);
   if (currentTab.url === fullUrl) {
-    return { tabId, url: currentTab.url || fullUrl, title: currentTab.title || '' };
+    return { tabId, url: currentTab.url || fullUrl, title: currentTab.title || '', spawned };
   }
 
   const targetId = await ensureDebuggerAttached(tabId, ['Page']);
@@ -187,7 +209,7 @@ async function navigateTabViaCdp(args: {
   // actually paints the new route.
   await new Promise((resolve) => setTimeout(resolve, 800));
   const tab = await chrome.tabs.get(tabId);
-  return { tabId, url: tab.url || fullUrl, title: tab.title || '' };
+  return { tabId, url: tab.url || fullUrl, title: tab.title || '', spawned };
 }
 
 /**
@@ -211,6 +233,9 @@ async function debugSetFileInputFiles(args: {
     const pool = getPoolTabs();
     if (pool.length === 0) throw new Error('debug_set_files: no pool tabs');
     const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    if (args.targetHost && !hostMatch) {
+      throw new Error(`no pool tab matched targetHost='${args.targetHost}' (available hosts: ${pool.map((p) => p.host).join(', ') || 'none'})`);
+    }
     tabId = (hostMatch ?? pool[0]).tabId;
   }
 
@@ -268,6 +293,9 @@ async function debugSetFileInputFilesViaChooser(args: {
     const pool = getPoolTabs();
     if (pool.length === 0) throw new Error('debug_set_files_via_chooser: no pool tabs');
     const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    if (args.targetHost && !hostMatch) {
+      throw new Error(`no pool tab matched targetHost='${args.targetHost}' (available hosts: ${pool.map((p) => p.host).join(', ') || 'none'})`);
+    }
     tabId = (hostMatch ?? pool[0]).tabId;
   }
 
@@ -304,6 +332,9 @@ async function debugSetFilesViaBlob(args: {
     const pool = getPoolTabs();
     if (pool.length === 0) throw new Error('debug_set_files_via_blob: no pool tabs');
     const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    if (args.targetHost && !hostMatch) {
+      throw new Error(`no pool tab matched targetHost='${args.targetHost}' (available hosts: ${pool.map((p) => p.host).join(', ') || 'none'})`);
+    }
     tabId = (hostMatch ?? pool[0]).tabId;
   }
   const targetId = await ensureDebuggerAttached(tabId, ['Page', 'DOM']);
@@ -339,6 +370,9 @@ async function debugDrag(args: {
     const pool = getPoolTabs();
     if (pool.length === 0) throw new Error('debug_drag: no pool tabs');
     const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    if (args.targetHost && !hostMatch) {
+      throw new Error(`no pool tab matched targetHost='${args.targetHost}' (available hosts: ${pool.map((p) => p.host).join(', ') || 'none'})`);
+    }
     tabId = (hostMatch ?? pool[0]).tabId;
   }
 
@@ -398,6 +432,9 @@ async function debugShowPoolWindow(args: {
     const pool = getPoolTabs();
     if (pool.length === 0) throw new Error('debug_show_window: no pool tabs');
     const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    if (args.targetHost && !hostMatch) {
+      throw new Error(`no pool tab matched targetHost='${args.targetHost}' (available hosts: ${pool.map((p) => p.host).join(', ') || 'none'})`);
+    }
     tabId = (hostMatch ?? pool[0]).tabId;
   }
   const tab = await chrome.tabs.get(tabId);
@@ -422,6 +459,43 @@ async function debugShowPoolWindow(args: {
   return { tabId, windowId: tab.windowId ?? -1, url: tab.url || '' };
 }
 
+async function debugListTabs(args: {
+  host?: string;
+  urlIncludes?: string;
+  scraperOnly?: boolean;
+}): Promise<{ tabs: Array<{ tabId: number; windowId: number; url: string; title: string; active: boolean; discarded?: boolean; windowFocused?: boolean; windowType?: string }> }> {
+  const scraperWindowIds = args.scraperOnly ? new Set(await getScraperWindowIds()) : null;
+  const host = String(args.host || '').trim().toLowerCase();
+  const urlIncludes = String(args.urlIncludes || '').trim();
+  const windows = await chrome.windows.getAll();
+  const windowById = new Map(windows.filter((win) => win.id != null).map((win) => [win.id!, win]));
+  const tabs = await chrome.tabs.query({});
+  const out = tabs
+    .filter((tab) => tab.id != null && !!tab.url)
+    .filter((tab) => !scraperWindowIds || scraperWindowIds.has(tab.windowId))
+    .filter((tab) => {
+      if (!host) return true;
+      try {
+        const hostname = new URL(tab.url || '').hostname.toLowerCase();
+        return hostname === host || hostname.endsWith(`.${host}`);
+      } catch {
+        return false;
+      }
+    })
+    .filter((tab) => !urlIncludes || (tab.url || '').includes(urlIncludes))
+    .map((tab) => ({
+      tabId: tab.id!,
+      windowId: tab.windowId,
+      url: tab.url || '',
+      title: tab.title || '',
+      active: !!tab.active,
+      discarded: tab.discarded,
+      windowFocused: windowById.get(tab.windowId)?.focused,
+      windowType: windowById.get(tab.windowId)?.type,
+    }));
+  return { tabs: out };
+}
+
 /**
  * Install a persistent fetch/XHR interceptor in a pool tab via CDP
  * `Page.addScriptToEvaluateOnNewDocument`. Survives reloads and
@@ -443,6 +517,9 @@ async function debugRecordStart(args: {
     const pool = getPoolTabs();
     if (pool.length === 0) throw new Error('debug_record_start: no pool tabs');
     const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    if (args.targetHost && !hostMatch) {
+      throw new Error(`no pool tab matched targetHost='${args.targetHost}' (available hosts: ${pool.map((p) => p.host).join(', ') || 'none'})`);
+    }
     tabId = (hostMatch ?? pool[0]).tabId;
   }
   const targetId = await ensureDebuggerAttached(tabId, ['Page', 'Runtime']);
@@ -526,6 +603,9 @@ async function debugRecordDump(args: {
     const pool = getPoolTabs();
     if (pool.length === 0) throw new Error('debug_record_dump: no pool tabs');
     const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    if (args.targetHost && !hostMatch) {
+      throw new Error(`no pool tab matched targetHost='${args.targetHost}' (available hosts: ${pool.map((p) => p.host).join(', ') || 'none'})`);
+    }
     tabId = (hostMatch ?? pool[0]).tabId;
   }
   const targetId = await ensureDebuggerAttached(tabId, ['Page', 'Runtime']);
@@ -549,6 +629,9 @@ async function debugRecordStop(args: {
     const pool = getPoolTabs();
     if (pool.length === 0) throw new Error('debug_record_stop: no pool tabs');
     const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    if (args.targetHost && !hostMatch) {
+      throw new Error(`no pool tab matched targetHost='${args.targetHost}' (available hosts: ${pool.map((p) => p.host).join(', ') || 'none'})`);
+    }
     tabId = (hostMatch ?? pool[0]).tabId;
   }
   const targetId = await ensureDebuggerAttached(tabId, ['Page', 'Runtime']);
@@ -577,6 +660,9 @@ async function debugTrustedClick(args: {
     const pool = getPoolTabs();
     if (pool.length === 0) throw new Error('debug_click: no pool tabs');
     const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    if (args.targetHost && !hostMatch) {
+      throw new Error(`no pool tab matched targetHost='${args.targetHost}' (available hosts: ${pool.map((p) => p.host).join(', ') || 'none'})`);
+    }
     tabId = (hostMatch ?? pool[0]).tabId;
   }
 
@@ -594,6 +680,9 @@ async function debugTrustedClick(args: {
   const { x, y } = rect.result.value;
 
   await debuggerSend(targetId, 'Input.dispatchMouseEvent', {
+    type: 'mouseMoved', x, y, button: 'none', clickCount: 0,
+  });
+  await debuggerSend(targetId, 'Input.dispatchMouseEvent', {
     type: 'mousePressed', x, y, button: 'left', clickCount: 1,
   });
   await debuggerSend(targetId, 'Input.dispatchMouseEvent', {
@@ -602,6 +691,92 @@ async function debugTrustedClick(args: {
 
   const tab = await chrome.tabs.get(tabId);
   return { tabId, url: tab.url || '', x, y };
+}
+
+/**
+ * Insert text at the current focused element via CDP `Input.insertText`.
+ * Unlike `document.execCommand('insertText')` or `dispatchEvent(new InputEvent(...))`,
+ * this fires a TRUSTED input event, so editors like Slate / Lexical / ProseMirror
+ * actually update their internal state.
+ *
+ * Caller should usually click into the editable first so it has focus.
+ */
+// v0.12.27 — focus-dance retries for Slate / Lexical / ProseMirror editors.
+async function debugInsertText(args: {
+  text: string;
+  selector?: string;
+  tabId?: number;
+  targetHost?: string;
+}): Promise<{ tabId: number; url: string; focused: string | null }> {
+  if (typeof args.text !== 'string') throw new Error('debug_insert_text: missing text');
+
+  let tabId = args.tabId;
+  if (!tabId) {
+    const pool = getPoolTabs();
+    if (pool.length === 0) throw new Error('debug_insert_text: no pool tabs');
+    const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    if (args.targetHost && !hostMatch) {
+      throw new Error(`no pool tab matched targetHost='${args.targetHost}' (available hosts: ${pool.map((p) => p.host).join(', ') || 'none'})`);
+    }
+    tabId = (hostMatch ?? pool[0]).tabId;
+  }
+
+  const targetId = await ensureDebuggerAttached(tabId, ['Runtime', 'Input', 'DOM']);
+
+  // Multi-step focus dance. A single CDP mouse click does NOT reliably
+  // park focus inside Slate / Lexical / ProseMirror editors —
+  // observation: after one trusted click on the Flow Slate composer,
+  // document.activeElement was BODY, so the subsequent Input.insertText
+  // (which routes to activeElement) became a silent no-op.
+  //
+  // Sequence: mouseMoved (so hover state lands) → mouseDown → mouseUp
+  // (Slate runs its onPointerDown editor-enter logic) → 150ms tick →
+  // also call el.focus() from JS as belt-and-suspenders → poll
+  // document.activeElement === el. If focus still hasn't landed, retry.
+  // Newly-spawned tabs in minimized scraper windows can take a beat for
+  // their event handlers to mount even after the DOM is queryable.
+  if (args.selector) {
+    const rect = await debuggerSend<{ result: { value: { x: number; y: number } | null } }>(
+      targetId,
+      'Runtime.evaluate',
+      {
+        expression: `(function(){const el=document.querySelector(${JSON.stringify(args.selector)});if(!el)return null;el.scrollIntoView({block:'center'});const r=el.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`,
+        returnByValue: true,
+      },
+    );
+    if (!rect?.result?.value) throw new Error(`debug_insert_text: element not found ${args.selector}`);
+    const { x, y } = rect.result.value;
+
+    let focusedOk = false;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await debuggerSend(targetId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await debuggerSend(targetId, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+      await debuggerSend(targetId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+      await new Promise((r) => setTimeout(r, 150));
+      const check = await debuggerSend<{ result: { value: boolean } }>(
+        targetId,
+        'Runtime.evaluate',
+        {
+          expression: `(function(){const el=document.querySelector(${JSON.stringify(args.selector)});if(!el)return false;try{el.focus();}catch(_){};return document.activeElement===el;})()`,
+          returnByValue: true,
+        },
+      );
+      if (check?.result?.value === true) { focusedOk = true; break; }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    if (!focusedOk) {
+      throw new Error(`debug_insert_text: could not focus selector ${args.selector} (activeElement stayed elsewhere across 4 attempts)`);
+    }
+  }
+
+  await debuggerSend(targetId, 'Input.insertText', { text: args.text });
+
+  const tab = await chrome.tabs.get(tabId);
+  const focused = await debuggerSend<{ result: { value: string | null } }>(targetId, 'Runtime.evaluate', {
+    expression: `(function(){const a=document.activeElement;return a?a.tagName+(a.id?'#'+a.id:''):null;})()`,
+    returnByValue: true,
+  }).catch(() => ({ result: { value: null } }));
+  return { tabId, url: tab.url || '', focused: focused.result.value };
 }
 
 /**
@@ -630,6 +805,9 @@ async function debugEvalInTab(args: {
     const pool = getPoolTabs();
     if (pool.length === 0) throw new Error('debug_eval: no pool tabs — navigate somewhere first');
     const hostMatch = args.targetHost ? pool.find((p) => p.host === args.targetHost) : null;
+    if (args.targetHost && !hostMatch) {
+      throw new Error(`no pool tab matched targetHost='${args.targetHost}' (available hosts: ${pool.map((p) => p.host).join(', ') || 'none'})`);
+    }
     tabId = (hostMatch ?? pool[0]).tabId;
   }
 
@@ -652,12 +830,113 @@ async function debugEvalInTab(args: {
   }
   return { tabId, url: tab.url || '', result: res?.result?.value ?? null };
 }
-import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, getRedditPopularPosts, getRedditTopPopularPosts, getRedditRisingPopularPosts, getRedditBestPopularPosts, getRedditPopularPostsByCountry, getRedditPostsBySubreddit, getRedditTopPostsBySubreddit, getRedditControversialPostsBySubreddit, getRedditCommentsBySubreddit, getRedditSubredditInfo, getRedditSubredditRules, getRedditSimilarSubreddits, getRedditNewSubreddits, getRedditPopularSubreddits, getRedditPostsByUsername, getRedditTopPostsByUsername, getRedditCommentsByUsername, getRedditTopCommentsByUsername, getRedditUserOverview, getRedditUserPostRankInSubreddit, getRedditProfile, getRedditUserStats, searchRedditUsers, searchRedditPosts, searchRedditSubreddits, getRedditPostDetails, getRedditPostComments, getRedditPostCommentsWithSort, getRedditPostDuplicates, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, xhsGetCreatorHotInspirationFeed, xhsGetProductRecommendations, xhsGetTopicInfo, xhsGetNoteComments, xhsSearchGroups, xhsGetProductReviews, xhsGetTopicFeed, xhsGetMixedNoteDetail, xhsSearchNotes, xhsGetProductDetail, xhsGetProductReviewOverview, xhsGetCreatorInspirationFeed, xhsGetImageNoteDetail, xhsSearchUsers, xhsSearchImages, xhsSearchProducts, xhsGetUserFavedNotes, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications, getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos, getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData, getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript, getTikTokUserPosts, getTikTokUserFollowers, getTikTokPostDetail, getTikTokPostComments, searchTikTokAccount, getTikTokChallengeInfo, getTikTokChallengePosts, getTikTokMusicInfo, getTikTokMusicPosts, getTikTokMusicUnlimitedSounds, getTikTokUserInfoWithRegion, getTikTokUserInfoById, getTikTokUserFollowings, getTikTokUserLikedPosts, getTikTokUserPlaylist, getTikTokUserRepost, getTikTokUserStory, searchTikTokGeneral, searchTikTokLive, getTikTokOthersSearchedFor, getTikTokPostRelated, getTikTokPostExplore, getTikTokPostDiscover, getTikTokAdsDetail, getTikTokAdsTop, getTikTokTrendingCreator, getTikTokTrendingVideo, getTikTokTrendingHashtag, getTikTokTrendingSong, getTikTokTrendingKeyword, getTikTokTrendingKeywordPosts, getTikTokTrendingKeywordSentence, getTikTokCommercialMusicLibrary, getTikTokCommercialMusicPlaylists, getTikTokCommercialMusicPlaylistDetail, getTikTokTopProducts, getTikTokTopProductDetail, getTikTokTopProductMetrics, getTikTokPlaceInfo, getTikTokPlacePosts, getTikTokEffectInfo, getTikTokEffectPosts, getTikTokCollectionInfo, getTikTokCollectionPosts, getTikTokPostCommentReplies, getDouyinUserInfo, getDouyinUserPosts, getDouyinUserLikedPosts, getDouyinUserFollowers, getDouyinUserFollowing, getDouyinPostComments, searchDouyinGeneral, searchDouyinVideo, searchDouyinAccount, searchDouyinLive, getDouyinChallengePosts, getDouyinMusicPosts } from './services/scrapers/browser';
+import { searchReddit, fetchRedditHot, redditUpvote, redditSave, getRedditFrontpage, getRedditPost, getRedditUser, redditSubscribe, getRedditPopularPosts, getRedditTopPopularPosts, getRedditRisingPopularPosts, getRedditBestPopularPosts, getRedditPopularPostsByCountry, getRedditPostsBySubreddit, getRedditTopPostsBySubreddit, getRedditControversialPostsBySubreddit, getRedditCommentsBySubreddit, getRedditSubredditInfo, getRedditSubredditRules, getRedditSimilarSubreddits, getRedditNewSubreddits, getRedditPopularSubreddits, getRedditPostsByUsername, getRedditTopPostsByUsername, getRedditCommentsByUsername, getRedditTopCommentsByUsername, getRedditUserOverview, getRedditUserPostRankInSubreddit, getRedditProfile, getRedditUserStats, searchRedditUsers, searchRedditPosts, searchRedditSubreddits, getRedditPostDetails, getRedditPostComments, getRedditPostCommentsWithSort, getRedditPostDuplicates, searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliVideo, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments, getBilibiliMe, getBilibiliFavorite, getBilibiliFeed, getBilibiliFeedDetail, getBilibiliSummary, getBilibiliSubtitle, searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, fetchZhihuRecommend, getZhihuAnswerDetail, getZhihuAnswerComments, searchXueqiu, fetchXueqiuHot, searchInstagram, fetchInstagramExplore, searchLinuxDo, searchJike, searchXiaohongshu, xhsGetCreatorHotInspirationFeed, xhsGetProductRecommendations, xhsGetTopicInfo, xhsGetNoteComments, xhsSearchGroups, xhsGetProductReviews, xhsGetTopicFeed, xhsGetMixedNoteDetail, xhsSearchNotes, xhsGetProductDetail, xhsGetProductReviewOverview, xhsGetCreatorInspirationFeed, xhsGetImageNoteDetail, xhsSearchUsers, xhsSearchImages, xhsSearchProducts, xhsGetUserFavedNotes, searchWeibo, fetchWeiboHot, searchDouban, fetchDoubanMovieHot, fetchDoubanBookHot, fetchDoubanTop250, searchMedium, searchGoogle, searchGoogleNews, searchFacebook, searchLinkedInJobs, search36Kr, fetch36KrHot, fetch36KrNews, fetchProductHuntHot, fetchWeixinArticle, searchWeixinArticles, fetchYahooFinanceQuote, getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications, getTwitterFollowers, getTwitterFollowing, getTwitterArticle, getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos, getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData, getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript, getTikTokUserPosts, getTikTokUserFollowers, getTikTokPostDetail, getTikTokPostComments, searchTikTokAccount, getTikTokChallengeInfo, getTikTokChallengePosts, getTikTokMusicInfo, getTikTokMusicPosts, getTikTokMusicUnlimitedSounds, getTikTokUserInfoWithRegion, getTikTokUserInfoById, getTikTokUserFollowings, getTikTokUserLikedPosts, getTikTokUserPlaylist, getTikTokUserRepost, getTikTokUserStory, searchTikTokGeneral, searchTikTokLive, getTikTokOthersSearchedFor, getTikTokPostRelated, getTikTokPostExplore, getTikTokPostDiscover, getTikTokAdsDetail, getTikTokAdsTop, getTikTokTrendingCreator, getTikTokTrendingVideo, getTikTokTrendingHashtag, getTikTokTrendingSong, getTikTokTrendingKeyword, getTikTokTrendingKeywordPosts, getTikTokTrendingKeywordSentence, getTikTokCommercialMusicLibrary, getTikTokCommercialMusicPlaylists, getTikTokCommercialMusicPlaylistDetail, getTikTokTopProducts, getTikTokTopProductDetail, getTikTokTopProductMetrics, getTikTokPlaceInfo, getTikTokPlacePosts, getTikTokEffectInfo, getTikTokEffectPosts, getTikTokCollectionInfo, getTikTokCollectionPosts, getTikTokPostCommentReplies, getDouyinUserInfo, getDouyinUserPosts, getDouyinUserLikedPosts, getDouyinUserFollowers, getDouyinUserFollowing, getDouyinPostComments, searchDouyinGeneral, searchDouyinVideo, searchDouyinAccount, searchDouyinLive, getDouyinChallengePosts, getDouyinMusicPosts } from './services/scrapers/browser';
 
 // GOOGLE_CLIENT_ID / OAUTH_REDIRECT_URI removed — see handleGoogleLogin
 // removal note. chrome.identity.getRedirectURL() also no longer needed.
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8000';
 const WS_BASE_URL = process.env.WS_BASE_URL || '';
+
+type BackgroundLocalHandler = (msg: Record<string, any>) => Promise<any>;
+
+function normalizeLocalActionType(actionType: unknown): string {
+  const raw = String(actionType ?? '').trim();
+  return raw.startsWith('action_') ? raw.slice('action_'.length) : raw;
+}
+
+function resolveLocalActionKey(
+  actionType: unknown,
+  handlers: Record<string, BackgroundLocalHandler>,
+): string | undefined {
+  const normalized = normalizeLocalActionType(actionType);
+  return Object.keys(handlers).find((key) =>
+    normalized === key || normalized === key.toLowerCase().replace(/_/g, '-')
+  );
+}
+
+function isBackgroundOnlyLocalAction(actionType: unknown): boolean {
+  const normalized = normalizeLocalActionType(actionType).toLowerCase();
+  return normalized === 'screenshot'
+    || normalized === 'navigate_to_url'
+    || normalized === 'navigate-to-url'
+    || normalized.startsWith('debug_')
+    || normalized.startsWith('debug-');
+}
+
+const backgroundLocalHandlers: Record<string, BackgroundLocalHandler> = {
+  screenshot: (m) => captureTabScreenshot({ url: m.url, tabId: m.tabId, fullPage: m.fullPage }),
+  navigate_to_url: (m) => navigateTabViaCdp({ url: m.url, tabId: m.tabId, spawn: m.spawn }),
+  debug_eval: (m) => debugEvalInTab({
+    expression: m.expression,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+    awaitPromise: m.awaitPromise,
+  }),
+  debug_set_files: (m) => debugSetFileInputFiles({
+    selector: m.selector,
+    files: m.files,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
+  debug_set_files_via_chooser: (m) => debugSetFileInputFilesViaChooser({
+    selector: m.selector,
+    files: m.files,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+    timeoutMs: m.timeoutMs,
+  }),
+  debug_set_files_via_blob: (m) => debugSetFilesViaBlob({
+    selector: m.selector,
+    fileName: m.fileName,
+    mimeType: m.mimeType,
+    base64: m.base64,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
+  debug_click: (m) => debugTrustedClick({
+    selector: m.selector,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
+  debug_insert_text: (m) => debugInsertText({
+    text: m.text,
+    selector: m.selector,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
+  debug_show_window: (m) => debugShowPoolWindow({
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
+  debug_list_tabs: (m) => debugListTabs({
+    host: m.host,
+    urlIncludes: m.urlIncludes,
+    scraperOnly: m.scraperOnly,
+  }),
+  debug_record_start: (m) => debugRecordStart({
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+    filterPattern: m.filterPattern,
+  }),
+  debug_record_dump: (m) => debugRecordDump({
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+    clear: m.clear,
+  }),
+  debug_record_stop: (m) => debugRecordStop({
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
+  debug_drag: (m) => debugDrag({
+    fromSelector: m.fromSelector,
+    toSelector: m.toSelector,
+    steps: m.steps,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
+};
+
+const EXPLORE_ACTIONS = new Set(Object.keys(backgroundLocalHandlers));
 
 // Legacy wss://api.bnbot.ai push channel removed. The extension used to
 // hold a WebSocket to the backend to receive Telegram-driven action /
@@ -673,12 +952,13 @@ const WS_BASE_URL = process.env.WS_BASE_URL || '';
 // Initialize local relay manager for the bnbot daemon (`bnbot serve`).
 localRelayManager.init({
   onAction: async (message: LocalActionRequest) => {
-    console.log(`[Background] Local relay action: ${message.actionType} (${message.requestId}) payload:`, JSON.stringify(message.actionPayload));
+    const actionType = normalizeLocalActionType(message.actionType);
+    console.log(`[Background] Local relay action: ${message.actionType} normalized=${actionType} (${message.requestId}) payload:`, JSON.stringify(message.actionPayload));
 
     // Auth is no longer owned by the extension. Keep this action as a
     // backwards-compatible no-op so older CLI clients do not fail if they
     // still send it, but never persist API tokens in chrome.storage.
-    if (message.actionType === 'inject_auth_tokens') {
+    if (actionType === 'inject_auth_tokens') {
       try {
         await clearExtensionAuthStorage();
         console.log('[Background] Ignored inject_auth_tokens; extension is auth-free');
@@ -701,7 +981,7 @@ localRelayManager.init({
     }
 
     // Handle device_key sync from CLI
-    if (message.actionType === 'sync_device_key') {
+    if (actionType === 'sync_device_key') {
       const { deviceKey } = message.actionPayload as { deviceKey: string };
       await chrome.storage.local.set({ cliDeviceKey: deviceKey });
       localRelayManager.sendActionResult({
@@ -723,7 +1003,7 @@ localRelayManager.init({
     // then detach + close. Text-only for now; media paths work when
     // Chrome can read the file.
     const debuggerKey = Object.keys(debuggerWriteHandlers).find(k =>
-      message.actionType === k
+      actionType === k
     );
     if (debuggerKey) {
       try {
@@ -753,7 +1033,7 @@ localRelayManager.init({
     // fetch (no x.com tab needed). Falls through to the legacy content-script
     // route only if BackgroundTwitterClient throws (e.g. user not logged in,
     // or cookies permission missing on older installs).
-    if (message.actionType === 'account_analytics') {
+    if (actionType === 'account_analytics') {
       try {
         const p = (message.actionPayload ?? {}) as {
           fromTime: string; toTime: string; granularity?: 'Daily' | 'Weekly' | 'Monthly';
@@ -774,7 +1054,7 @@ localRelayManager.init({
       }
     }
 
-    if (message.actionType === 'reply_impressions') {
+    if (actionType === 'reply_impressions') {
       try {
         const p = (message.actionPayload ?? {}) as { fromTime: string; toTime: string };
         const data = await bgReplyImpressions({ fromTime: p.fromTime, toTime: p.toTime });
@@ -791,15 +1071,51 @@ localRelayManager.init({
       }
     }
 
+    // CDP/local debug helpers must never fall through to the X content-script
+    // actionRegistry. That registry cannot run chrome.debugger APIs and reports
+    // "Unknown action: debug_insert_text", which hides the real routing bug.
+    const backgroundKey = resolveLocalActionKey(message.actionType, backgroundLocalHandlers);
+    if (backgroundKey) {
+      try {
+        const data = await backgroundLocalHandlers[backgroundKey](message.actionPayload as any);
+        startAllIdleTimers(IDLE_BONUS_EXPLORE);
+        localRelayManager.sendActionResult({
+          type: 'action_result',
+          requestId: message.requestId,
+          success: true,
+          data,
+        });
+      } catch (error) {
+        startAllIdleTimers(IDLE_BONUS_EXPLORE);
+        localRelayManager.sendActionResult({
+          type: 'action_result',
+          requestId: message.requestId,
+          success: false,
+          error: error instanceof Error ? error.message : 'Background local action failed',
+        });
+      }
+      return;
+    }
+
+    if (isBackgroundOnlyLocalAction(message.actionType)) {
+      const error = `Background-only local action was not registered in this worker: ${message.actionType}`;
+      console.error('[Background]', error);
+      localRelayManager.sendActionResult({
+        type: 'action_result',
+        requestId: message.requestId,
+        success: false,
+        error,
+      });
+      return;
+    }
+
     // Handle scraper actions directly in background (no content script needed)
-    const scraperKey = Object.keys(scraperHandlers).find(k =>
-      message.actionType === k || message.actionType === k.toLowerCase().replace(/_/g, '-')
-    );
+    const scraperKey = resolveLocalActionKey(message.actionType, scraperHandlers);
+    console.log(`[Background] Lookup actionType=${message.actionType} normalized=${actionType} backgroundKey=${backgroundKey ?? 'NONE'} scraperKey=${scraperKey ?? 'NONE'} hasDebugInsertText=${scraperHandlers.debug_insert_text != null}`);
     if (scraperKey) {
       // Exploration-style actions (human probing a new platform's DOM) need
       // a bigger idle bonus than the default — think time between eval
       // calls routinely exceeds a couple minutes.
-      const EXPLORE_ACTIONS = new Set(['debug_eval', 'debug_set_files', 'debug_set_files_via_chooser', 'debug_set_files_via_blob', 'debug_click', 'debug_show_window', 'debug_drag', 'debug_record_start', 'debug_record_dump', 'debug_record_stop', 'navigate_to_url', 'screenshot']);
       const bonusMs = EXPLORE_ACTIONS.has(scraperKey) ? IDLE_BONUS_EXPLORE : undefined;
       try {
         const data = await scraperHandlers[scraperKey](message.actionPayload as any);
@@ -1362,7 +1678,7 @@ chrome.runtime.onConnect.addListener((port) => {
 // every desktop-app and CLI write goes through the CDP debugger engine,
 // which sets media via DOM.setFileInputFiles on local file paths.
 
-console.log('BNBot background service worker loaded');
+console.log('BNBot background service worker loaded (v0.12.27 — debug_insert_text registered)');
 
 // ============ Scraper Service (browser-based only, PUBLIC APIs go through CLI/backend) ============
 const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
@@ -1380,6 +1696,10 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   SCRAPER_SEARCH_REDDIT: (m) => searchReddit(m.query, m.limit),
   SCRAPER_SEARCH_BILIBILI: (m) => searchBilibili(m.query, m.limit),
   SCRAPER_SEARCH_ZHIHU: (m) => searchZhihu(m.query, m.limit),
+  SCRAPER_FETCH_ZHIHU_RECOMMEND: (m) => fetchZhihuRecommend(m.limit),
+  SCRAPER_GET_ZHIHU_QUESTION: (m) => getZhihuQuestion(m.questionId || m.id, m.limit),
+  SCRAPER_GET_ZHIHU_ANSWER_DETAIL: (m) => getZhihuAnswerDetail(m.id || m.answerId || m.url, m.maxContent || m.max_content),
+  SCRAPER_GET_ZHIHU_ANSWER_COMMENTS: (m) => getZhihuAnswerComments(m.id || m.answerId || m.url, m.limit, m.repliesLimit || m.replies_limit),
   SCRAPER_SEARCH_XUEQIU: (m) => searchXueqiu(m.query, m.limit),
   SCRAPER_SEARCH_INSTAGRAM: (m) => searchInstagram(m.query, m.limit),
   SCRAPER_SEARCH_LINUX_DO: (m) => searchLinuxDo(m.query, m.limit),
@@ -1446,6 +1766,18 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   SCRAPER_FETCH_RD_POST_DUPLICATES: (m) => getRedditPostDuplicates(m.post_url || m.postUrl || m.url || m.postId || m.id, { limit: m.limit }),
   SCRAPER_FETCH_BILIBILI_HOT: (m) => fetchBilibiliHot(m.limit),
   SCRAPER_FETCH_BILIBILI_RANKING: (m) => fetchBilibiliRanking(m.limit),
+  SCRAPER_FETCH_BILIBILI_VIDEO: (m) => getBilibiliVideo(m.bvid || m.video || m.url || m.id),
+  SCRAPER_FETCH_BILIBILI_SUMMARY: (m) => getBilibiliSummary(m.bvid || m.video || m.url || m.id),
+  SCRAPER_FETCH_BILIBILI_SUBTITLE: (m) => getBilibiliSubtitle(m.bvid || m.video || m.url || m.id, { lang: m.lang }),
+  SCRAPER_FETCH_BILIBILI_COMMENTS: (m) => getBilibiliComments(m.bvid || m.video || m.url || m.id, m.limit, { parent: m.parent || m.rpid }),
+  SCRAPER_FETCH_BILIBILI_DYNAMIC: (m) => getBilibiliDynamic(m.limit),
+  SCRAPER_FETCH_BILIBILI_HISTORY: (m) => getBilibiliHistory(m.limit),
+  SCRAPER_FETCH_BILIBILI_FOLLOWING: (m) => getBilibiliFollowing(m.uid || m.mid || m.user, { limit: m.limit, page: m.page }),
+  SCRAPER_FETCH_BILIBILI_USER_VIDEOS: (m) => getBilibiliUserVideos(m.uid || m.mid || m.user, m.limit, { page: m.page, order: m.order }),
+  SCRAPER_FETCH_BILIBILI_FAVORITE: (m) => getBilibiliFavorite({ fid: m.fid || m.folderId, limit: m.limit, page: m.page }),
+  SCRAPER_FETCH_BILIBILI_FEED: (m) => getBilibiliFeed(m.uid || m.mid || m.user, { limit: m.limit, pages: m.pages, type: m.type }),
+  SCRAPER_FETCH_BILIBILI_FEED_DETAIL: (m) => getBilibiliFeedDetail(m.id || m.dynamic_id || m.dynamicId),
+  SCRAPER_FETCH_BILIBILI_ME: () => getBilibiliMe(),
   SCRAPER_FETCH_TIKTOK_EXPLORE: (m) => fetchTikTokExplore(m.limit),
   SCRAPER_FETCH_TIKTOK_USER_POSTS: (m) => getTikTokUserPosts(m.username || m.secUid || m.user, { cursor: m.cursor, limit: m.limit }),
   SCRAPER_FETCH_TIKTOK_USER_FOLLOWERS: (m) => getTikTokUserFollowers(m.username || m.secUid || m.user, { cursor: m.cursor, limit: m.limit }),
@@ -1527,6 +1859,7 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   SCRAPER_FETCH_36KR_HOT: (m) => fetch36KrHot(m.limit, m),
   SCRAPER_FETCH_36KR_NEWS: (m) => fetch36KrNews(m.limit),
   SCRAPER_SEARCH_GOOGLE_NEWS: (m) => searchGoogleNews(m.query, m.limit),
+  SCRAPER_SEARCH_WEIXIN: (m) => searchWeixinArticles(m.query, { page: m.page, limit: m.limit }),
   SCRAPER_FETCH_INSTAGRAM_EXPLORE: (m) => fetchInstagramExplore(m.limit),
   YOUTUBE_LIKE: (m) => likeYoutubeVideo(m.videoId),
   YOUTUBE_UNLIKE: (m) => unlikeYoutubeVideo(m.videoId),
@@ -1546,9 +1879,9 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   REDDIT_SUBSCRIBE: (m) => redditSubscribe(m.subreddit, m.undo),
   BILIBILI_DYNAMIC: (m) => getBilibiliDynamic(m.limit),
   BILIBILI_HISTORY: (m) => getBilibiliHistory(m.limit),
-  BILIBILI_FOLLOWING: (m) => getBilibiliFollowing(m.limit),
-  BILIBILI_USER_VIDEOS: (m) => getBilibiliUserVideos(m.mid, m.limit),
-  BILIBILI_COMMENTS: (m) => getBilibiliComments(m.bvid, m.limit),
+  BILIBILI_FOLLOWING: (m) => getBilibiliFollowing(m.uid || m.mid || m.user, { limit: m.limit, page: m.page }),
+  BILIBILI_USER_VIDEOS: (m) => getBilibiliUserVideos(m.mid || m.uid || m.user, m.limit, { page: m.page, order: m.order }),
+  BILIBILI_COMMENTS: (m) => getBilibiliComments(m.bvid, m.limit, { parent: m.parent || m.rpid }),
   ZHIHU_LIKE: (m) => likeZhihu(m.url),
   ZHIHU_QUESTION: (m) => getZhihuQuestion(m.questionId, m.limit),
   TWITTER_TIMELINE: (m) => getTwitterTimeline(m.type, m.limit, m.queryIds),
@@ -1567,9 +1900,13 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   scrape_user_tweets: (m) => getTwitterUserTweets(m.username, m.limit, m.queryIds),
   scrape_user_profile: (m) => getTwitterProfile(m.username, m.queryIds),
   scrape_thread: (m) => getTwitterThread(m.tweetUrl || m.tweetId, m.limit, m.queryIds),
+  scrape_trending: (m) => getTwitterTrending(m.limit),
+  scrape_user_followers: (m) => getTwitterFollowers(m.username, m.limit),
+  scrape_user_following: (m) => getTwitterFollowing(m.username, m.limit),
+  scrape_tweet_article: (m) => getTwitterArticle(m.tweetUrl || m.url || m.tweetId, m.queryIds),
   scrape_notifications: (m) => getTwitterNotifications(m.limit || 40),
   screenshot: (m) => captureTabScreenshot({ url: m.url, tabId: m.tabId, fullPage: m.fullPage }),
-  navigate_to_url: (m) => navigateTabViaCdp({ url: m.url, tabId: m.tabId }),
+  navigate_to_url: (m) => navigateTabViaCdp({ url: m.url, tabId: m.tabId, spawn: m.spawn }),
   debug_eval: (m) => debugEvalInTab({
     expression: m.expression,
     tabId: m.tabId,
@@ -1602,9 +1939,20 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
     tabId: m.tabId,
     targetHost: m.targetHost,
   }),
+  debug_insert_text: (m) => debugInsertText({
+    text: m.text,
+    selector: m.selector,
+    tabId: m.tabId,
+    targetHost: m.targetHost,
+  }),
   debug_show_window: (m) => debugShowPoolWindow({
     tabId: m.tabId,
     targetHost: m.targetHost,
+  }),
+  debug_list_tabs: (m) => debugListTabs({
+    host: m.host,
+    urlIncludes: m.urlIncludes,
+    scraperOnly: m.scraperOnly,
   }),
   debug_record_start: (m) => debugRecordStart({
     tabId: m.tabId,
@@ -1657,7 +2005,12 @@ Object.assign(self, {
   searchRedditSubreddits, getRedditPostDetails, getRedditPostComments,
   getRedditPostCommentsWithSort, getRedditPostDuplicates,
   searchBilibili, fetchBilibiliHot, fetchBilibiliRanking,
-  searchZhihu, fetchZhihuHot,
+  getBilibiliVideo, getBilibiliDynamic, getBilibiliHistory,
+  getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments,
+  getBilibiliMe, getBilibiliFavorite, getBilibiliFeed,
+  getBilibiliFeedDetail, getBilibiliSummary, getBilibiliSubtitle,
+  searchZhihu, fetchZhihuHot, fetchZhihuRecommend, getZhihuQuestion,
+  getZhihuAnswerDetail, getZhihuAnswerComments,
   searchXueqiu, fetchXueqiuHot,
   searchInstagram, fetchInstagramExplore,
   searchLinuxDo, searchJike, searchXiaohongshu,
@@ -1667,7 +2020,7 @@ Object.assign(self, {
   searchGoogle, searchGoogleNews,
   searchFacebook, searchLinkedInJobs,
   search36Kr, fetch36KrHot, fetch36KrNews,
-  fetchProductHuntHot, fetchWeixinArticle, fetchYahooFinanceQuote,
+  fetchProductHuntHot, fetchWeixinArticle, searchWeixinArticles, fetchYahooFinanceQuote,
   getYouTubeVideoDetails, getYouTubeChannelDetails, getYouTubeChannelVideos,
   getYouTubeTrending, searchYouTubeChannel, getYouTubeStreamingData,
   getYouTubeRelatedVideos, getYouTubeComments, getYouTubeTranscript,

@@ -6,6 +6,7 @@ export enum Tab {
   TWEET_CONTEXT = 'TWEET_CONTEXT',
   AUTO_REPLY = 'AUTO_REPLY',
   X_BALANCE = 'X_BALANCE',
+  REMIX_DRAFTS = 'REMIX_DRAFTS',
 }
 
 export interface ToolCall {

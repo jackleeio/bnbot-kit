@@ -14,6 +14,7 @@ import { BoostPanel } from './components/panels/BoostPanel';
 // (skill: /schedule). Extension no longer hosts the calendar UI.
 // AutoPilotPanel removed — autopilot lives in bnbot CLI /auto-reply + /inbox-watch skills.
 import { XBalancePanel } from './components/panels/XBalancePanel';
+import { RemixDraftsPanel } from './components/panels/RemixDraftsPanel';
 // XAnalyticsPanel removed — Analytics moved to bnbot desktop app
 // (packages/desktop/src/components/AnalyticsPane.tsx).
 import { Tab } from './types';
@@ -695,6 +696,10 @@ function AppContent() {
         return (
           <XBalancePanel onBack={() => setActiveTab(Tab.BOOST)} />
         );
+      case Tab.REMIX_DRAFTS:
+        return (
+          <RemixDraftsPanel onBack={() => setActiveTab(Tab.BOOST)} />
+        );
       default: return null;
     }
   };
@@ -775,6 +780,7 @@ function AppContent() {
                   initialTweetId={boostPanelTweetId || undefined}
                   onSwitchToContext={handleSwitchToContext}
                   onOpenWallet={() => setActiveTab(Tab.X_BALANCE)}
+                  onOpenRemixDrafts={() => setActiveTab(Tab.REMIX_DRAFTS)}
                 />
               </div>
               {/* ChatPanel removed — chat moved to bnbot CLI / desktop. */}

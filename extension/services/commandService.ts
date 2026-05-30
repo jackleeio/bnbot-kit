@@ -11,6 +11,20 @@ interface LocalActionMessage {
   actionPayload: Record<string, unknown>;
 }
 
+function normalizeLocalActionType(actionType: unknown): string {
+  const raw = String(actionType ?? '').trim();
+  return raw.startsWith('action_') ? raw.slice('action_'.length) : raw;
+}
+
+function isBackgroundOnlyLocalAction(actionType: unknown): boolean {
+  const normalized = normalizeLocalActionType(actionType).toLowerCase();
+  return normalized === 'screenshot'
+    || normalized === 'navigate_to_url'
+    || normalized === 'navigate-to-url'
+    || normalized.startsWith('debug_')
+    || normalized.startsWith('debug-');
+}
+
 class CommandService {
   private messageListenerAdded = false;
 
@@ -46,6 +60,13 @@ class CommandService {
     source: string = 'local'
   ): Promise<{ success: boolean; data?: unknown; error?: string }> {
     console.log('[CommandService] handleLocalAction:', actionType, 'source:', source);
+
+    if (isBackgroundOnlyLocalAction(actionType)) {
+      const normalized = normalizeLocalActionType(actionType);
+      const error = `background_only_action:${normalized}`;
+      console.warn('[CommandService] Ignoring background-only local action:', normalized);
+      return { success: false, error };
+    }
 
     try {
       const { executeAction } = await import('./actionIntegration');

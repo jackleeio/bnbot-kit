@@ -3,6 +3,16 @@
 All notable changes to BNBOT will be documented in this file.
 
 
+## [0.13.0] - 2026-05-28
+
+### Added
+- **AI 二创草稿面板（inline）**：BoostPanel 顶部状态栏右上角新增 ✨ icon 入口，红点 badge 显示桌面 agent 已生成但未发布的 `/remix` 草稿数。点进去进入 `RemixDraftsPanel`，列表里每张推文卡下方挂 `🚀 发布 / ↻ / 🗑`，无需展开详情、不离开 X 页面即可发布。发布走扩展现有的 `tweetPoster.postThread()`（CDP 写入），发完自动 DELETE 草稿。
+- **SSE 实时推送**：扩展通过 `EventSource('http://127.0.0.1:27421/api/remix-drafts/stream')` 订阅桌面 agent 的 `fs.watch` 广播，桌面 `/remix` 写入 `<studio-data-dir>/drafts/remix/<id>.json` 后 ~150ms 内 badge 亮起。EventSource 内置重连，桌面 app 没启动时静默重试，badge 保持 0。
+
+### Changed
+- 新增 `Tab.REMIX_DRAFTS`、`RemixDraftsPanel`、`services/remixDraftsService.ts`、`hooks/useRemixDrafts.ts`。`BoostPanel` 新增 `onOpenRemixDrafts` prop（与 `onOpenWallet` 同模式）。
+
+
 ## [0.12.10] - 2026-05-19
 
 ### Fixed

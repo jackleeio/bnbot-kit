@@ -53,10 +53,26 @@ export type {
   RedditPostThread,
 } from './reddit';
 
-export { searchBilibili, fetchBilibiliHot, fetchBilibiliRanking, getBilibiliDynamic, getBilibiliHistory, getBilibiliFollowing, getBilibiliUserVideos, getBilibiliComments } from './bilibili';
-export type { BilibiliResult, BilibiliHotResult, BilibiliRankingResult } from './bilibili';
+export {
+  searchBilibili,
+  fetchBilibiliHot,
+  fetchBilibiliRanking,
+  getBilibiliVideo,
+  getBilibiliDynamic,
+  getBilibiliHistory,
+  getBilibiliFollowing,
+  getBilibiliUserVideos,
+  getBilibiliComments,
+  getBilibiliMe,
+  getBilibiliFavorite,
+  getBilibiliFeed,
+  getBilibiliFeedDetail,
+  getBilibiliSummary,
+  getBilibiliSubtitle,
+} from './bilibili';
+export type { BilibiliResult, BilibiliHotResult, BilibiliRankingResult, BilibiliVideoDetail } from './bilibili';
 
-export { searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion } from './zhihu';
+export { searchZhihu, fetchZhihuHot, likeZhihu, getZhihuQuestion, fetchZhihuRecommend, getZhihuAnswerDetail, getZhihuAnswerComments } from './zhihu';
 export type { ZhihuResult, ZhihuHotResult } from './zhihu';
 
 export { searchXueqiu, fetchXueqiuHot } from './xueqiu';
@@ -118,13 +134,13 @@ export type { Kr36Result, Kr36HotResult, Kr36NewsResult } from './36kr';
 export { fetchProductHuntHot } from './producthunt';
 export type { ProductHuntResult } from './producthunt';
 
-export { fetchWeixinArticle } from './weixin';
+export { fetchWeixinArticle, searchWeixinArticles } from './weixin';
 export type { WeixinArticleResult } from './weixin';
 
 export { fetchYahooFinanceQuote } from './yahoo-finance';
 export type { YahooFinanceQuote } from './yahoo-finance';
 
-export { getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications } from './twitter';
+export { getTwitterTimeline, searchTwitter, getTwitterTrending, getTwitterProfile, getTwitterBookmarks, getTwitterUserTweets, getTwitterThread, getTwitterNotifications, getTwitterFollowers, getTwitterFollowing, getTwitterArticle } from './twitter';
 
 export {
   getYouTubeVideoDetails,

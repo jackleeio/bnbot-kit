@@ -17,6 +17,68 @@ export interface WeixinArticleResult {
   sourceUrl: string;
 }
 
+export interface WeixinSearchResult {
+  rank: number;
+  page: number;
+  title: string;
+  url: string;
+  summary: string;
+  publish_time: string;
+}
+
+export async function searchWeixinArticles(query: string, options: { page?: number; limit?: number } = {}): Promise<WeixinSearchResult[]> {
+  const q = String(query || '').trim();
+  if (!q) throw new Error('Weixin search query is required');
+  const pageNo = Math.max(1, Number.isFinite(options.page || 0) ? Math.floor(options.page || 1) : 1);
+  const limit = Math.max(1, Math.min(options.limit || 10, 10));
+  const url = new URL('https://weixin.sogou.com/weixin');
+  url.searchParams.set('query', q);
+  url.searchParams.set('type', '2');
+  url.searchParams.set('page', String(pageNo));
+  url.searchParams.set('ie', 'utf8');
+
+  const tabId = await getTab(url.toString());
+  await new Promise(r => setTimeout(r, 2500));
+
+  const data = await executeInPage(tabId, (lim: number, pageNum: number) => {
+    try {
+      const clean = (value: string | null | undefined) =>
+        (value || '')
+          .replace(/\s+/g, ' ')
+          .replace(/<!--red_beg-->|<!--red_end-->/g, '')
+          .replace(/document\.write\(timeConvert\('\d+'\)\)/g, '')
+          .trim();
+      const absolutize = (href: string | null | undefined) => {
+        if (!href) return '';
+        try { return new URL(href, window.location.origin).toString(); } catch { return href; }
+      };
+      const bodyText = clean(document.body?.innerText);
+      if (/验证码|安全验证|异常访问|访问过于频繁|请输入验证码/.test(bodyText)) {
+        return { error: 'Sogou Weixin blocked this search request; complete verification in Chrome and retry' };
+      }
+      const cards = Array.from(document.querySelectorAll('.news-list li'));
+      const rows = cards.map((item, index) => {
+        const linkEl = item.querySelector('h3 a[href]') as HTMLAnchorElement | null;
+        const summaryEl = item.querySelector('p.txt-info');
+        const timeEl = item.querySelector('.s-p .s2');
+        return {
+          rank: (pageNum - 1) * 10 + index + 1,
+          page: pageNum,
+          title: clean(linkEl?.textContent),
+          url: absolutize(linkEl?.getAttribute('href')),
+          summary: clean(summaryEl?.textContent),
+          publish_time: clean(timeEl?.textContent),
+        };
+      }).filter((row) => row.title && row.url);
+      return rows.slice(0, lim);
+    } catch (e: any) {
+      return { error: e.message || 'Weixin search scraper failed' };
+    }
+  }, [limit, pageNo]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return data || [];
+}
+
 /**
  * Extract a WeChat Official Account article's content.
  * @param url - Full WeChat article URL (https://mp.weixin.qq.com/s/xxx)

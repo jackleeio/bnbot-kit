@@ -1,8 +1,22 @@
 import { execFileSync, execSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  readSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import sharp from 'sharp';
 import WebSocket, { type RawData } from 'ws';
+import { stripImageWatermarks } from '../tools/watermark';
 
 const CHATGPT_BUNDLE_ID = 'com.openai.chat';
 const CHATGPT_DISPLAY_NAME = 'ChatGPT';
@@ -14,6 +28,16 @@ const DEFAULT_CDP_TIMEOUT_MS = 30_000;
 const DEFAULT_POLL_MS = 2_000;
 const ARTIFACT_LIMIT = 10;
 const MAX_ARTIFACT_BYTES = 8 * 1024 * 1024;
+const CHATGPT_UI_LOCK_PATH = join(tmpdir(), 'bnbot-chatgpt-ui.lock');
+const CHATGPT_UI_LOCK_STALE_MS = 600_000;
+const CHATGPT_CACHE_CLAIM_LOCK_PATH = join(tmpdir(), 'bnbot-chatgpt-cache-claims.lock');
+const CHATGPT_CACHE_CLAIMS_PATH = join(tmpdir(), 'bnbot-chatgpt-cache-claims.json');
+const CHATGPT_CACHE_CLAIM_LOCK_STALE_MS = 120_000;
+const CHATGPT_KINGFISHER_CACHE_DIR = join(
+  homedir(),
+  'Library/Caches/com.openai.chat/com.onevcat.Kingfisher.ImageCache/com.onevcat.Kingfisher.ImageCache.com.openai.chat',
+);
+const CHATGPT_CACHE_MIN_IMAGE_BYTES = 100_000;
 
 interface CDPTarget {
   id?: string;
@@ -68,17 +92,16 @@ interface ImageArtifact {
   base64?: string;
   error?: string;
   path?: string;
+  watermark_metadata_stripped?: boolean;
+  watermark_metadata_error?: string;
 }
 
-interface AxImageCandidate {
-  role?: string;
-  description?: string;
-  title?: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  area: number;
+interface ChatGPTCacheImage {
+  name: string;
+  path: string;
+  mime: string;
+  size: number;
+  mtimeMs: number;
 }
 
 class CDPClient {
@@ -174,6 +197,10 @@ class CDPClient {
     }
 
     return result.result?.value as T;
+  }
+
+  async navigate(url: string): Promise<void> {
+    await this.send('Page.navigate', { url });
   }
 
   async pressEnter(): Promise<void> {
@@ -500,6 +527,150 @@ guard submitted else {
 print("Sent")
 `;
 
+const AX_PASTE_FILES_SCRIPT = `
+import Cocoa
+import ApplicationServices
+
+func attr(_ el: AXUIElement, _ name: String) -> AnyObject? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(el, name as CFString, &value) == .success else { return nil }
+    return value as AnyObject?
+}
+
+func s(_ el: AXUIElement, _ name: String) -> String? {
+    if let v = attr(el, name) as? String { return v }
+    return nil
+}
+
+func isEnabled(_ el: AXUIElement) -> Bool {
+    (attr(el, kAXEnabledAttribute as String) as? Bool) ?? true
+}
+
+func children(_ el: AXUIElement) -> [AXUIElement] {
+    (attr(el, kAXChildrenAttribute as String) as? [AnyObject] ?? []).map { $0 as! AXUIElement }
+}
+
+func collectEditableInputs(_ el: AXUIElement, into out: inout [AXUIElement], depth: Int = 0) {
+    guard depth < 25 else { return }
+    let role = s(el, kAXRoleAttribute as String) ?? ""
+    if (role == kAXTextAreaRole as String || role == kAXTextFieldRole as String) && isEnabled(el) {
+        out.append(el)
+    }
+    for c in children(el) { collectEditableInputs(c, into: &out, depth: depth + 1) }
+}
+
+func postKey(_ key: CGKeyCode, command: Bool = false) {
+    let src = CGEventSource(stateID: .combinedSessionState)
+    let flags: CGEventFlags = command ? .maskCommand : []
+    if let down = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: true) {
+        down.flags = flags
+        down.post(tap: .cghidEventTap)
+    }
+    if let up = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: false) {
+        up.flags = flags
+        up.post(tap: .cghidEventTap)
+    }
+}
+
+let paths = Array(CommandLine.arguments.dropFirst())
+guard !paths.isEmpty else {
+    fputs("No files to paste\\n", stderr)
+    exit(1)
+}
+
+guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.openai.chat").first else {
+    fputs("ChatGPT not running\\n", stderr)
+    exit(1)
+}
+
+let axApp = AXUIElementCreateApplication(app.processIdentifier)
+guard let win = attr(axApp, kAXFocusedWindowAttribute as String) as! AXUIElement? else {
+    fputs("No focused ChatGPT window\\n", stderr)
+    exit(1)
+}
+
+var inputs: [AXUIElement] = []
+collectEditableInputs(win, into: &inputs)
+guard let input = inputs.last else {
+    fputs("Could not find editable input area\\n", stderr)
+    exit(1)
+}
+AXUIElementSetAttributeValue(input, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+Thread.sleep(forTimeInterval: 0.2)
+
+let pasteboard = NSPasteboard.general
+pasteboard.clearContents()
+let urls = paths.map { NSURL(fileURLWithPath: $0) }
+guard pasteboard.writeObjects(urls) else {
+    fputs("Failed to write image files to pasteboard\\n", stderr)
+    exit(1)
+}
+
+postKey(0x09, command: true)
+Thread.sleep(forTimeInterval: 1.2)
+print("Pasted \\(paths.count)")
+`;
+
+const AX_NEW_CHAT_SCRIPT = `
+import Cocoa
+import ApplicationServices
+
+func attr(_ el: AXUIElement, _ name: String) -> AnyObject? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(el, name as CFString, &value) == .success else { return nil }
+    return value as AnyObject?
+}
+
+func s(_ el: AXUIElement, _ name: String) -> String? {
+    if let v = attr(el, name) as? String, !v.isEmpty { return v }
+    return nil
+}
+
+func isEnabled(_ el: AXUIElement) -> Bool {
+    (attr(el, kAXEnabledAttribute as String) as? Bool) ?? true
+}
+
+func children(_ el: AXUIElement) -> [AXUIElement] {
+    (attr(el, kAXChildrenAttribute as String) as? [AnyObject] ?? []).map { $0 as! AXUIElement }
+}
+
+func findButton(_ el: AXUIElement, targets: [String], depth: Int = 0) -> AXUIElement? {
+    guard depth < 25 else { return nil }
+    let role = s(el, kAXRoleAttribute as String) ?? ""
+    let desc = s(el, kAXDescriptionAttribute as String) ?? ""
+    let title = s(el, kAXTitleAttribute as String) ?? ""
+    if role == "AXButton" && isEnabled(el) {
+        for target in targets {
+            if desc == target || title == target { return el }
+        }
+    }
+    for c in children(el) {
+        if let found = findButton(c, targets: targets, depth: depth + 1) { return found }
+    }
+    return nil
+}
+
+guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.openai.chat").first else {
+    fputs("ChatGPT not running\\n", stderr)
+    exit(1)
+}
+
+let axApp = AXUIElementCreateApplication(app.processIdentifier)
+guard let win = attr(axApp, kAXFocusedWindowAttribute as String) as! AXUIElement? else {
+    fputs("No focused ChatGPT window\\n", stderr)
+    exit(1)
+}
+
+let labels = ["New chat", "新聊天", "新增聊天", "新對話", "New Chat"]
+guard let button = findButton(win, targets: labels) else {
+    fputs("Could not find New chat button\\n", stderr)
+    exit(1)
+}
+AXUIElementPerformAction(button, kAXPressAction as CFString)
+Thread.sleep(forTimeInterval: 0.8)
+print("New chat")
+`;
+
 const AX_MODEL_SCRIPT = `
 import Cocoa
 import ApplicationServices
@@ -642,152 +813,6 @@ let targets = ["Stop generating", "停止生成"]
 print(targets.contains(where: { hasButton(win, desc: $0) }) ? "true" : "false")
 `;
 
-const AX_FOCUS_INPUT_SCRIPT = `
-import Cocoa
-import ApplicationServices
-
-func attr(_ el: AXUIElement, _ name: String) -> AnyObject? {
-    var value: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(el, name as CFString, &value) == .success else { return nil }
-    return value as AnyObject?
-}
-
-func s(_ el: AXUIElement, _ name: String) -> String? {
-    if let v = attr(el, name) as? String { return v }
-    return nil
-}
-
-func isEnabled(_ el: AXUIElement) -> Bool {
-    (attr(el, kAXEnabledAttribute as String) as? Bool) ?? true
-}
-
-func children(_ el: AXUIElement) -> [AXUIElement] {
-    (attr(el, kAXChildrenAttribute as String) as? [AnyObject] ?? []).map { $0 as! AXUIElement }
-}
-
-func window(_ axApp: AXUIElement) -> AXUIElement? {
-    if let focused = attr(axApp, kAXFocusedWindowAttribute as String) as! AXUIElement? { return focused }
-    if let windows = attr(axApp, kAXWindowsAttribute as String) as? [AnyObject], let first = windows.first {
-        return first as! AXUIElement
-    }
-    return nil
-}
-
-func collectEditableInputs(_ el: AXUIElement, into out: inout [AXUIElement], depth: Int = 0) {
-    guard depth < 25 else { return }
-    let role = s(el, kAXRoleAttribute as String) ?? ""
-    if (role == kAXTextAreaRole as String || role == kAXTextFieldRole as String) && isEnabled(el) {
-        out.append(el)
-    }
-    for c in children(el) { collectEditableInputs(c, into: &out, depth: depth + 1) }
-}
-
-guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.openai.chat").first else {
-    fputs("ChatGPT not running\\n", stderr)
-    exit(1)
-}
-
-let axApp = AXUIElementCreateApplication(app.processIdentifier)
-guard let win = window(axApp) else {
-    fputs("No ChatGPT window\\n", stderr)
-    exit(1)
-}
-
-var inputs: [AXUIElement] = []
-collectEditableInputs(win, into: &inputs)
-guard let input = inputs.last else {
-    fputs("Could not find editable input area\\n", stderr)
-    exit(1)
-}
-
-AXUIElementSetAttributeValue(axApp, kAXFocusedUIElementAttribute as CFString, input)
-AXUIElementPerformAction(input, kAXPressAction as CFString)
-print("Focused")
-`;
-
-const AX_IMAGE_SNAPSHOT_SCRIPT = `
-import Cocoa
-import ApplicationServices
-
-func attr(_ el: AXUIElement, _ name: String) -> AnyObject? {
-    var value: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(el, name as CFString, &value) == .success else { return nil }
-    return value as AnyObject?
-}
-
-func s(_ el: AXUIElement, _ name: String) -> String? {
-    if let v = attr(el, name) as? String, !v.isEmpty { return v }
-    return nil
-}
-
-func children(_ el: AXUIElement) -> [AXUIElement] {
-    (attr(el, kAXChildrenAttribute as String) as? [AnyObject] ?? []).map { $0 as! AXUIElement }
-}
-
-func window(_ axApp: AXUIElement) -> AXUIElement? {
-    if let focused = attr(axApp, kAXFocusedWindowAttribute as String) as! AXUIElement? { return focused }
-    if let windows = attr(axApp, kAXWindowsAttribute as String) as? [AnyObject], let first = windows.first {
-        return first as! AXUIElement
-    }
-    return nil
-}
-
-func point(_ el: AXUIElement) -> CGPoint? {
-    guard let value = attr(el, kAXPositionAttribute as String) else { return nil }
-    var p = CGPoint.zero
-    if AXValueGetValue(value as! AXValue, .cgPoint, &p) { return p }
-    return nil
-}
-
-func size(_ el: AXUIElement) -> CGSize? {
-    guard let value = attr(el, kAXSizeAttribute as String) else { return nil }
-    var s = CGSize.zero
-    if AXValueGetValue(value as! AXValue, .cgSize, &s) { return s }
-    return nil
-}
-
-func collect(_ el: AXUIElement, into out: inout [[String: Any]], depth: Int = 0) {
-    guard depth < 30 else { return }
-    let role = s(el, kAXRoleAttribute as String) ?? ""
-    let desc = s(el, kAXDescriptionAttribute as String) ?? ""
-    let title = s(el, kAXTitleAttribute as String) ?? ""
-    if let p = point(el), let z = size(el) {
-        let area = z.width * z.height
-        let label = "\\(desc) \\(title)"
-        let imageLike = role == kAXImageRole as String || label.lowercased().contains("generated image") || label.lowercased().contains("image")
-        if imageLike && z.width >= 80 && z.height >= 80 && area >= 6400 {
-            out.append([
-                "role": role,
-                "description": desc,
-                "title": title,
-                "x": Double(p.x),
-                "y": Double(p.y),
-                "width": Double(z.width),
-                "height": Double(z.height),
-                "area": Double(area)
-            ])
-        }
-    }
-    for c in children(el) { collect(c, into: &out, depth: depth + 1) }
-}
-
-guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.openai.chat").first else {
-    fputs("ChatGPT not running\\n", stderr)
-    exit(1)
-}
-
-let axApp = AXUIElementCreateApplication(app.processIdentifier)
-guard let win = window(axApp) else {
-    fputs("No ChatGPT window\\n", stderr)
-    exit(1)
-}
-
-var rows: [[String: Any]] = []
-collect(win, into: &rows)
-let data = try! JSONSerialization.data(withJSONObject: rows, options: [])
-print(String(data: data, encoding: .utf8)!)
-`;
-
 const MODEL_MAP: Record<string, { desc: string; legacy?: boolean }> = {
   auto: { desc: 'Auto' },
   instant: { desc: 'Instant' },
@@ -852,7 +877,7 @@ export async function chatgptStatusCommand(): Promise<void> {
 export async function chatgptNewCommand(): Promise<void> {
   ensureDarwin();
   activateChatGPT();
-  execSync("osascript -e 'tell application \"System Events\" to keystroke \"n\" using command down'");
+  startNewChatGPTConversationViaAx();
   printJson({ success: true, action: 'new', app: CHATGPT_DISPLAY_NAME });
 }
 
@@ -944,43 +969,69 @@ export async function chatgptImageGenerateCommand(
   const inlineArtifacts = options.inlineArtifacts === true || responseFormat === 'b64_json';
   if (options.model) selectModel(options.model);
 
-  if (!options.endpoint) {
-    await chatgptImageGenerateViaAx(prompt, options, timeoutMs, responseFormat, inlineArtifacts);
+  // Image generation artifacts must come from real image bytes (DOM/CDP fetch,
+  // data URL, canvas export, or local file). Do not use the macOS AX screenshot
+  // fallback here: a screen capture is only a debug artifact, not the generated
+  // image file the caller asked for.
+  let connected: ConnectResult;
+  try {
+    connected = await connectChatGPT(options);
+  } catch (error) {
+    if (!shouldUseNativeChatGPTFallback(error, options)) throw error;
+    await chatgptImageGenerateViaNativeCache(
+      prompt,
+      options,
+      responseFormat,
+      inlineArtifacts,
+      getErrorMessage(error),
+    );
     return;
   }
-
-  const connected = await connectChatGPT(options);
   try {
-    if (options.new) {
-      await connected.client.pressNewConversationShortcut();
-      await sleep(1_000);
-    }
-
-    const before = await readConversation(connected.client, 1);
-    const beforeArtifactSources = new Set(
-      (await extractArtifacts(connected.client)).map((artifact) => artifact.source),
-    );
     const referenceImages = await resolveImageInputs(options.image ?? [], options.artifactDir);
-    const attachments = await attachComposerFiles(connected.client, referenceImages);
-    if (!attachments.ok) throw new Error(attachments.error || 'Failed to attach reference image(s)');
-    const text = buildImageGeneratePrompt(prompt, options.size, options.quality, referenceImages.length);
-    const injected = await injectComposerText(connected.client, text);
-    if (!injected.ok) throw new Error(injected.error || 'Could not find ChatGPT composer input');
-    await sleep(350);
-    const submit = await submitComposer(connected.client);
+    const prepared = await withChatGPTUiLock(async () => {
+      const previousUrl = await currentChatGPTUrl(connected.client).catch(() => '');
+      if (options.new) {
+        await startNewChatGPTConversation(connected.client);
+        await waitForChatGPTComposer(connected.client);
+      }
 
-    const baselineIndex = before.turns[before.turns.length - 1]?.index ?? before.count;
-    const response = await waitForResponse(
+      const before = await readConversation(connected.client, 1);
+      const beforeArtifactSources = new Set(
+        (await extractArtifacts(connected.client)).map((artifact) => artifact.source),
+      );
+      const attachments = await attachComposerFiles(connected.client, referenceImages);
+      if (!attachments.ok) throw new Error(attachments.error || 'Failed to attach reference image(s)');
+      const text = buildImageGeneratePrompt(prompt, options.size, options.quality, referenceImages.length);
+      const injected = await injectComposerText(connected.client, text);
+      if (!injected.ok) throw new Error(injected.error || 'Could not find ChatGPT composer input');
+      await sleep(350);
+      const submit = await submitComposer(connected.client);
+      const conversationUrl = await waitForChatGPTConversationUrlAfterSubmit(connected.client, previousUrl)
+        .catch(() => currentChatGPTUrl(connected.client).catch(() => previousUrl));
+      return {
+        before,
+        beforeArtifactSources,
+        attachments,
+        injected,
+        submit,
+        conversationUrl,
+      };
+    }, Math.min(90_000, Math.max(30_000, timeoutMs)));
+
+    const baselineIndex = prepared.before.turns[prepared.before.turns.length - 1]?.index ?? prepared.before.count;
+    const response = await waitForChatGPTConversationResponse(
       connected.client,
+      prepared.conversationUrl,
       baselineIndex,
       timeoutMs,
-      async () => (await extractArtifacts(connected.client)).some((artifact) => !beforeArtifactSources.has(artifact.source)),
+      prepared.beforeArtifactSources,
     );
-    const domArtifacts = filterNewArtifacts(await extractArtifacts(connected.client), beforeArtifactSources);
-    const artifacts = renumberArtifacts([
+    const persisted = renumberArtifacts([
       ...collectLocalImageArtifacts(response.text, inlineArtifacts),
-      ...persistArtifacts(domArtifacts, options.artifactDir, inlineArtifacts),
+      ...persistArtifacts(filterNewArtifacts(response.artifacts, prepared.beforeArtifactSources), options.artifactDir, inlineArtifacts),
     ]);
+    const artifacts = await stripArtifactMetadata(persisted, inlineArtifacts);
     const images = artifacts
       .filter((artifact) => isRasterImageMime(artifact.mime))
       .map((artifact) => imageArtifactToApiImage(artifact, responseFormat));
@@ -997,8 +1048,11 @@ export async function chatgptImageGenerateCommand(
       reference_images: referenceImages.length,
       response_format: responseFormat,
       response: response.text,
-      submit,
-      attachments,
+      conversation_url: response.url || prepared.conversationUrl || null,
+      submit: prepared.submit,
+      attachments: prepared.attachments,
+      composer: prepared.injected,
+      watermark_removal: metadataSummary(artifacts),
       images,
       artifacts,
       error: images.length > 0 ? undefined : 'No raster image artifact was produced by ChatGPT Desktop.',
@@ -1009,41 +1063,60 @@ export async function chatgptImageGenerateCommand(
   }
 }
 
-async function chatgptImageGenerateViaAx(
+function shouldUseNativeChatGPTFallback(error: unknown, options: ChatGPTImageGenerateOptions): boolean {
+  if (options.endpoint) return false;
+  const message = getErrorMessage(error);
+  return /without CDP|CDP is not listening|did not become available|No inspectable targets/i.test(message);
+}
+
+async function chatgptImageGenerateViaNativeCache(
   prompt: string,
   options: ChatGPTImageGenerateOptions,
-  timeoutMs: number,
   responseFormat: string,
   inlineArtifacts: boolean,
+  cdpError: string,
 ): Promise<void> {
-  activateChatGPT();
-  if (options.new) {
-    execSync("osascript -e 'tell application \"System Events\" to keystroke \"n\" using command down'");
-    await sleep(1_000);
-  }
-
+  const timeoutMs = parseTimeoutMs(options.timeout, 300_000);
   const referenceImages = await resolveImageInputs(options.image ?? [], options.artifactDir);
-  const beforeImages = getAxImageCandidates();
-  const attachments = await attachFilesViaPasteboard(referenceImages);
-  if (!attachments.ok) throw new Error(attachments.error || 'Failed to attach reference image(s)');
-  const afterAttachmentImages = getAxImageCandidates();
   const text = buildImageGeneratePrompt(prompt, options.size, options.quality, referenceImages.length);
-  sendPrompt(text);
 
-  const response = await waitForAxImage(afterAttachmentImages, timeoutMs);
-  const artifact = response.candidate
-    ? captureAxImageCandidate(response.candidate, options.artifactDir, inlineArtifacts)
-    : null;
-  const artifacts = artifact ? renumberArtifacts([artifact]) : [];
+  const generated = await withChatGPTUiLock(async () => {
+    const beforeCache = new Set(listChatGPTCacheImages().map((image) => image.name));
+    const submittedAt = Date.now();
+    activateChatGPT();
+    if (options.new) {
+      startNewChatGPTConversationViaAx();
+      await sleep(900);
+    }
+    let prepared: { result: string; pasted: string | null; method: string };
+    if (referenceImages.length > 0) {
+      const pasted = pasteFilesIntoChatGPTComposer(referenceImages);
+      await sleep(1_800);
+      const result = sendPrompt(text);
+      prepared = { result, pasted, method: 'ax-send-with-file-paste' };
+    } else {
+      const result = sendPrompt(text);
+      prepared = { result, pasted: null, method: 'ax-send' };
+    }
+    const cacheImages = await waitForNewChatGPTCacheImages(beforeCache, submittedAt, timeoutMs);
+    return {
+      ...prepared,
+      cacheImages,
+      baselineCount: beforeCache.size,
+    };
+  }, Math.max(90_000, timeoutMs + 120_000));
+
+  const persisted = await persistChatGPTCacheArtifacts(generated.cacheImages, options.artifactDir, inlineArtifacts);
+  const artifacts = await stripArtifactMetadata(renumberArtifacts(persisted), inlineArtifacts);
   const images = artifacts
-    .filter((item) => isRasterImageMime(item.mime))
-    .map((item) => imageArtifactToApiImage(item, responseFormat));
+    .filter((artifact) => isRasterImageMime(artifact.mime))
+    .map((artifact) => imageArtifactToApiImage(artifact, responseFormat));
 
   printJson({
     success: images.length > 0,
     action: 'image-generate',
     app: CHATGPT_DISPLAY_NAME,
-    status: images.length > 0 ? 'complete' : response.status,
+    status: images.length > 0 ? 'complete' : 'timeout',
     prompt,
     model: options.model ?? null,
     size: options.size || null,
@@ -1051,118 +1124,68 @@ async function chatgptImageGenerateViaAx(
     reference_images: referenceImages.length,
     response_format: responseFormat,
     response: '',
-    submit: { ok: true, method: 'ax-send' },
-    attachments,
+    conversation_url: null,
+    submit: { ok: generated.result === 'Sent', method: generated.method, result: generated.result },
+    attachments: referenceImages.length > 0
+      ? { ok: Boolean(generated.pasted), attached: referenceImages.length, files: referenceImages, method: 'native-paste', result: generated.pasted }
+      : { ok: true, attached: 0, files: [], method: 'none' },
+    composer: { ok: true, tag: 'native-ax' },
+    extraction: {
+      method: 'kingfisher-cache-diff',
+      cache_dir: CHATGPT_KINGFISHER_CACHE_DIR,
+      cdp_fallback_reason: cdpError,
+      baseline_count: generated.baselineCount,
+      matched_cache_files: generated.cacheImages.length,
+      concurrency: 'serialized',
+      note: 'Native ChatGPT Desktop does not expose DOM/CDP image URLs in this build; the command holds the UI lock until cache extraction completes to avoid returning another request’s image. Extracted artifacts are real cached image bytes, not screenshots.',
+    },
+    watermark_removal: metadataSummary(artifacts),
     images,
     artifacts,
-    error: images.length > 0 ? undefined : 'No visible generated image was captured from ChatGPT Desktop.',
-    capture: response.candidate ?? null,
-    before_images: beforeImages.length,
+    error: images.length > 0 ? undefined : 'No new raster image artifact was found in ChatGPT Desktop cache before timeout.',
+    target: { type: 'native', title: CHATGPT_DISPLAY_NAME },
   });
 }
 
-async function attachFilesViaPasteboard(
-  files: string[],
-): Promise<{ ok: boolean; attached: number; files: string[]; method: string; error?: string }> {
-  if (!files.length) return { ok: true, attached: 0, files: [], method: 'none' };
-  try {
-    setClipboardFiles(files);
-    focusChatGPTInput();
-    execSync("osascript -e 'tell application \"System Events\" to keystroke \"v\" using command down'");
-    await sleep(2_500);
-    return { ok: true, attached: files.length, files, method: 'pasteboard' };
-  } catch (error) {
-    return { ok: false, attached: 0, files, method: 'pasteboard', error: getErrorMessage(error) };
-  }
-}
-
-async function waitForAxImage(
-  before: AxImageCandidate[],
-  timeoutMs: number,
-): Promise<{ status: 'complete' | 'timeout'; candidate?: AxImageCandidate }> {
-  const beforeKeys = new Set(before.map(candidateKey));
-  const deadline = Date.now() + timeoutMs;
-  let generationStarted = false;
-  let latest: AxImageCandidate | undefined;
-
-  while (Date.now() < deadline) {
-    await sleep(DEFAULT_POLL_MS);
-    const generating = isGenerating();
-    if (generating) generationStarted = true;
-    const candidates = getAxImageCandidates();
-    latest = pickNewImageCandidate(candidates, beforeKeys) ?? latest;
-    if (latest && !generating && generationStarted) {
-      return { status: 'complete', candidate: latest };
-    }
-    if (latest && !generating && Date.now() + 6_000 > deadline) {
-      return { status: 'complete', candidate: latest };
-    }
-  }
-
-  return latest ? { status: 'complete', candidate: latest } : { status: 'timeout' };
-}
-
-function pickNewImageCandidate(
-  candidates: AxImageCandidate[],
-  beforeKeys: Set<string>,
-): AxImageCandidate | undefined {
-  const fresh = candidates.filter((candidate) => !beforeKeys.has(candidateKey(candidate)));
-  const pool = (fresh.length ? fresh : candidates).filter((candidate) => !isPlaceholderImageCandidate(candidate));
-  return pool
-    .filter((candidate) => candidate.width >= 160 && candidate.height >= 160)
-    .sort((a, b) => b.area - a.area)[0];
-}
-
-function isPlaceholderImageCandidate(candidate: AxImageCandidate): boolean {
-  return /creating image|generating|loading|正在|生成中/i.test(
-    `${candidate.description || ''} ${candidate.title || ''}`,
-  );
-}
-
-function candidateKey(candidate: AxImageCandidate): string {
-  return [
-    Math.round(candidate.x / 8),
-    Math.round(candidate.y / 8),
-    Math.round(candidate.width / 8),
-    Math.round(candidate.height / 8),
-    candidate.description || '',
-    candidate.title || '',
-  ].join(':');
-}
-
-function captureAxImageCandidate(
-  candidate: AxImageCandidate,
-  artifactDir: string | undefined,
-  inlineArtifacts: boolean,
-): ImageArtifact {
-  const dir = artifactDir || join(tmpdir(), 'bnbot-chatgpt-artifacts');
-  mkdirSync(dir, { recursive: true });
-  const path = join(dir, `chatgpt-capture-${Date.now()}.png`);
-  const rect = [
-    Math.max(0, Math.floor(candidate.x)),
-    Math.max(0, Math.floor(candidate.y)),
-    Math.max(1, Math.ceil(candidate.width)),
-    Math.max(1, Math.ceil(candidate.height)),
-  ].join(',');
-  execFileSync('screencapture', ['-x', '-R', rect, path], {
-    stdio: 'ignore',
-    timeout: 30_000,
-  });
-  const stat = statSync(path);
-  const artifact: ImageArtifact = {
-    index: 1,
-    type: 'file',
-    source: path,
-    path,
-    mime: 'image/png',
-    width: Math.ceil(candidate.width),
-    height: Math.ceil(candidate.height),
-    bytes: stat.size,
+function metadataSummary(artifacts: ImageArtifact[]): Record<string, unknown> {
+  const stripped = artifacts.filter((a) => a.watermark_metadata_stripped).length;
+  const failed = artifacts
+    .filter((a) => a.watermark_metadata_error)
+    .map((a) => ({ index: a.index, error: a.watermark_metadata_error }));
+  return {
+    method: 'metadata-strip',
+    metadata_stripped: stripped,
+    total: artifacts.length,
+    failed: failed.length > 0 ? failed : undefined,
   };
-  if (inlineArtifacts && stat.size <= MAX_ARTIFACT_BYTES) {
-    artifact.base64 = readFileSync(path).toString('base64');
+}
+
+async function stripArtifactMetadata(
+  artifacts: ImageArtifact[],
+  inlineArtifacts: boolean,
+): Promise<ImageArtifact[]> {
+  const out: ImageArtifact[] = [];
+  for (const artifact of artifacts) {
+    if (!artifact.path || artifact.error || !isRasterImageMime(artifact.mime)) {
+      out.push(artifact);
+      continue;
+    }
+    const result = await stripImageWatermarks(artifact.path, { removeVisibleWatermark: false });
+    const cleaned = readFileSync(artifact.path);
+    const next: ImageArtifact = {
+      ...artifact,
+      bytes: cleaned.length,
+      watermark_metadata_stripped: result.metadata_stripped,
+    };
+    if (result.error) next.watermark_metadata_error = result.error;
+    if (inlineArtifacts && cleaned.length <= MAX_ARTIFACT_BYTES) {
+      next.base64 = cleaned.toString('base64');
+    } else if (artifact.base64) {
+      next.base64 = cleaned.toString('base64');
+    }
+    out.push(next);
   }
-  return artifact;
+  return out;
 }
 
 export async function chatgptModelCommand(modelName: string | undefined): Promise<void> {
@@ -1215,6 +1238,26 @@ function sendPrompt(text: string): string {
   }).trim();
 }
 
+function startNewChatGPTConversationViaAx(): void {
+  try {
+    execFileSync('swift', ['-'], {
+      input: AX_NEW_CHAT_SCRIPT,
+      encoding: 'utf8',
+      maxBuffer: MAX_SWIFT_BUFFER,
+    });
+  } catch {
+    execSync("osascript -e 'tell application \"System Events\" to keystroke \"n\" using command down'");
+  }
+}
+
+function pasteFilesIntoChatGPTComposer(files: string[]): string {
+  return execFileSync('swift', ['-', ...files], {
+    input: AX_PASTE_FILES_SCRIPT,
+    encoding: 'utf8',
+    maxBuffer: MAX_SWIFT_BUFFER,
+  }).trim();
+}
+
 function isGenerating(): boolean {
   try {
     const output = execFileSync('swift', ['-'], {
@@ -1225,50 +1268,6 @@ function isGenerating(): boolean {
     return output === 'true';
   } catch {
     return false;
-  }
-}
-
-function focusChatGPTInput(): void {
-  execFileSync('swift', ['-'], {
-    input: AX_FOCUS_INPUT_SCRIPT,
-    encoding: 'utf8',
-    maxBuffer: MAX_SWIFT_BUFFER,
-  });
-}
-
-function getAxImageCandidates(): AxImageCandidate[] {
-  try {
-    const output = execFileSync('swift', ['-'], {
-      input: AX_IMAGE_SNAPSHOT_SCRIPT,
-      encoding: 'utf8',
-      maxBuffer: MAX_SWIFT_BUFFER,
-    }).trim();
-    const parsed = JSON.parse(output || '[]');
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((item): AxImageCandidate | null => {
-        if (!item || typeof item !== 'object') return null;
-        const row = item as Record<string, unknown>;
-        const x = Number(row.x);
-        const y = Number(row.y);
-        const width = Number(row.width);
-        const height = Number(row.height);
-        const area = Number(row.area);
-        if (![x, y, width, height, area].every(Number.isFinite)) return null;
-        return {
-          role: typeof row.role === 'string' ? row.role : undefined,
-          description: typeof row.description === 'string' ? row.description : undefined,
-          title: typeof row.title === 'string' ? row.title : undefined,
-          x,
-          y,
-          width,
-          height,
-          area,
-        };
-      })
-      .filter((item): item is AxImageCandidate => Boolean(item));
-  } catch {
-    return [];
   }
 }
 
@@ -1285,6 +1284,122 @@ function getVisibleChatMessages(): string[] {
     .filter((item): item is string => typeof item === 'string')
     .map((item) => item.replace(/[\uFFFC\u200B-\u200D\uFEFF]/g, '').trim())
     .filter((item) => item.length > 0);
+}
+
+function listChatGPTCacheImages(): ChatGPTCacheImage[] {
+  if (!existsSync(CHATGPT_KINGFISHER_CACHE_DIR)) return [];
+  const out: ChatGPTCacheImage[] = [];
+  for (const name of readdirSync(CHATGPT_KINGFISHER_CACHE_DIR)) {
+    const path = join(CHATGPT_KINGFISHER_CACHE_DIR, name);
+    let stat;
+    try {
+      stat = statSync(path);
+    } catch {
+      continue;
+    }
+    if (!stat.isFile() || stat.size < CHATGPT_CACHE_MIN_IMAGE_BYTES || stat.size > MAX_ARTIFACT_BYTES) {
+      continue;
+    }
+    const mime = sniffImageMime(path);
+    if (!mime || !isRasterImageMime(mime)) continue;
+    out.push({ name, path, mime, size: stat.size, mtimeMs: stat.mtimeMs });
+  }
+  return out.sort((a, b) => a.mtimeMs - b.mtimeMs);
+}
+
+function sniffImageMime(path: string): string | null {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, 'r');
+    const head = Buffer.alloc(16);
+    readSync(fd, head, 0, head.length, 0);
+    if (head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47) return 'image/png';
+    if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return 'image/jpeg';
+    if (head.toString('ascii', 0, 4) === 'RIFF' && head.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+    if (head.toString('ascii', 0, 3) === 'GIF') return 'image/gif';
+    return null;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+async function waitForNewChatGPTCacheImages(
+  beforeNames: Set<string>,
+  submittedAtMs: number,
+  timeoutMs: number,
+): Promise<ChatGPTCacheImage[]> {
+  const deadline = Date.now() + timeoutMs;
+  let lastSignature = '';
+  let stableSince = 0;
+  let lastCandidates: ChatGPTCacheImage[] = [];
+  const minMtime = submittedAtMs - 5_000;
+
+  while (Date.now() < deadline) {
+    await sleep(DEFAULT_POLL_MS);
+    const candidates = listChatGPTCacheImages()
+      .filter((image) => !beforeNames.has(image.name) && image.mtimeMs >= minMtime)
+      .sort((a, b) => a.mtimeMs - b.mtimeMs)
+      .slice(0, ARTIFACT_LIMIT);
+    const signature = candidates.map((image) => `${image.name}:${image.size}:${Math.round(image.mtimeMs)}`).join('|');
+    if (signature && signature === lastSignature) {
+      stableSince += DEFAULT_POLL_MS;
+    } else {
+      stableSince = 0;
+      lastSignature = signature;
+    }
+    lastCandidates = candidates;
+    if (candidates.length > 0 && stableSince >= DEFAULT_POLL_MS) {
+      const claimed = await claimChatGPTCacheImages(candidates, 1);
+      if (claimed.length > 0) return claimed;
+      lastSignature = '';
+      stableSince = 0;
+    }
+  }
+
+  return claimChatGPTCacheImages(lastCandidates, 1);
+}
+
+async function persistChatGPTCacheArtifacts(
+  images: ChatGPTCacheImage[],
+  artifactDir?: string,
+  inlineArtifacts = false,
+): Promise<ImageArtifact[]> {
+  if (!images.length) return [];
+  const dir = artifactDir || join(tmpdir(), 'bnbot-chatgpt-artifacts');
+  mkdirSync(dir, { recursive: true });
+
+  const artifacts: ImageArtifact[] = [];
+  for (const image of images) {
+    const ext = mimeToExt(image.mime);
+    const path = join(dir, `chatgpt-desktop-cache-${Date.now()}-${artifacts.length + 1}.${ext}`);
+    copyFileSync(image.path, path);
+    let width: number | undefined;
+    let height: number | undefined;
+    try {
+      const metadata = await sharp(path).metadata();
+      width = metadata.width;
+      height = metadata.height;
+    } catch {
+      // Keep the real artifact even if metadata probing fails.
+    }
+    const artifact: ImageArtifact = {
+      index: artifacts.length + 1,
+      type: 'file',
+      source: `chatgpt-cache://${image.name}`,
+      path,
+      mime: image.mime,
+      width,
+      height,
+      bytes: statSync(path).size,
+    };
+    if (inlineArtifacts && artifact.bytes && artifact.bytes <= MAX_ARTIFACT_BYTES) {
+      artifact.base64 = readFileSync(path).toString('base64');
+    }
+    artifacts.push(artifact);
+  }
+  return artifacts;
 }
 
 async function connectChatGPT(options: ChatGPTImageGenerateOptions): Promise<ConnectResult> {
@@ -1322,7 +1437,7 @@ async function resolveEndpoint(
   const running = isProcessRunning(CHATGPT_PROCESS_NAME);
   if (running && !options.restart) {
     throw new Error(
-      `ChatGPT is running without CDP on port ${port}. Quit ChatGPT and rerun, or pass --restart to terminate and relaunch it with --remote-debugging-port=${port}.`,
+      `ChatGPT is running without CDP on port ${port}. Image export requires real DOM/CDP image bytes; screenshot fallback is disabled. Quit ChatGPT and rerun, or pass --restart to terminate and relaunch it with --remote-debugging-port=${port}.`,
     );
   }
 
@@ -1463,6 +1578,226 @@ async function waitForPort(port: number, timeoutMs: number): Promise<void> {
   throw new Error(`ChatGPT launched, but CDP did not become available on port ${port}.`);
 }
 
+async function withChatGPTUiLock<T>(fn: () => Promise<T>, timeoutMs = 90_000): Promise<T> {
+  const fd = await acquireChatGPTUiLock(timeoutMs);
+  try {
+    return await fn();
+  } finally {
+    closeSync(fd);
+    try {
+      unlinkSync(CHATGPT_UI_LOCK_PATH);
+    } catch {
+      // Another process may have already removed a stale lock.
+    }
+  }
+}
+
+async function acquireChatGPTUiLock(timeoutMs: number): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const fd = openSync(CHATGPT_UI_LOCK_PATH, 'wx');
+      writeFileSync(fd, JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }));
+      return fd;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      if (isChatGPTUiLockStale()) {
+        try { unlinkSync(CHATGPT_UI_LOCK_PATH); } catch { /* ignore */ }
+        continue;
+      }
+      await sleep(250);
+    }
+  }
+  throw new Error(`Timed out waiting for ChatGPT UI lock after ${timeoutMs / 1000}s`);
+}
+
+function isChatGPTUiLockStale(): boolean {
+  try {
+    return Date.now() - statSync(CHATGPT_UI_LOCK_PATH).mtimeMs > CHATGPT_UI_LOCK_STALE_MS;
+  } catch {
+    return true;
+  }
+}
+
+async function withChatGPTCacheClaimLock<T>(fn: () => Promise<T>, timeoutMs = 30_000): Promise<T> {
+  const fd = await acquireFileLock(
+    CHATGPT_CACHE_CLAIM_LOCK_PATH,
+    CHATGPT_CACHE_CLAIM_LOCK_STALE_MS,
+    timeoutMs,
+    'ChatGPT cache claim',
+  );
+  try {
+    return await fn();
+  } finally {
+    closeSync(fd);
+    try {
+      unlinkSync(CHATGPT_CACHE_CLAIM_LOCK_PATH);
+    } catch {
+      // Another process may have already removed a stale lock.
+    }
+  }
+}
+
+async function acquireFileLock(
+  lockPath: string,
+  staleMs: number,
+  timeoutMs: number,
+  label: string,
+): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const fd = openSync(lockPath, 'wx');
+      writeFileSync(fd, JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }));
+      return fd;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      let stale = true;
+      try {
+        stale = Date.now() - statSync(lockPath).mtimeMs > staleMs;
+      } catch {
+        stale = true;
+      }
+      if (stale) {
+        try { unlinkSync(lockPath); } catch { /* ignore */ }
+        continue;
+      }
+      await sleep(100);
+    }
+  }
+  throw new Error(`Timed out waiting for ${label} lock after ${timeoutMs / 1000}s`);
+}
+
+async function claimChatGPTCacheImages(
+  candidates: ChatGPTCacheImage[],
+  limit: number,
+): Promise<ChatGPTCacheImage[]> {
+  if (!candidates.length) return [];
+  return withChatGPTCacheClaimLock(async () => {
+    const claimed = readChatGPTCacheClaims();
+    const chosen = candidates.filter((image) => !claimed.has(image.name)).slice(0, limit);
+    if (!chosen.length) return [];
+    for (const image of chosen) claimed.add(image.name);
+    writeChatGPTCacheClaims(claimed);
+    return chosen;
+  });
+}
+
+function readChatGPTCacheClaims(): Set<string> {
+  try {
+    const parsed = JSON.parse(readFileSync(CHATGPT_CACHE_CLAIMS_PATH, 'utf8')) as { claimed?: unknown };
+    if (!Array.isArray(parsed.claimed)) return new Set();
+    return new Set(parsed.claimed.filter((item): item is string => typeof item === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeChatGPTCacheClaims(claimed: Set<string>): void {
+  const values = [...claimed].slice(-1_000);
+  writeFileSync(CHATGPT_CACHE_CLAIMS_PATH, JSON.stringify({
+    updatedAt: new Date().toISOString(),
+    claimed: values,
+  }, null, 2));
+}
+
+async function currentChatGPTUrl(client: CDPClient): Promise<string> {
+  return client.evaluate<string>('window.location.href || ""');
+}
+
+async function startNewChatGPTConversation(client: CDPClient): Promise<{ ok: boolean; method: string; label?: string; error?: string }> {
+  const clicked = await client.evaluate<{ ok: boolean; method: string; label?: string; error?: string }>(`
+    (() => {
+      const clean = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const visible = (el) => {
+        const rect = el.getBoundingClientRect?.();
+        return !!rect && rect.width > 0 && rect.height > 0;
+      };
+      const controls = Array.from(document.querySelectorAll('button, a, [role="button"]')).filter(visible);
+      const button = controls.find((control) => {
+        const label = clean(control.innerText || control.textContent || control.getAttribute('aria-label') || control.getAttribute('title') || '');
+        return /^(new chat|新聊天)$/i.test(label) || /new chat|新聊天|start new/i.test(label);
+      });
+      if (!button) return { ok: false, method: 'dom-click', error: 'new_chat_button_not_found' };
+      const label = clean(button.getAttribute('aria-label') || button.innerText || button.textContent || '');
+      button.click();
+      return { ok: true, method: 'dom-click', label };
+    })()
+  `);
+  if (clicked.ok) {
+    await sleep(750);
+    return clicked;
+  }
+
+  await client.pressNewConversationShortcut();
+  await sleep(750);
+  return { ok: true, method: 'shortcut', error: clicked.error };
+}
+
+async function waitForChatGPTComposer(client: CDPClient, timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const ready = await client.evaluate<{ ok: boolean }>(`
+      (() => {
+        const visible = (el) => {
+          const rect = el.getBoundingClientRect?.();
+          return !!rect && rect.width > 0 && rect.height > 0;
+        };
+        return {
+          ok: Array.from(document.querySelectorAll('[contenteditable="true"], .ProseMirror, textarea')).some(visible)
+        };
+      })()
+    `).catch(() => ({ ok: false }));
+    if (ready.ok) return;
+    await sleep(300);
+  }
+  throw new Error('ChatGPT composer did not become ready before timeout');
+}
+
+async function waitForChatGPTConversationUrlAfterSubmit(
+  client: CDPClient,
+  previousUrl: string,
+  timeoutMs = 15_000,
+): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  let lastUrl = '';
+  while (Date.now() < deadline) {
+    lastUrl = await currentChatGPTUrl(client).catch(() => '');
+    if (lastUrl && lastUrl !== previousUrl && /\/c\//.test(lastUrl)) return lastUrl;
+    if (lastUrl && !previousUrl && /\/c\//.test(lastUrl)) return lastUrl;
+    await sleep(300);
+  }
+  return lastUrl || previousUrl;
+}
+
+async function waitForChatGPTDocumentReady(client: CDPClient, timeoutMs = 10_000): Promise<void> {
+  await client.evaluate<void>(`
+    new Promise((resolve) => {
+      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        resolve();
+        return;
+      }
+      const timer = setTimeout(resolve, ${timeoutMs});
+      window.addEventListener('DOMContentLoaded', () => {
+        clearTimeout(timer);
+        resolve();
+      }, { once: true });
+    })
+  `, timeoutMs + 1_000).catch(() => undefined);
+}
+
+async function activateChatGPTConversation(client: CDPClient, conversationUrl: string): Promise<string> {
+  if (!conversationUrl || !/^https?:\/\//i.test(conversationUrl)) {
+    return currentChatGPTUrl(client).catch(() => '');
+  }
+  const current = await currentChatGPTUrl(client).catch(() => '');
+  if (current === conversationUrl) return current;
+  await client.navigate(conversationUrl);
+  await waitForChatGPTDocumentReady(client);
+  await sleep(750);
+  return currentChatGPTUrl(client).catch(() => conversationUrl);
+}
+
 async function readConversation(client: CDPClient, limit: number): Promise<TurnSnapshot> {
   return client.evaluate<TurnSnapshot>(conversationScript(limit));
 }
@@ -1511,43 +1846,61 @@ function conversationScript(limit: number): string {
   `;
 }
 
-async function waitForResponse(
+async function waitForChatGPTConversationResponse(
   client: CDPClient,
+  conversationUrl: string,
   previousTurnIndex: number,
   timeoutMs: number,
-  hasNewArtifact?: () => Promise<boolean>,
-): Promise<{ status: 'complete' | 'timeout'; text: string }> {
+  beforeArtifactSources: Set<string>,
+): Promise<{ status: 'complete' | 'timeout'; text: string; artifacts: ImageArtifact[]; url?: string }> {
   const deadline = Date.now() + timeoutMs;
   let lastText = '';
   let stableSince = 0;
+  let lastArtifacts: ImageArtifact[] = [];
+  let lastUrl = conversationUrl;
 
   while (Date.now() < deadline) {
     await sleep(DEFAULT_POLL_MS);
-    const snapshot = await readConversation(client, 10);
-    const responseTurn = [...snapshot.turns]
-      .reverse()
-      .find((turn) => turn.index > previousTurnIndex && (turn.role === 'assistant' || !turn.role));
-    const text = responseTurn?.text || '';
+    const poll = await withChatGPTUiLock(async () => {
+      const activeUrl = await activateChatGPTConversation(client, conversationUrl);
+      const snapshot = await readConversation(client, 10);
+      const responseTurn = [...snapshot.turns]
+        .reverse()
+        .find((turn) => turn.index > previousTurnIndex && (turn.role === 'assistant' || !turn.role));
+      const text = responseTurn?.text || '';
+      const artifacts = filterNewArtifacts(await extractArtifacts(client), beforeArtifactSources);
+      return {
+        busy: snapshot.busy,
+        text,
+        artifacts,
+        url: snapshot.url || activeUrl,
+      };
+    }, 30_000);
+    lastArtifacts = poll.artifacts;
+    lastUrl = poll.url || lastUrl;
 
-    if (!text) {
-      if (!snapshot.busy && hasNewArtifact && await hasNewArtifact()) {
-        return { status: 'complete', text: '' };
+    if (!poll.text) {
+      if (!poll.busy && poll.artifacts.length > 0) {
+        return { status: 'complete', text: '', artifacts: poll.artifacts, url: poll.url };
       }
       continue;
     }
 
-    if (text === lastText) stableSince += DEFAULT_POLL_MS;
+    if (poll.text === lastText) stableSince += DEFAULT_POLL_MS;
     else {
-      lastText = text;
+      lastText = poll.text;
       stableSince = 0;
     }
 
-    if (!snapshot.busy && stableSince >= DEFAULT_POLL_MS) {
-      return { status: 'complete', text };
+    if (!poll.busy && poll.artifacts.length > 0) {
+      return { status: 'complete', text: poll.text, artifacts: poll.artifacts, url: poll.url };
+    }
+    if (!poll.busy && stableSince >= DEFAULT_POLL_MS) {
+      return { status: 'complete', text: poll.text, artifacts: poll.artifacts, url: poll.url };
     }
   }
 
-  return { status: 'timeout', text: lastText };
+  return { status: 'timeout', text: lastText, artifacts: lastArtifacts, url: lastUrl };
 }
 
 async function extractArtifacts(client: CDPClient): Promise<ImageArtifact[]> {
@@ -1562,6 +1915,30 @@ function artifactScript(): string {
       const artifacts = [];
       const seen = new Set();
 
+      const clean = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const visible = (el) => {
+        const rect = el.getBoundingClientRect?.();
+        return !!rect && rect.width >= 48 && rect.height >= 48;
+      };
+      const elementLabel = (el) => clean([
+        el.alt,
+        el.title,
+        el.getAttribute?.('aria-label'),
+        el.getAttribute?.('data-testid'),
+        el.getAttribute?.('class'),
+        el.getAttribute?.('role')
+      ].filter(Boolean).join(' ')).toLowerCase();
+      const decorative = (el) => {
+        const rect = el.getBoundingClientRect?.();
+        const width = el.naturalWidth || rect?.width || 0;
+        const height = el.naturalHeight || rect?.height || 0;
+        if (width < 80 || height < 80) return true;
+        return /avatar|profile|logo|icon|sprite|gizmo|user-avatar|emoji|attachment-preview|upload-preview|thumbnail/i.test(elementLabel(el));
+      };
+      const mimeFromDataUrl = (value) => {
+        const match = String(value || '').match(/^data:([^;]+);base64,/);
+        return match?.[1] || 'image/png';
+      };
       const toBase64 = (blob) => new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -1582,12 +1959,72 @@ function artifactScript(): string {
       const assistantNodes = Array.from(document.querySelectorAll('[data-message-author-role="assistant"], [data-content-search-unit-key*=":assistant"]'));
       const root = assistantNodes[assistantNodes.length - 1] || document;
 
-      const imgNodes = Array.from(root.querySelectorAll('img')).filter((img) => {
-        const rect = img.getBoundingClientRect?.();
-        const width = img.naturalWidth || rect?.width || 0;
-        const height = img.naturalHeight || rect?.height || 0;
-        return width >= 48 && height >= 48 && img.src;
-      });
+      const exportCanvasImage = async (img, base) => {
+        if (!img || !(img.naturalWidth || img.width) || !(img.naturalHeight || img.height)) {
+          throw new Error('canvas_source_unavailable');
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('canvas_context_unavailable');
+        ctx.drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64 = dataUrl.split(',')[1] || '';
+        await add({
+          ...base,
+          mime: 'image/png',
+          bytes: Math.floor(base64.length * 0.75),
+          base64
+        });
+      };
+
+      const fetchImageSource = async (source, base, img) => {
+        try {
+          if (source.startsWith('data:image/')) {
+            const base64 = source.split(',')[1] || '';
+            await add({
+              ...base,
+              mime: mimeFromDataUrl(source),
+              bytes: Math.floor(base64.length * 0.75),
+              base64
+            });
+            return;
+          }
+
+          const response = await fetch(source, { credentials: 'include' });
+          if (!response.ok) throw new Error('fetch_status_' + response.status);
+          const blob = await response.blob();
+          if (blob.size > maxBytes) {
+            await add({ ...base, mime: blob.type || base.mime, bytes: blob.size, error: 'artifact_too_large' });
+            return;
+          }
+          await add({
+            ...base,
+            mime: blob.type || response.headers.get('content-type') || base.mime,
+            bytes: blob.size,
+            base64: await toBase64(blob)
+          });
+        } catch (fetchError) {
+          if (img) {
+            try {
+              await exportCanvasImage(img, base);
+              return;
+            } catch (canvasError) {
+              await add({
+                ...base,
+                error: (fetchError instanceof Error ? fetchError.message : String(fetchError))
+                  + '; canvas_fallback_failed: '
+                  + (canvasError instanceof Error ? canvasError.message : String(canvasError))
+              });
+              return;
+            }
+          }
+          await add({ ...base, error: fetchError instanceof Error ? fetchError.message : String(fetchError) });
+        }
+      };
+
+      const imgNodes = Array.from(root.querySelectorAll('img')).filter((img) => visible(img) && !decorative(img) && (img.currentSrc || img.src));
 
       for (const img of imgNodes) {
         if (artifacts.length >= limit) break;
@@ -1601,28 +2038,27 @@ function artifactScript(): string {
           alt: img.alt || undefined,
           mime: 'application/octet-stream'
         };
+        await fetchImageSource(source, base, img);
+      }
 
-        try {
-          if (source.startsWith('data:image/')) {
-            const match = source.match(/^data:([^;]+);base64,(.*)$/);
-            await add({ ...base, mime: match?.[1] || 'image/png', base64: match?.[2] || '', bytes: match?.[2] ? Math.floor(match[2].length * 0.75) : undefined });
-            continue;
-          }
-
-          const response = await fetch(source, { credentials: 'include' });
-          const blob = await response.blob();
-          if (blob.size > maxBytes) {
-            await add({ ...base, mime: blob.type || base.mime, bytes: blob.size, error: 'artifact_too_large' });
-            continue;
-          }
-          await add({
-            ...base,
-            mime: blob.type || response.headers.get('content-type') || base.mime,
-            bytes: blob.size,
-            base64: await toBase64(blob)
-          });
-        } catch (error) {
-          await add({ ...base, error: error instanceof Error ? error.message : String(error) });
+      const backgroundNodes = Array.from(root.querySelectorAll('*')).filter((el) => visible(el) && !decorative(el));
+      for (const el of backgroundNodes) {
+        if (artifacts.length >= limit) break;
+        const backgroundImage = getComputedStyle(el).backgroundImage || '';
+        for (const match of backgroundImage.matchAll(/url\\((['"]?)(.*?)\\1\\)/g)) {
+          if (artifacts.length >= limit) break;
+          const source = match[2];
+          if (!source || source === 'none' || source.startsWith('data:image/svg')) continue;
+          const rect = el.getBoundingClientRect();
+          await fetchImageSource(source, {
+            index: artifacts.length + 1,
+            type: 'image',
+            source,
+            width: Math.round(rect.width) || undefined,
+            height: Math.round(rect.height) || undefined,
+            alt: undefined,
+            mime: 'application/octet-stream'
+          }, null);
         }
       }
 
@@ -1639,7 +2075,7 @@ function artifactScript(): string {
           await add({
             index: artifacts.length + 1,
             type: 'canvas',
-            source: 'canvas',
+            source: dataUrl,
             mime: 'image/png',
             width: canvas.width,
             height: canvas.height,
@@ -1647,7 +2083,7 @@ function artifactScript(): string {
             base64
           });
         } catch (error) {
-          await add({ index: artifacts.length + 1, type: 'canvas', source: 'canvas', mime: 'image/png', error: error instanceof Error ? error.message : String(error) });
+          await add({ index: artifacts.length + 1, type: 'canvas', source: 'canvas:' + artifacts.length, mime: 'image/png', error: error instanceof Error ? error.message : String(error) });
         }
       }
 
@@ -1699,14 +2135,14 @@ function buildImageGeneratePrompt(
   referenceCount = 0,
 ): string {
   return [
+    `Image request: ${prompt}`,
+    '',
     'Generate one real raster image file (PNG/JPG/WebP), not SVG, HTML, canvas code, Python drawing, or a placeholder.',
     size ? `Target size/aspect: ${size}.` : '',
     quality ? `Rendering quality target: ${quality}.` : '',
     referenceCount > 0 ? `Use the ${referenceCount} attached reference image(s) as visual references where relevant.` : '',
     'Do not add captions, logos, or watermarks unless the user explicitly asked for them.',
     'After the image is generated, do not do extra reasoning; just leave the generated image visible in the chat.',
-    '',
-    `Prompt: ${prompt}`,
   ].filter(Boolean).join('\\n');
 }
 
@@ -1716,30 +2152,101 @@ async function attachComposerFiles(
 ): Promise<{ ok: boolean; attached: number; files: string[]; method: string; error?: string }> {
   if (!files.length) return { ok: true, attached: 0, files: [], method: 'none' };
 
-  await revealFileInput(client).catch(() => undefined);
-  await sleep(500);
   try {
-    await client.setFileInputFiles(files);
-    await sleep(1_500);
-    return { ok: true, attached: files.length, files, method: 'DOM.setFileInputFiles' };
-  } catch (error) {
-    const domError = getErrorMessage(error);
+    const attached = await attachFilesViaDomPaste(client, files);
+    if (attached >= files.length) {
+      return { ok: true, attached, files, method: 'dom-paste' };
+    }
+    return {
+      ok: false,
+      attached,
+      files,
+      method: 'dom-paste',
+      error: `Only ${attached}/${files.length} reference image(s) appeared in the composer`,
+    };
+  } catch (domPasteError) {
+    const pasteError = getErrorMessage(domPasteError);
     try {
-      setClipboardFiles(files);
-      await focusComposer(client);
-      await client.pressPasteShortcut();
-      await sleep(2_500);
-      return { ok: true, attached: files.length, files, method: 'pasteboard', error: domError };
-    } catch (pasteError) {
-      return {
-        ok: false,
-        attached: 0,
-        files,
-        method: 'pasteboard',
-        error: `${domError}; paste fallback failed: ${getErrorMessage(pasteError)}`,
-      };
+      await revealFileInput(client).catch(() => undefined);
+      await sleep(500);
+      await client.setFileInputFiles(files);
+      await sleep(1_500);
+      return { ok: true, attached: files.length, files, method: 'DOM.setFileInputFiles', error: pasteError };
+    } catch (error) {
+      const domError = getErrorMessage(error);
+      try {
+        setClipboardFiles(files);
+        await focusComposer(client);
+        await client.pressPasteShortcut();
+        await sleep(2_500);
+        return { ok: true, attached: files.length, files, method: 'pasteboard', error: `${pasteError}; ${domError}` };
+      } catch (pasteErrorFallback) {
+        return {
+          ok: false,
+          attached: 0,
+          files,
+          method: 'pasteboard',
+          error: `${pasteError}; ${domError}; paste fallback failed: ${getErrorMessage(pasteErrorFallback)}`,
+        };
+      }
     }
   }
+}
+
+async function attachFilesViaDomPaste(client: CDPClient, files: string[]): Promise<number> {
+  const payload = files.map((file) => ({
+    name: basename(file),
+    mime: mimeFromPath(file),
+    base64: readFileSync(file).toString('base64'),
+  }));
+
+  const result = await client.evaluate<{ ok: boolean; attached: number; error?: string }>(`
+    (async (payload) => {
+      const visible = (el) => {
+        const rect = el.getBoundingClientRect?.();
+        return !rect || (rect.width > 0 && rect.height > 0);
+      };
+      const editables = Array.from(document.querySelectorAll('[contenteditable="true"], .ProseMirror, textarea')).filter(visible);
+      const target = editables.length ? editables[editables.length - 1] : document.body;
+      if (!target) return { ok: false, attached: 0, error: 'composer_not_found' };
+
+      const countAttached = () => {
+        const removeLabels = Array.from(document.querySelectorAll('button[aria-label]'))
+          .map((el) => el.getAttribute('aria-label') || '');
+        return payload.reduce((count, item) => (
+          count + removeLabels.filter((label) => label === 'Remove ' + item.name).length
+        ), 0);
+      };
+
+      const before = countAttached();
+      const dataTransfer = new DataTransfer();
+      for (const item of payload) {
+        const binary = atob(item.base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        dataTransfer.items.add(new File([bytes], item.name, { type: item.mime }));
+      }
+
+      target.focus?.();
+      const event = new ClipboardEvent('paste', {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dataTransfer,
+      });
+      target.dispatchEvent(event);
+
+      const deadline = Date.now() + 8_000;
+      while (Date.now() < deadline) {
+        const attached = countAttached() - before;
+        if (attached >= payload.length) return { ok: true, attached };
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      return { ok: false, attached: Math.max(0, countAttached() - before), error: 'attachment_preview_timeout' };
+    })(${JSON.stringify(payload)})
+  `, 15_000);
+
+  if (!result.ok) throw new Error(result.error || 'DOM paste attachment failed');
+  return result.attached;
 }
 
 async function revealFileInput(client: CDPClient): Promise<void> {

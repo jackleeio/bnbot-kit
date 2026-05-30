@@ -45,6 +45,10 @@ import {
   scrapeUserTweetsCommand,
   scrapeUserProfileCommand,
   scrapeThreadCommand,
+  scrapeTrendsCommand,
+  scrapeUserFollowersCommand,
+  scrapeUserFollowingCommand,
+  scrapeTweetArticleCommand,
   analyticsCommand,
   navigateUrlCommand,
   navigateSearchCommand,
@@ -77,7 +81,9 @@ import {
   chatgptSendCommand,
   chatgptStatusCommand,
 } from './commands/chatgpt.js';
-import { geminiImageGenerateCommand } from './commands/gemini.js';
+import { chatgptWebImageGenerateCommand } from './commands/chatgpt-web.js';
+import { geminiWebImageGenerateCommand, geminiWebVideoGenerateCommand } from './commands/gemini-web.js';
+import { flowVideoGenerateCommand, flowImageGenerateCommand } from './commands/flow.js';
 import { debugEvalCommand, debugUploadCommand, debugClickCommand, debugShowCommand, debugDragCommand, debugRecordCommand } from './commands/debug.js';
 import { xhsPostCommand, xhsStatsNoteCommand, xhsStatsAccountCommand } from './commands/xhs.js';
 import { wxmpPostCommand } from './commands/wxmp.js';
@@ -138,7 +144,12 @@ import {
   redditPostCommentsCommand, redditPostCommentsWithSortCommand,
   redditPostDuplicatesCommand,
   bilibiliSearchCommand, bilibiliHotCommand, bilibiliRankingCommand,
-  zhihuSearchCommand, zhihuHotCommand,
+  bilibiliVideoCommand, bilibiliSummaryCommand, bilibiliSubtitleCommand,
+  bilibiliCommentsCommand, bilibiliDynamicCommand, bilibiliHistoryCommand,
+  bilibiliFollowingCommand, bilibiliUserVideosCommand, bilibiliFavoriteCommand,
+  bilibiliFeedCommand, bilibiliFeedDetailCommand, bilibiliMeCommand,
+  zhihuSearchCommand, zhihuHotCommand, zhihuRecommendCommand, zhihuQuestionCommand,
+  zhihuAnswerDetailCommand, zhihuAnswerCommentsCommand,
   xueqiuSearchCommand, xueqiuHotCommand,
   instagramSearchCommand, instagramExploreCommand,
   linuxdoSearchCommand, jikeSearchCommand,
@@ -155,7 +166,7 @@ import {
   linkedinSearchCommand,
   kr36SearchCommand, kr36HotCommand, kr36NewsCommand,
   producthuntHotCommand,
-  yahooFinanceQuoteCommand,
+  yahooFinanceQuoteCommand, weixinSearchCommand,
 } from './commands/scraperActions.js';
 
 const DEFAULT_PORT = 18900;
@@ -252,6 +263,21 @@ function buildProgram(): Command {
       if (options.email) { args.push('--email', options.email); }
       if (options.port) { args.push('--port', options.port); }
       await runLogin(args);
+    });
+
+  // ── Auth command group ─────────────────────────────────
+  const auth = program
+    .command('auth')
+    .description('Authentication management');
+
+  auth
+    .command('check')
+    .description('Check current authentication status')
+    .option('-p, --port <port>', 'WebSocket port', String(DEFAULT_PORT))
+    .action(async (options) => {
+      const port = parseInt(options.port, 10) || DEFAULT_PORT;
+      const { checkAuthStatus } = await import('./auth.js');
+      await checkAuthStatus(port);
     });
 
   program
@@ -430,26 +456,105 @@ function buildProgram(): Command {
     .description('List or switch ChatGPT Desktop model/mode')
     .action(chatgptModelCommand);
 
-  // ── Gemini API image generation ───────────────────────
-  const gemini = program
-    .command('gemini')
-    .description('Call Gemini API helpers');
+  // ── ChatGPT Web image generation ─────────────────────
+  const chatgptWeb = program
+    .command('chatgpt-web')
+    .description('Drive chatgpt.com through the Chrome extension/CDP bridge');
 
-  gemini
+  chatgptWeb
     .command('image-generate <prompt>')
-    .description('Generate or edit an image through Gemini API. Use "-" to read stdin.')
-    .option('--api-key <key>', 'Gemini API key (defaults to GEMINI_API_KEY or GOOGLE_API_KEY)')
-    .option('--model <model>', 'Gemini image model or alias: nano-banana, nano-banana-2, nano-banana-pro')
+    .description('Generate or edit an image through chatgpt.com. Use "-" to read stdin.')
     .option('--image <path-or-url>', 'Reference image path, URL, or data URL (repeatable)', collectMedia, [])
-    .option('--aspect-ratio <ratio>', 'Image aspect ratio, e.g. 1:1, 16:9, 9:16, 21:9')
-    .option('--image-size <size>', 'Resolution hint: 512, 1K, 2K, 4K')
+    .option('--n <count>', 'Number of images to ask ChatGPT Web to generate (prompt-level, max 10)', '1')
+    .option('--size <size>', 'Prompt-level target size/aspect hint, e.g. 1:1, 1024x1024')
     .option('--quality <quality>', 'Prompt-level rendering quality hint')
     .option('--timeout <seconds>', 'Max seconds to wait for image generation', '300')
     .option('--response-format <format>', 'path | b64_json', 'path')
-    .option('--artifact-dir <path>', 'Directory for extracted artifacts (default /tmp/bnbot-gemini-artifacts)')
+    .option('--artifact-dir <path>', 'Directory for extracted artifacts (default /tmp/bnbot-chatgpt-web-artifacts)')
     .option('--inline-artifacts', 'Include artifact base64 in JSON output')
-    .option('--google-search', 'Allow Gemini to ground image generation with Google Search when supported')
-    .action(geminiImageGenerateCommand);
+    .option('--tab-id <id>', 'Use an existing ChatGPT Chrome tab id')
+    .option('--url <url>', 'ChatGPT URL to open', 'https://chatgpt.com/')
+    .option('--keep-chat', 'Reuse the current ChatGPT tab/conversation instead of navigating to a fresh entry point')
+    .option('--fresh-tab', 'Always open a new ChatGPT tab instead of using the reusable worker pool')
+    .option('--max-workers <n>', 'Max reusable ChatGPT worker tabs (hard max 3)', '3')
+    .action(chatgptWebImageGenerateCommand);
+
+  // ── Gemini image generation ───────────────────────────
+  const gemini = program
+    .command('gemini')
+    .description('Drive Gemini image generation');
+
+  gemini
+    .command('image-generate <prompt>')
+    .description('Generate or edit an image through gemini.google.com/images. Use "-" to read stdin.')
+    .option('--image <path-or-url>', 'Reference image path, URL, or data URL (repeatable)', collectMedia, [])
+    .option('--size <size>', 'Prompt-level target size/aspect hint, e.g. 1:1, 1024x1024')
+    .option('--quality <quality>', 'Prompt-level rendering quality hint')
+    .option('--timeout <seconds>', 'Max seconds to wait for image generation', '300')
+    .option('--response-format <format>', 'path | b64_json', 'path')
+    .option('--artifact-dir <path>', 'Directory for extracted artifacts (default /tmp/bnbot-gemini-web-artifacts)')
+    .option('--inline-artifacts', 'Include artifact base64 in JSON output')
+    .option('--tab-id <id>', 'Use an existing Gemini Chrome tab id')
+    .option('--url <url>', 'Gemini Images URL to open', 'https://gemini.google.com/images')
+    .option('--keep-chat', 'Reuse the current Gemini tab/conversation instead of opening a fresh chat')
+    .option('--fresh-tab', 'Always open a new Gemini tab instead of using the reusable worker pool')
+    .option('--max-workers <n>', 'Max reusable Gemini worker tabs (hard max 3)', '3')
+    .action(geminiWebImageGenerateCommand);
+
+  // ── Google Labs Flow ────────────────────────────────────
+  const flow = program
+    .command('flow')
+    .description('Drive Google Labs Flow (labs.google/fx/tools/flow) for high-quality video generation');
+
+  flow
+    .command('video-generate <prompt>')
+    .description('Generate a video on labs.google/fx/tools/flow. Use "-" to read stdin.')
+    .option('--image <path-or-url>', 'Reference image as Ingredient (repeatable)', collectMedia, [])
+    .option('--aspect <ratio>', '16:9 | 9:16 (Flow Video supports these two for Video mode)')
+    .option('--duration <seconds>', '4 | 6 | 8 | 10 — Flow video duration in seconds')
+    .option('--count <n>', '1 | 2 | 3 | 4 — number of variants to generate (each consumes credits)')
+    .option('--model <name>', 'omni-flash | veo-3.1-lite | veo-3.1-fast | veo-3.1-quality')
+    .option('--timeout <seconds>', 'Max seconds to wait for video generation', '900')
+    .option('--response-format <format>', 'path | b64_json', 'path')
+    .option('--artifact-dir <path>', 'Directory for extracted artifacts')
+    .option('--inline-artifacts', 'Include artifact base64 in JSON output')
+    .option('--tab-id <id>', 'Use an existing Flow Chrome tab id')
+    .option('--url <url>', 'Flow URL to open', 'https://labs.google/fx/tools/flow')
+    .option('--project <id>', 'Reuse an existing Flow project id (otherwise creates a new one)')
+    .option('--fresh-tab', 'Always open a new Flow tab instead of using the reusable worker pool')
+    .option('--max-workers <n>', 'Max reusable Flow worker tabs (hard max 3)', '3')
+    .action(flowVideoGenerateCommand);
+
+  flow
+    .command('image-generate <prompt>')
+    .description('Generate images on labs.google/fx/tools/flow (Nano Banana / Imagen). Use "-" to read stdin.')
+    .option('--image <path-or-url>', 'Reference image as Ingredient (repeatable)', collectMedia, [])
+    .option('--aspect <ratio>', '16:9 | 9:16 (Flow Image aspect)')
+    .option('--count <n>', '1 | 2 | 3 | 4 — number of variants to generate')
+    .option('--model <name>', 'Flow image model — e.g. omni-flash or any value visible in the Flow model picker')
+    .option('--timeout <seconds>', 'Max seconds to wait for image generation', '300')
+    .option('--response-format <format>', 'path | b64_json', 'path')
+    .option('--artifact-dir <path>', 'Directory for extracted artifacts')
+    .option('--inline-artifacts', 'Include artifact base64 in JSON output')
+    .option('--tab-id <id>', 'Use an existing Flow Chrome tab id')
+    .option('--url <url>', 'Flow URL to open', 'https://labs.google/fx/tools/flow')
+    .option('--project <id>', 'Reuse an existing Flow project id (otherwise creates a new one)')
+    .option('--fresh-tab', 'Always open a new Flow tab instead of using the reusable worker pool')
+    .option('--max-workers <n>', 'Max reusable Flow worker tabs (hard max 3)', '3')
+    .action(flowImageGenerateCommand);
+
+  gemini
+    .command('video-generate <prompt>')
+    .description('Generate a video through gemini.google.com Create-video mode. Use "-" to read stdin.')
+    .option('--image <path-or-url>', 'Reference image path, URL, or data URL (repeatable)', collectMedia, [])
+    .option('--aspect <ratio>', 'Prompt-level aspect hint, e.g. 16:9, 9:16, 1:1')
+    .option('--timeout <seconds>', 'Max seconds to wait for video generation', '900')
+    .option('--response-format <format>', 'path | b64_json', 'path')
+    .option('--artifact-dir <path>', 'Directory for extracted artifacts (default /tmp/bnbot-gemini-web-artifacts)')
+    .option('--inline-artifacts', 'Include artifact base64 in JSON output')
+    .option('--tab-id <id>', 'Use an existing Gemini Chrome tab id')
+    .option('--url <url>', 'Gemini app URL to open', 'https://gemini.google.com/app')
+    .action(geminiWebVideoGenerateCommand);
 
   // ── Screenshot (any tab, any URL) ──────────────────────
   program
@@ -828,6 +933,30 @@ function buildProgram(): Command {
     .description('Scrape a tweet thread')
     .action(scrapeThreadCommand);
 
+  xScrape
+    .command('trends')
+    .description('Scrape trending topics on X')
+    .option('-l, --limit <n>', 'Max trends', '20')
+    .option('--woeid <n>', 'Region WOEID (accepted for API compat; the DOM scraper is non-personalized and ignores it)')
+    .action(scrapeTrendsCommand);
+
+  xScrape
+    .command('user-followers <username>')
+    .description("Scrape a user's followers list")
+    .option('-l, --limit <n>', 'Max followers', '50')
+    .action(scrapeUserFollowersCommand);
+
+  xScrape
+    .command('user-following <username>')
+    .description("Scrape who a user is following")
+    .option('-l, --limit <n>', 'Max following', '50')
+    .action(scrapeUserFollowingCommand);
+
+  xScrape
+    .command('tweet-article <url>')
+    .description('Fetch a Twitter Article (long-form) as Markdown')
+    .action(scrapeTweetArticleCommand);
+
   // ── x navigate subgroup ────────────────────────────────
 
   const xNav = x
@@ -871,6 +1000,26 @@ function buildProgram(): Command {
     .action(navigateNotificationsCommand);
 
   // ── Public data scrapers ───────────────────────────────
+
+  // ctrip — public suggest endpoints (no browser). hotel-search / flight
+  // (browser-backed) live in the extension scraper path, registered elsewhere.
+  const ctrip = program
+    .command('ctrip')
+    .description('Ctrip (携程) public data');
+  ctrip
+    .command('search <query>')
+    .description('Search Ctrip destinations (cities, scenic spots, stations, landmarks)')
+    .option('-l, --limit <n>', 'Max results (1-50)', '15')
+    .action(async (query: string, options: { limit?: string }) => {
+      await runPublicScraper('ctrip-search', { query, limit: Number(options.limit) || 15 });
+    });
+  ctrip
+    .command('hotel-suggest <query>')
+    .description('Ctrip hotel-context suggest (cities, business areas, hotels)')
+    .option('-l, --limit <n>', 'Max results (1-50)', '15')
+    .action(async (query: string, options: { limit?: string }) => {
+      await runPublicScraper('ctrip-hotel-suggest', { query, limit: Number(options.limit) || 15 });
+    });
 
   // hackernews
   const hackernews = program
@@ -919,6 +1068,35 @@ function buildProgram(): Command {
     .action(async (options: { limit?: string }) => {
       await runPublicScraper('fetch-hackernews-jobs', { limit: Number(options.limit) || 20 });
     });
+  hackernews
+    .command('ask')
+    .description('HN Ask HN posts')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .action(async (options: { limit?: string }) => {
+      await runPublicScraper('fetch-hackernews-ask', { limit: Number(options.limit) || 20 });
+    });
+  hackernews
+    .command('user <username>')
+    .description('HN user profile')
+    .action(async (username: string) => {
+      await runPublicScraper('fetch-hackernews-user', { username });
+    });
+  hackernews
+    .command('read <id>')
+    .description('Read HN story and comments')
+    .option('-l, --limit <n>', 'Max top-level comments', '25')
+    .option('--depth <n>', 'Max reply depth', '2')
+    .option('--replies <n>', 'Max replies per comment', '5')
+    .option('--max-length <n>', 'Max chars per comment', '2000')
+    .action(async (id: string, options: { limit?: string; depth?: string; replies?: string; maxLength?: string }) => {
+      await runPublicScraper('fetch-hackernews-read', {
+        id,
+        limit: Number(options.limit) || 25,
+        depth: Number(options.depth) || 2,
+        replies: Number(options.replies) || 5,
+        maxLength: Number(options.maxLength) || 2000,
+      });
+    });
 
   // stackoverflow
   const stackoverflow = program
@@ -958,6 +1136,29 @@ function buildProgram(): Command {
     .action(async (title: string, options: { lang?: string }) => {
       await runPublicScraper('fetch-wikipedia-summary', { title, lang: options.lang });
     });
+  wikipedia
+    .command('random')
+    .description('Random Wikipedia article')
+    .option('--lang <code>', 'Language code', 'en')
+    .action(async (options: { lang?: string }) => {
+      await runPublicScraper('fetch-wikipedia-random', { lang: options.lang });
+    });
+  wikipedia
+    .command('trending')
+    .description('Most-read Wikipedia articles')
+    .option('--lang <code>', 'Language code', 'en')
+    .option('-l, --limit <n>', 'Max results', '10')
+    .action(async (options: { lang?: string; limit?: string }) => {
+      await runPublicScraper('fetch-wikipedia-trending', { lang: options.lang, limit: Number(options.limit) || 10 });
+    });
+  wikipedia
+    .command('page <title>')
+    .description('Full Wikipedia page extract')
+    .option('--lang <code>', 'Language code', 'en')
+    .option('--paragraphs <n>', 'Cap to first N paragraphs; 0 means full article', '0')
+    .action(async (title: string, options: { lang?: string; paragraphs?: string }) => {
+      await runPublicScraper('fetch-wikipedia-page', { title, lang: options.lang, paragraphs: Number(options.paragraphs) || 0 });
+    });
 
   // apple-podcasts
   const applePodcasts = program
@@ -981,6 +1182,13 @@ function buildProgram(): Command {
     .option('-l, --limit <n>', 'Max results', '20')
     .action(async (query: string, options: { limit?: string }) => {
       await runPublicScraper('search-substack', { query, limit: Number(options.limit) || 20 });
+    });
+  substack
+    .command('publication <url>')
+    .description('Fetch latest posts from a Substack publication RSS feed')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .action(async (url: string, options: { limit?: string }) => {
+      await runPublicScraper('fetch-substack-publication', { url, limit: Number(options.limit) || 20 });
     });
 
   // v2ex
@@ -1008,8 +1216,24 @@ function buildProgram(): Command {
     .command('news')
     .description('Bloomberg news headlines')
     .option('-l, --limit <n>', 'Max results', '20')
-    .action(async (options: { limit?: string }) => {
-      await runPublicScraper('fetch-bloomberg-news', { limit: Number(options.limit) || 20 });
+    .option('--feed <feed>', 'Feed alias: main, markets, economics, industries, tech, politics, businessweek, opinions', 'markets')
+    .action(async (options: { limit?: string; feed?: string }) => {
+      await runPublicScraper('fetch-bloomberg-news', { feed: options.feed, limit: Number(options.limit) || 20 });
+    });
+  for (const feed of ['main', 'markets', 'economics', 'industries', 'tech', 'politics', 'businessweek', 'opinions']) {
+    bloomberg
+      .command(feed)
+      .description(`Bloomberg ${feed} RSS headlines`)
+      .option('-l, --limit <n>', 'Max results', '20')
+      .action(async (options: { limit?: string }) => {
+        await runPublicScraper('fetch-bloomberg-news', { feed, limit: Number(options.limit) || 20 });
+      });
+  }
+  bloomberg
+    .command('feeds')
+    .description('List Bloomberg RSS feed aliases')
+    .action(async () => {
+      await runPublicScraper('fetch-bloomberg-feeds', {});
     });
 
   // bbc
@@ -1022,6 +1246,13 @@ function buildProgram(): Command {
     .option('-l, --limit <n>', 'Max results', '20')
     .action(async (options: { limit?: string }) => {
       await runPublicScraper('fetch-bbc-news', { limit: Number(options.limit) || 20 });
+    });
+  bbc
+    .command('topic <topic>')
+    .description('BBC topic RSS headlines')
+    .option('-l, --limit <n>', 'Max results', '20')
+    .action(async (topic: string, options: { limit?: string }) => {
+      await runPublicScraper('fetch-bbc-topic', { topic, limit: Number(options.limit) || 20 });
     });
 
   // sinafinance
@@ -1493,10 +1724,26 @@ function buildProgram(): Command {
   bilibili.command('search <query>').description('Search Bilibili videos').option('-l, --limit <n>', 'Max results', '10').action(bilibiliSearchCommand);
   bilibili.command('hot').description('Bilibili popular videos').option('-l, --limit <n>', 'Max results', '20').action(bilibiliHotCommand);
   bilibili.command('ranking').description('Bilibili ranking').option('-l, --limit <n>', 'Max results', '20').action(bilibiliRankingCommand);
+  bilibili.command('video <bvid>').description('Get Bilibili video metadata').action(bilibiliVideoCommand);
+  bilibili.command('summary <bvid>').description('Get Bilibili official AI video summary').action(bilibiliSummaryCommand);
+  bilibili.command('subtitle <bvid>').description('Get Bilibili video subtitles').option('--lang <lang>', 'Subtitle language, e.g. zh-CN').action(bilibiliSubtitleCommand);
+  bilibili.command('comments <bvid>').description('Get Bilibili video comments').option('--parent <rpid>', 'Fetch replies under a top-level comment').option('-l, --limit <n>', 'Max comments', '20').action(bilibiliCommentsCommand);
+  bilibili.command('dynamic').description('Get Bilibili following dynamic feed').option('-l, --limit <n>', 'Max results', '20').action(bilibiliDynamicCommand);
+  bilibili.command('history').description('Get Bilibili watch history').option('-l, --limit <n>', 'Max results', '20').action(bilibiliHistoryCommand);
+  bilibili.command('following [uid]').description('Get Bilibili following list').option('--page <n>', 'Page number', '1').option('-l, --limit <n>', 'Max results', '50').action(bilibiliFollowingCommand);
+  bilibili.command('user-videos <uid>').description('Get Bilibili user videos').option('--page <n>', 'Page number', '1').option('--order <order>', 'pubdate | click | stow', 'pubdate').option('-l, --limit <n>', 'Max results', '20').action(bilibiliUserVideosCommand);
+  bilibili.command('favorite').description('Get Bilibili favorite folder items').option('--fid <id>', 'Favorite folder id').option('--page <n>', 'Page number', '1').option('-l, --limit <n>', 'Max results', '20').action(bilibiliFavoriteCommand);
+  bilibili.command('feed [uid]').description('Get Bilibili following feed or a user dynamic feed').option('--pages <n>', 'Pages to fetch', '1').option('--type <type>', 'all | video | article | draw | text', 'all').option('-l, --limit <n>', 'Max results', '20').action(bilibiliFeedCommand);
+  bilibili.command('feed-detail <id>').description('Get Bilibili dynamic detail').action(bilibiliFeedDetailCommand);
+  bilibili.command('me').description('Get current Bilibili profile').action(bilibiliMeCommand);
 
   const zhihu = program.command('zhihu').description('Zhihu');
   zhihu.command('search <query>').description('Search Zhihu').option('-l, --limit <n>', 'Max results', '10').action(zhihuSearchCommand);
   zhihu.command('hot').description('Zhihu hot topics').option('-l, --limit <n>', 'Max results', '50').action(zhihuHotCommand);
+  zhihu.command('recommend').description('Zhihu home recommendations').option('-l, --limit <n>', 'Max results', '20').action(zhihuRecommendCommand);
+  zhihu.command('question <question-id>').description('Read Zhihu question answers').option('-l, --limit <n>', 'Max answers', '5').action(zhihuQuestionCommand);
+  zhihu.command('answer-detail <id>').description('Read one Zhihu answer').option('--max-content <n>', 'Max stripped content chars; 0 means full', '0').action(zhihuAnswerDetailCommand);
+  zhihu.command('answer-comments <id>').description('Read Zhihu answer comments').option('-l, --limit <n>', 'Max top-level comments', '20').option('--replies-limit <n>', 'Max replies per comment', '3').action(zhihuAnswerCommentsCommand);
 
   const xueqiu = program.command('xueqiu').description('Xueqiu (stocks)');
   xueqiu.command('search <query>').description('Search stocks').option('-l, --limit <n>', 'Max results', '10').action(xueqiuSearchCommand);
@@ -1538,16 +1785,35 @@ function buildProgram(): Command {
 
   const medium = program.command('medium').description('Medium');
   medium.command('search <query>').description('Search Medium articles').option('-l, --limit <n>', 'Max results', '10').action(mediumSearchCommand);
+  medium.command('tag <tag>').description('Fetch latest Medium tag RSS articles').option('-l, --limit <n>', 'Max results', '20').action(async (tag: string, options: { limit?: string }) => {
+    await runPublicScraper('fetch-medium-tag', { tag, limit: Number(options.limit) || 20 });
+  });
 
   const google = program.command('google').description('Google');
-  google.command('search <query>').description('Search Google').option('-l, --limit <n>', 'Max results', '10').action(googleSearchCommand);
-  google.command('news <query>').description('Search Google News').option('-l, --limit <n>', 'Max results', '10').action(googleNewsCommand);
+  google.command('search <query>').description('Search Google').option('--lang <lang>', 'Language code', 'en').option('-l, --limit <n>', 'Max results', '10').action(googleSearchCommand);
+  google.command('suggest <query>').description('Get Google search suggestions').option('--lang <lang>', 'Language code', 'zh-CN').option('-l, --limit <n>', 'Max results', '10').action(async (query: string, options: { lang?: string; limit?: string }) => {
+    await runPublicScraper('fetch-google-suggest', { query, lang: options.lang, limit: Number(options.limit) || 10 });
+  });
+  google.command('news [query]').description('Google News top stories or search').option('--lang <lang>', 'Language code', 'en').option('--region <region>', 'Region code', 'US').option('-l, --limit <n>', 'Max results', '10').action(async (query: string | undefined, options: { lang?: string; region?: string; limit?: string }) => {
+    await runPublicScraper('fetch-google-news', { query, lang: options.lang, region: options.region, limit: Number(options.limit) || 10 });
+  });
+  google.command('trends').description('Google Trends daily trending searches').option('--region <region>', 'Region code', 'US').option('-l, --limit <n>', 'Max results', '20').action(async (options: { region?: string; limit?: string }) => {
+    await runPublicScraper('fetch-google-trends', { region: options.region, limit: Number(options.limit) || 20 });
+  });
 
   const facebook = program.command('facebook').description('Facebook');
   facebook.command('search <query>').description('Search Facebook posts').option('-l, --limit <n>', 'Max results', '10').action(facebookSearchCommand);
 
   const linkedin = program.command('linkedin').description('LinkedIn');
-  linkedin.command('search <query>').description('Search LinkedIn jobs').option('-l, --limit <n>', 'Max results', '10').action(linkedinSearchCommand);
+  linkedin.command('search <query>')
+    .description('Search LinkedIn jobs')
+    .option('-l, --limit <n>', 'Max results', '10')
+    .option('--location <location>', 'Location text, e.g. San Francisco Bay Area')
+    .option('--experience-level <level>', 'internship, entry, associate, mid-senior, director, executive')
+    .option('--job-type <type>', 'full-time, part-time, contract, temporary, volunteer, internship, other')
+    .option('--date-posted <range>', 'any, month, week, 24h')
+    .option('--remote <type>', 'on-site, hybrid, remote')
+    .action(linkedinSearchCommand);
 
   const kr36 = program.command('36kr').description('36Kr');
   kr36.command('search <query>').description('Search 36Kr articles').option('-l, --limit <n>', 'Max results', '10').action(kr36SearchCommand);
@@ -1558,9 +1824,12 @@ function buildProgram(): Command {
   producthunt.command('hot').description('Top Product Hunt launches').option('-l, --limit <n>', 'Max results', '20').action(producthuntHotCommand);
 
   const yahooFinance = program.command('yahoo-finance').description('Yahoo Finance');
-  yahooFinance.command('quote <symbol>').description('Get stock quote').action(yahooFinanceQuoteCommand);
+  yahooFinance.command('quote <symbol>').description('Get stock quote').action(async (symbol: string) => {
+    await runPublicScraper('fetch-yahoo-finance-quote', { symbol });
+  });
 
   const weixin = program.command('weixin').description('WeChat');
+  weixin.command('search <query>').description('Search WeChat Official Account articles').option('--page <n>', 'Page number', '1').option('-l, --limit <n>', 'Max results', '10').action(weixinSearchCommand);
   weixin.command('article <url>').description('Fetch WeChat article').action(fetchWeixinArticleCommand);
 
   // ── WeChat MP (公众号) creator automation ────────────

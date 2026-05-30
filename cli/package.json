@@ -1,6 +1,6 @@
 {
   "name": "@bnbot/cli",
-  "version": "0.3.46",
+  "version": "0.3.47",
   "description": "AI Growth Agent for social platforms. Find trends, create content, and automate growth.",
   "main": "dist/index.js",
   "bin": {
@@ -8,7 +8,7 @@
     "bnbot-cli": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-vendor.mjs",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "prepublishOnly": "npm run build",
@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "commander": "^14.0.3",
+    "sharp": "^0.34.5",
     "undici": "^7.24.6",
     "ws": "^8.18.0"
   },

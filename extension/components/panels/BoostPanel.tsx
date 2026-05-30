@@ -5,6 +5,7 @@ import { boostService, Boost, weiToToken, formatRemainingTime, BoostSearchParams
 import { useLanguage } from '../LanguageContext';
 import { navigateToUrl } from '../../utils/navigationUtils';
 import { useXUser } from '../../hooks/useXUsername';
+import { useRemixDrafts } from '../../hooks/useRemixDrafts';
 
 // Module-level cache: persists across component mounts/unmounts and shared between all BoostPanel instances
 const taskStatusCache: Record<string, { liked: boolean; retweeted: boolean; replied: boolean; followed: boolean }> = {};
@@ -75,11 +76,16 @@ interface BoostPanelProps {
     isContextMode?: boolean;
     onSwitchToContext?: (options: { mode: 'boost' | 'agent', tweetId?: string }) => void;
     onOpenWallet?: () => void;
+    onOpenRemixDrafts?: () => void;
 }
 
-export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContextMode = false, onSwitchToContext, onOpenWallet }) => {
+export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContextMode = false, onSwitchToContext, onOpenWallet, onOpenRemixDrafts }) => {
     const { t } = useLanguage();
     const { username: currentUsername } = useXUser();
+    // Polls the desktop agent (127.0.0.1:27421) for remix drafts. Drives the
+    // ✨ icon's red-dot badge in the status bar — when desktop /remix writes
+    // a new draft to <studio-data-dir>/drafts/remix/, it shows up within 8s.
+    const { count: remixDraftCount } = useRemixDrafts(true);
 
     // Data state
     const [boosts, setBoosts] = useState<Boost[]>([]);
@@ -1399,6 +1405,26 @@ export const BoostPanel: React.FC<BoostPanelProps> = ({ initialTweetId, isContex
                     >
                         <RefreshCw size={16} />
                     </button>
+
+                    {/* Remix Drafts Entry — opens RemixDraftsPanel. Red dot
+                        with count badge appears when the desktop agent has
+                        drafts waiting in <studio-data-dir>/drafts/remix/. */}
+                    {onOpenRemixDrafts && (
+                        <button
+                            onClick={onOpenRemixDrafts}
+                            className="relative p-1.5 text-[var(--accent-color)] hover:bg-[var(--bg-secondary)] rounded-lg transition-colors cursor-pointer"
+                            title={remixDraftCount > 0 ? `${remixDraftCount} 条二创草稿` : 'AI 二创草稿（桌面 agent）'}
+                        >
+                            <Sparkles size={16} />
+                            {remixDraftCount > 0 && (
+                                <span
+                                    className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-[var(--accent-color)] text-white text-[10px] font-extrabold rounded-full flex items-center justify-center border-2 border-[var(--bg-primary)] leading-none"
+                                >
+                                    {remixDraftCount > 9 ? '9+' : remixDraftCount}
+                                </span>
+                            )}
+                        </button>
+                    )}
                 </div>
             </div>
 

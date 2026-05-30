@@ -10,17 +10,21 @@ import { getTab, checkLoginRedirect, executeInPage } from '../../scraperService'
 // ── Filter value mappings ──────────────────────────────────────────
 
 const EXPERIENCE_LEVELS: Record<string, string> = {
-  internship: '1', entry: '2', associate: '3', mid: '4', senior: '4',
-  'mid-senior': '4', director: '5', executive: '6',
+  internship: '1', entry: '2', 'entry-level': '2', associate: '3',
+  mid: '4', senior: '4', 'mid-senior': '4', 'mid-senior-level': '4',
+  director: '5', executive: '6',
 };
 
 const JOB_TYPES: Record<string, string> = {
-  'full-time': 'F', fulltime: 'F', 'part-time': 'P', parttime: 'P',
+  'full-time': 'F', fulltime: 'F', full: 'F',
+  'part-time': 'P', parttime: 'P', part: 'P',
   contract: 'C', temporary: 'T', volunteer: 'V', internship: 'I', other: 'O',
 };
 
 const DATE_POSTED: Record<string, string> = {
-  any: 'on', month: 'r2592000', week: 'r604800', day: 'r86400', '24h': 'r86400',
+  any: 'on', month: 'r2592000', 'past-month': 'r2592000',
+  week: 'r604800', 'past-week': 'r604800', day: 'r86400',
+  '24h': 'r86400', 'past-24h': 'r86400',
 };
 
 const REMOTE_TYPES: Record<string, string> = {
@@ -119,35 +123,77 @@ export async function searchLinkedInJobs(
 
   const data = await executeInPage(tabId, async (urls: string[], lim: number) => {
       try {
+        const clean = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim();
+        const makeUrl = (href: string) => {
+          if (!href) return '';
+          try {
+            const parsed = new URL(href, 'https://www.linkedin.com');
+            if (parsed.hostname !== 'www.linkedin.com' && parsed.hostname !== 'linkedin.com') return '';
+            return parsed.toString();
+          } catch {
+            return href.startsWith('/') ? 'https://www.linkedin.com' + href : href;
+          }
+        };
+        const scrapeDomJobs = async () => {
+          const scroller = document.querySelector('.jobs-search-results-list, .jobs-search-results-list__list, .scaffold-layout__list, main');
+          if (scroller instanceof HTMLElement) {
+            scroller.scrollTo(0, Math.min(scroller.scrollHeight, 1200));
+            await new Promise(r => setTimeout(r, 700));
+          }
+          const cards = document.querySelectorAll('[data-job-id], [data-occludable-job-id], .jobs-search-results__list-item, .job-card-container, .job-search-card, .base-search-card');
+          const items: any[] = [];
+          const seen = new Set<string>();
+          for (const card of cards) {
+            if (items.length >= lim) break;
+            const titleEl = card.querySelector(
+              '.job-card-list__title, .job-card-list__title--link, .base-search-card__title, a.job-card-container__link, a[href*="/jobs/view/"], strong',
+            );
+            const linkEl = titleEl?.closest('a') || card.querySelector('a[href*="/jobs/view/"]');
+            const title = clean(titleEl?.textContent || linkEl?.textContent);
+            if (!title) continue;
+            const href = linkEl?.getAttribute('href') || '';
+            const url = makeUrl(href);
+            const companyEl = card.querySelector(
+              '.job-card-container__primary-description, .job-card-container__company-name, .base-search-card__subtitle, .artdeco-entity-lockup__subtitle',
+            );
+            const locationEl = card.querySelector(
+              '.job-search-card__location, .job-card-container__metadata-item, .artdeco-entity-lockup__caption, [class*="location"]',
+            );
+            const listedEl = card.querySelector('time, .job-card-container__listed-time, [class*="listed"]');
+            const metadata = [...card.querySelectorAll('.job-card-container__metadata-item, li')]
+              .map(el => clean(el.textContent))
+              .filter(Boolean);
+            const salary = metadata.find(text => /\$|salary|compensation|\/yr|\/hr/i.test(text)) || '';
+            const key = url || `${title}:${clean(companyEl?.textContent)}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            items.push({
+              rank: items.length + 1,
+              title,
+              company: clean(companyEl?.textContent),
+              location: clean(locationEl?.textContent).split('\n')[0]?.trim() || '',
+              listed: listedEl instanceof HTMLTimeElement
+                ? (listedEl.dateTime || clean(listedEl.textContent))
+                : clean(listedEl?.textContent),
+              salary,
+              url,
+            });
+          }
+          return items;
+        };
+
         // Extract CSRF token from JSESSIONID cookie
         const jsession = document.cookie.split(';').map(p => p.trim())
           .find(p => p.startsWith('JSESSIONID='))?.slice('JSESSIONID='.length);
         if (!jsession) {
-          // Fallback: DOM scraping if not signed in to Voyager API
-          const cards = document.querySelectorAll('.job-card-container, .jobs-search-results__list-item, [data-job-id]');
-          const items: any[] = [];
-          for (const card of cards) {
-            if (items.length >= lim) break;
-            const titleEl = card.querySelector('.job-card-list__title, .artdeco-entity-lockup__title a, a[class*="title"]');
-            const companyEl = card.querySelector('.artdeco-entity-lockup__subtitle, [class*="company"], .job-card-container__primary-description');
-            const locationEl = card.querySelector('[class*="location"], .artdeco-entity-lockup__caption');
-            const title = titleEl?.textContent?.trim() || '';
-            if (!title) continue;
-            const href = titleEl?.closest('a')?.getAttribute('href') || '';
-            items.push({
-              rank: items.length + 1, title,
-              company: companyEl?.textContent?.trim() || '',
-              location: locationEl?.textContent?.trim()?.split('\n')[0]?.trim() || '',
-              listed: '', salary: '',
-              url: href.startsWith('http') ? href : href ? 'https://www.linkedin.com' + href : '',
-            });
-          }
+          const items = await scrapeDomJobs();
           if (items.length === 0) return { error: 'No results found — please sign in to LinkedIn first' };
           return items;
         }
 
         const csrf = jsession.replace(/^"|"$/g, '');
         const allJobs: any[] = [];
+        let apiError = '';
 
         for (const apiPath of urls) {
           if (allJobs.length >= lim) break;
@@ -156,7 +202,16 @@ export async function searchLinkedInJobs(
               credentials: 'include',
               headers: { 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0' },
             });
-            if (!res.ok) break;
+            if (res.status === 401 || res.status === 403) {
+              const text = await res.text();
+              apiError = 'LinkedIn API authentication failed: HTTP ' + res.status + ' ' + text.slice(0, 200);
+              break;
+            }
+            if (!res.ok) {
+              const text = await res.text();
+              apiError = 'LinkedIn API error: HTTP ' + res.status + ' ' + text.slice(0, 200);
+              break;
+            }
             const batch = await res.json();
             const elements = Array.isArray(batch?.elements) ? batch.elements : [];
             if (elements.length === 0) break;
@@ -183,10 +238,13 @@ export async function searchLinkedInJobs(
 
         const finalJobs = allJobs.slice(0, lim);
         if (finalJobs.length === 0) {
+          const domJobs = await scrapeDomJobs();
+          if (domJobs.length > 0) return domJobs;
           const url = window.location.href;
           if (url.includes('/login') || url.includes('/signin') || url.includes('passport.') || document.title.includes('登录') || document.title.includes('Sign in') || document.title.includes('Log in')) {
             return { error: 'Please sign in to LinkedIn first' };
           }
+          if (apiError) return { error: apiError };
         }
         return finalJobs;
       } catch (e: any) {

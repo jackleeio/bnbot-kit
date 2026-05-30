@@ -179,7 +179,7 @@ export async function debugRecordCommand(url: string, opts: RecordArgs): Promise
   }
 }
 
-function sendAction(actionType: string, payload: Record<string, unknown>): Promise<unknown> {
+export function sendAction(actionType: string, payload: Record<string, unknown>): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://127.0.0.1:${DEFAULT_PORT}`);
     const requestId = randomUUID();

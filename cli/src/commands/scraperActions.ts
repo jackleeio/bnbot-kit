@@ -995,6 +995,79 @@ export async function bilibiliRankingCommand(options: { limit?: string }) {
   await scrape('SCRAPER_FETCH_BILIBILI_RANKING', { limit: parseInt(options.limit || '20', 10) });
 }
 
+export async function bilibiliVideoCommand(bvid: string) {
+  await scrape('SCRAPER_FETCH_BILIBILI_VIDEO', { bvid });
+}
+
+export async function bilibiliSummaryCommand(bvid: string) {
+  await scrape('SCRAPER_FETCH_BILIBILI_SUMMARY', { bvid });
+}
+
+export async function bilibiliSubtitleCommand(bvid: string, options: { lang?: string } = {}) {
+  await scrape('SCRAPER_FETCH_BILIBILI_SUBTITLE', { bvid, lang: options.lang });
+}
+
+export async function bilibiliCommentsCommand(
+  bvid: string,
+  options: { limit?: string; parent?: string } = {},
+) {
+  await scrape('SCRAPER_FETCH_BILIBILI_COMMENTS', {
+    bvid,
+    parent: options.parent,
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function bilibiliDynamicCommand(options: { limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_BILIBILI_DYNAMIC', { limit: parseInt(options.limit || '20', 10) });
+}
+
+export async function bilibiliHistoryCommand(options: { limit?: string } = {}) {
+  await scrape('SCRAPER_FETCH_BILIBILI_HISTORY', { limit: parseInt(options.limit || '20', 10) });
+}
+
+export async function bilibiliFollowingCommand(uid: string | undefined, options: { limit?: string; page?: string } = {}) {
+  await scrape('SCRAPER_FETCH_BILIBILI_FOLLOWING', {
+    uid,
+    page: parseInt(options.page || '1', 10),
+    limit: parseInt(options.limit || '50', 10),
+  });
+}
+
+export async function bilibiliUserVideosCommand(uid: string, options: { limit?: string; page?: string; order?: string } = {}) {
+  await scrape('SCRAPER_FETCH_BILIBILI_USER_VIDEOS', {
+    uid,
+    page: parseInt(options.page || '1', 10),
+    limit: parseInt(options.limit || '20', 10),
+    order: options.order || 'pubdate',
+  });
+}
+
+export async function bilibiliFavoriteCommand(options: { fid?: string; limit?: string; page?: string } = {}) {
+  await scrape('SCRAPER_FETCH_BILIBILI_FAVORITE', {
+    fid: options.fid,
+    page: parseInt(options.page || '1', 10),
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function bilibiliFeedCommand(uid: string | undefined, options: { limit?: string; pages?: string; type?: string } = {}) {
+  await scrape('SCRAPER_FETCH_BILIBILI_FEED', {
+    uid,
+    pages: parseInt(options.pages || '1', 10),
+    type: options.type || 'all',
+    limit: parseInt(options.limit || '20', 10),
+  });
+}
+
+export async function bilibiliFeedDetailCommand(id: string) {
+  await scrape('SCRAPER_FETCH_BILIBILI_FEED_DETAIL', { id });
+}
+
+export async function bilibiliMeCommand() {
+  await scrape('SCRAPER_FETCH_BILIBILI_ME', {});
+}
+
 // ── Zhihu ────────────────────────────────────────────────────
 
 export async function zhihuSearchCommand(query: string, options: { limit?: string }) {
@@ -1003,6 +1076,26 @@ export async function zhihuSearchCommand(query: string, options: { limit?: strin
 
 export async function zhihuHotCommand(options: { limit?: string }) {
   await scrape('SCRAPER_FETCH_ZHIHU_HOT', { limit: parseInt(options.limit || '50', 10) });
+}
+
+export async function zhihuRecommendCommand(options: { limit?: string }) {
+  await scrape('SCRAPER_FETCH_ZHIHU_RECOMMEND', { limit: parseInt(options.limit || '20', 10) });
+}
+
+export async function zhihuQuestionCommand(questionId: string, options: { limit?: string }) {
+  await scrape('SCRAPER_GET_ZHIHU_QUESTION', { questionId, limit: parseInt(options.limit || '5', 10) });
+}
+
+export async function zhihuAnswerDetailCommand(id: string, options: { maxContent?: string }) {
+  await scrape('SCRAPER_GET_ZHIHU_ANSWER_DETAIL', { id, maxContent: parseInt(options.maxContent || '0', 10) });
+}
+
+export async function zhihuAnswerCommentsCommand(id: string, options: { limit?: string; repliesLimit?: string }) {
+  await scrape('SCRAPER_GET_ZHIHU_ANSWER_COMMENTS', {
+    id,
+    limit: parseInt(options.limit || '20', 10),
+    repliesLimit: parseInt(options.repliesLimit || '3', 10),
+  });
 }
 
 // ── Xueqiu ───────────────────────────────────────────────────
@@ -1167,8 +1260,8 @@ export async function mediumSearchCommand(query: string, options: { limit?: stri
 
 // ── Google ───────────────────────────────────────────────────
 
-export async function googleSearchCommand(query: string, options: { limit?: string }) {
-  await scrape('SCRAPER_SEARCH_GOOGLE', { query, limit: parseInt(options.limit || '10', 10) });
+export async function googleSearchCommand(query: string, options: { limit?: string; lang?: string }) {
+  await scrape('SCRAPER_SEARCH_GOOGLE', { query, lang: options.lang, limit: parseInt(options.limit || '10', 10) });
 }
 
 export async function googleNewsCommand(query: string, options: { limit?: string }) {
@@ -1183,8 +1276,23 @@ export async function facebookSearchCommand(query: string, options: { limit?: st
 
 // ── LinkedIn ─────────────────────────────────────────────────
 
-export async function linkedinSearchCommand(query: string, options: { limit?: string }) {
-  await scrape('SCRAPER_SEARCH_LINKEDIN', { query, limit: parseInt(options.limit || '10', 10) });
+export async function linkedinSearchCommand(query: string, options: {
+  limit?: string;
+  location?: string;
+  experienceLevel?: string;
+  jobType?: string;
+  datePosted?: string;
+  remote?: string;
+}) {
+  await scrape('SCRAPER_SEARCH_LINKEDIN', {
+    query,
+    limit: parseInt(options.limit || '10', 10),
+    location: options.location,
+    experienceLevel: options.experienceLevel,
+    jobType: options.jobType,
+    datePosted: options.datePosted,
+    remote: options.remote,
+  });
 }
 
 // ── 36Kr ─────────────────────────────────────────────────────
@@ -1211,4 +1319,14 @@ export async function producthuntHotCommand(options: { limit?: string }) {
 
 export async function yahooFinanceQuoteCommand(symbol: string) {
   await scrape('SCRAPER_FETCH_YAHOO_FINANCE', { symbol });
+}
+
+// ── Weixin / WeChat Official Account ─────────────────────────
+
+export async function weixinSearchCommand(query: string, options: { page?: string; limit?: string }) {
+  await scrape('SCRAPER_SEARCH_WEIXIN', {
+    query,
+    page: parseInt(options.page || '1', 10),
+    limit: parseInt(options.limit || '10', 10),
+  });
 }

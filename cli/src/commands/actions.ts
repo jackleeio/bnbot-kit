@@ -371,6 +371,29 @@ export async function scrapeThreadCommand(url: string): Promise<void> {
   return runCliAction('scrape_thread', { tweetUrl: url, queryIds: await getXQueryIds() }, getPort());
 }
 
+export async function scrapeTrendsCommand(options: { limit?: string }): Promise<void> {
+  const limit = parseInt(options.limit || '20', 10);
+  console.error(`Scraping X trends (limit: ${limit})...`);
+  return runCliAction('scrape_trending', { limit }, getPort());
+}
+
+export async function scrapeUserFollowersCommand(username: string, options: { limit?: string }): Promise<void> {
+  const limit = parseInt(options.limit || '50', 10);
+  console.error(`Scraping @${username} followers (limit: ${limit})...`);
+  return runCliAction('scrape_user_followers', { username, limit }, getPort());
+}
+
+export async function scrapeUserFollowingCommand(username: string, options: { limit?: string }): Promise<void> {
+  const limit = parseInt(options.limit || '50', 10);
+  console.error(`Scraping @${username} following (limit: ${limit})...`);
+  return runCliAction('scrape_user_following', { username, limit }, getPort());
+}
+
+export async function scrapeTweetArticleCommand(url: string): Promise<void> {
+  console.error(`Scraping article: ${url}`);
+  return runCliAction('scrape_tweet_article', { tweetUrl: url, queryIds: await getXQueryIds() }, getPort());
+}
+
 // ── Analytics ────────────────────────────────────────────────
 
 export async function analyticsCommand(options: { as?: string } = {}): Promise<void> {

@@ -250,6 +250,33 @@ export async function sendAction<T = Record<string, unknown>>(
 ): Promise<ActionResult<T>> {
   await ensureServer(port);
 
+  // Check auth status for write actions
+  const writeActions = [
+    'post_tweet', 'post_thread', 'submit_reply', 'quote_tweet',
+    'like_tweet', 'unlike_tweet', 'retweet', 'unretweet',
+    'follow_user', 'unfollow_user', 'delete_tweet',
+    'bookmark_tweet', 'unbookmark_tweet',
+    'inject_auth_tokens',
+  ];
+
+  if (writeActions.includes(actionType)) {
+    try {
+      const authRes = await fetch(`http://127.0.0.1:${port}/auth/status`);
+      if (authRes.ok) {
+        const authStatus = await authRes.json() as { valid: boolean };
+        if (!authStatus.valid) {
+          return {
+            success: false,
+            error: 'Authentication required. Run `bnbot login` first.',
+          };
+        }
+      }
+    } catch {
+      // If we can't check auth status, proceed anyway
+      // The extension will reject unauthenticated actions
+    }
+  }
+
   return new Promise<ActionResult<T>>((resolve) => {
     const url = `ws://127.0.0.1:${port}`;
     const requestId = randomUUID();

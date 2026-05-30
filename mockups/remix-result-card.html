@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<title>BNBot · icon 入口 + 二创列表 mockup</title>
+<style>
+  :root {
+    --bg-primary: #000000;
+    --bg-secondary: #16181c;
+    --text-primary: #e7e9ea;
+    --text-secondary: #71767b;
+    --border-color: #2f3336;
+    --hover-bg: #181818;
+    --accent-color: #ff4d4d;
+    --accent-text: #ffb3b3;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #0d0d0d;
+    font-family: TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text-primary);
+    font-size: 15px;
+  }
+  .stage {
+    display: flex;
+    gap: 48px;
+    padding: 40px;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  .frame { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .frame-label { font-size: 13px; color: #8b9099; font-weight: 600; }
+  .frame-label b { color: var(--accent-color); }
+
+  .popup {
+    width: 420px;
+    height: 860px;
+    background: var(--bg-primary);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px var(--border-color);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ===== 真实状态栏 ===== */
+  .status-bar {
+    padding: 10px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+    z-index: 50;
+    flex-shrink: 0;
+  }
+  .sb-left, .sb-right { display: flex; align-items: center; gap: 8px; }
+
+  .icon-btn {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: 0.15s;
+    font-size: 16px;
+    position: relative;
+  }
+  .icon-btn:hover { background: var(--hover-bg); color: var(--text-primary); }
+  .icon-btn.active { color: var(--accent-color); background: rgba(255, 77, 77, 0.1); }
+
+  /* ★ 新增 ✨ icon 入口（跟其他 icon 按钮同尺寸同样式）*/
+  .icon-btn.remix-entry {
+    color: var(--accent-color);
+  }
+  .icon-btn.remix-entry:hover {
+    background: rgba(255, 77, 77, 0.12);
+    color: var(--accent-color);
+  }
+  .icon-btn.remix-entry .count-badge {
+    position: absolute;
+    top: 2px; right: 2px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    background: var(--accent-color);
+    color: white;
+    font-size: 10px;
+    font-weight: 800;
+    border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid var(--bg-primary);
+    line-height: 1;
+  }
+
+  .filter-select {
+    appearance: none;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 22px 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23536471' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+  }
+
+  /* ===== 主体 ===== */
+  .panel-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    scrollbar-width: none;
+  }
+  .panel-scroll::-webkit-scrollbar { display: none; }
+
+  /* ===== 列表页头部（小标题 + 总数）===== */
+  .list-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+    padding: 0 4px;
+  }
+  .list-head h2 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 800;
+  }
+  .list-head .count {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .list-head .count b { color: var(--accent-color); font-weight: 700; }
+
+  /* ===== 二创卡片（多张堆叠） ===== */
+  .remix-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 14px;
+    margin-bottom: 12px;
+    transition: 0.15s;
+  }
+  .remix-card:hover { border-color: rgba(255, 77, 77, 0.4); }
+  .rc-head { display: flex; gap: 10px; align-items: center; }
+  .rc-av {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, #ff4d4d, #b91c1c);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .rc-name { font-weight: 700; font-size: 13px; }
+  .rc-handle { font-size: 12px; color: var(--text-secondary); }
+  .rc-source {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-secondary);
+    padding: 3px 8px;
+    background: var(--bg-primary);
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    white-space: nowrap;
+  }
+  .rc-text {
+    margin-top: 10px;
+    font-size: 14px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+  }
+  .rc-media {
+    margin-top: 10px;
+    width: 100%;
+    height: 110px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #1a1d22, #0a0a0a);
+    border: 1px dashed var(--border-color);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
+  .rc-meta {
+    margin-top: 10px;
+    display: flex; gap: 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .rc-meta b { color: var(--text-primary); font-weight: 600; }
+
+  /* ===== 卡片底部按钮 ===== */
+  .rc-footer {
+    display: flex; gap: 8px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+  }
+  .btn {
+    padding: 9px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    font-family: inherit;
+    transition: 0.15s;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+  }
+  .btn:hover { border-color: var(--accent-color); color: var(--accent-color); }
+  .btn.primary {
+    flex: 1;
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: white;
+  }
+  .btn.primary:hover { background: #e63d3d; color: white; }
+  .btn.ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    width: 36px;
+    padding: 9px 0;
+  }
+  .btn.ghost:hover { color: var(--accent-color); border-color: var(--accent-color); }
+
+  /* ===== Boost 默认列表卡片（左屏背景，仿真实） ===== */
+  .boost-list-card {
+    padding: 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    margin-bottom: 12px;
+    cursor: pointer;
+  }
+  .blc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .blc-author { display: flex; gap: 10px; align-items: center; min-width: 0; }
+  .blc-av {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, #f97316, #ef4444);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .blc-name { font-weight: 700; font-size: 13px; }
+  .blc-handle { font-size: 12px; color: var(--text-secondary); }
+  .blc-reward {
+    background: rgba(255, 77, 77, 0.12);
+    color: var(--accent-text);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .blc-text {
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .blc-meta {
+    margin-top: 10px;
+    display: flex; gap: 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  /* tooltip 提示 */
+  .tooltip {
+    position: absolute;
+    top: 42px;
+    right: 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: var(--text-primary);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    line-height: 1.5;
+    z-index: 60;
+    white-space: nowrap;
+  }
+  .tooltip::before {
+    content: "";
+    position: absolute;
+    top: -5px; right: 20px;
+    width: 8px; height: 8px;
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border-color);
+    border-top: 1px solid var(--border-color);
+    transform: rotate(45deg);
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+
+  <!-- ============ 状态 1：默认 Boost 视图 + 状态栏的 ✨ icon ============ -->
+  <div class="frame">
+    <div class="frame-label">① Boost 默认视图 · 状态栏右上 <b>✨ icon</b></div>
+    <div class="popup" style="position: relative;">
+
+      <div class="status-bar">
+        <div class="sb-left">
+          <button class="icon-btn" title="钱包">💼</button>
+        </div>
+        <div class="sb-right">
+          <button class="icon-btn" title="搜索">🔍</button>
+          <select class="filter-select">
+            <option>All Status</option>
+            <option>Active</option>
+          </select>
+          <button class="icon-btn" title="刷新">↻</button>
+
+          <!-- ★ 入口：纯 icon，带数量 badge -->
+          <button class="icon-btn remix-entry" title="AI 二创结果（3 条）">
+            ✨
+            <span class="count-badge">3</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="tooltip">点开看 3 条二创草稿</div>
+
+      <div class="panel-scroll">
+
+        <!-- Boost 列表（默认主体） -->
+        <div class="boost-list-card">
+          <div class="blc-head">
+            <div class="blc-author">
+              <div class="blc-av">🦊</div>
+              <div>
+                <div class="blc-name">elonmusk</div>
+                <div class="blc-handle">@elonmusk</div>
+              </div>
+            </div>
+            <div class="blc-reward">120 USDT</div>
+          </div>
+          <div class="blc-text">AI agents that can actually use a browser the same way humans do — clicking, scrolling, typing — are going to eat a lot of SaaS lunches.</div>
+          <div class="blc-meta">⏱ 3 天 12 小时 · 👥 24 人参与</div>
+        </div>
+
+        <div class="boost-list-card">
+          <div class="blc-head">
+            <div class="blc-author">
+              <div class="blc-av" style="background: linear-gradient(135deg, #06b6d4, #3b82f6);">⚡</div>
+              <div>
+                <div class="blc-name">vitalik.eth</div>
+                <div class="blc-handle">@VitalikButerin</div>
+              </div>
+            </div>
+            <div class="blc-reward">80 USDC</div>
+          </div>
+          <div class="blc-text">Decentralized social won't win because it's "decentralized" — it'll win because it lets users own their context.</div>
+          <div class="blc-meta">⏱ 1 天 3 小时 · 👥 47 人参与</div>
+        </div>
+
+        <div class="boost-list-card">
+          <div class="blc-head">
+            <div class="blc-author">
+              <div class="blc-av" style="background: linear-gradient(135deg, #a855f7, #ec4899);">🎨</div>
+              <div>
+                <div class="blc-name">levelsio</div>
+                <div class="blc-handle">@levelsio</div>
+              </div>
+            </div>
+            <div class="blc-reward">50 USDT</div>
+          </div>
+          <div class="blc-text">Shipping AI tools is a numbers game. Most fail. The ones that win, win huge.</div>
+          <div class="blc-meta">⏱ 5 天 · 👥 12 人参与</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 状态 2：点 ✨ 后 → 二创列表页 ============ -->
+  <div class="frame">
+    <div class="frame-label">② 点 ✨ → <b>二创草稿列表</b>（卡片下直接发布）</div>
+    <div class="popup">
+
+      <div class="status-bar">
+        <div class="sb-left">
+          <button class="icon-btn" title="返回">←</button>
+        </div>
+        <div class="sb-right">
+          <button class="icon-btn active" title="二创列表">✨</button>
+        </div>
+      </div>
+
+      <div class="panel-scroll">
+
+        <!-- 卡片 1 -->
+        <div class="remix-card">
+          <div class="rc-head">
+            <div class="rc-av">🦞</div>
+            <div>
+              <div class="rc-name">Jack</div>
+              <div class="rc-handle">@xfanscoin · 2 分钟前</div>
+            </div>
+            <div class="rc-source">@elonmusk</div>
+          </div>
+          <div class="rc-text">浏览器是 SaaS 的高速公路，agent 是开始上路的卡车。
+
+未来两年最大的不是模型变强，是「能像人一样点按钮」的 agent 把那些只靠 UI 卖账号的 SaaS 一层层剥掉。</div>
+          <div class="rc-meta"><b>132</b> 字 · 含配图 · 中文</div>
+          <div class="rc-footer">
+            <button class="btn primary">🚀 发布</button>
+            <button class="btn ghost" title="重新生成">↻</button>
+            <button class="btn ghost" title="删除">🗑</button>
+          </div>
+        </div>
+
+        <!-- 卡片 2 -->
+        <div class="remix-card">
+          <div class="rc-head">
+            <div class="rc-av">🦞</div>
+            <div>
+              <div class="rc-name">Jack</div>
+              <div class="rc-handle">@xfanscoin · 5 分钟前</div>
+            </div>
+            <div class="rc-source">@VitalikButerin</div>
+          </div>
+          <div class="rc-text">去中心化社交不是赢在"去中心化"这三个字，而是赢在 —— 你的上下文（关注/历史/兴趣）终于属于你自己，可以带去任何客户端。
+
+这是 Substack 早就证明过的事，只是现在到了社交的拐点。</div>
+          <div class="rc-meta"><b>96</b> 字 · 纯文字 · 中文</div>
+          <div class="rc-footer">
+            <button class="btn primary">🚀 发布</button>
+            <button class="btn ghost" title="重新生成">↻</button>
+            <button class="btn ghost" title="删除">🗑</button>
+          </div>
+        </div>
+
+        <!-- 卡片 3 -->
+        <div class="remix-card">
+          <div class="rc-head">
+            <div class="rc-av">🦞</div>
+            <div>
+              <div class="rc-name">Jack</div>
+              <div class="rc-handle">@xfanscoin · 12 分钟前</div>
+            </div>
+            <div class="rc-source">@levelsio</div>
+          </div>
+          <div class="rc-text">做 AI 工具就是个概率游戏：90% 死掉，10% 活下来，1% 跑出来变独立站标杆。
+
+不要为「这个想法已经有人做了」放弃，要为「我能比他做得更窄」开心。</div>
+          <div class="rc-media">[ 自动生成的图：🎰 老虎机 ]</div>
+          <div class="rc-meta"><b>78</b> 字 · 含配图 · 中文</div>
+          <div class="rc-footer">
+            <button class="btn primary">🚀 发布</button>
+            <button class="btn ghost" title="重新生成">↻</button>
+            <button class="btn ghost" title="删除">🗑</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

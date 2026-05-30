@@ -26,6 +26,51 @@ export interface ZhihuHotResult {
   url: string;
 }
 
+function stripZhihuHtml(html: string): string {
+  return (html || '')
+    .replace(/<br\s*\/?\s*>/gi, '\n')
+    .replace(/<\/(?:p|div|h[1-6]|li|blockquote)>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, value) => String.fromCodePoint(Number(value)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, value) => String.fromCodePoint(Number.parseInt(value, 16)))
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function parseAnswerTarget(input: string): { answerId: string; questionId: string } | null {
+  const value = String(input || '').trim();
+  if (!value) return null;
+  if (/^\d+$/.test(value)) return { answerId: value, questionId: '' };
+  const typed = value.match(/^answer:(\d+):(\d+)$/);
+  if (typed) return { questionId: typed[1], answerId: typed[2] };
+  try {
+    const url = new URL(value);
+    if (url.hostname !== 'www.zhihu.com' && url.hostname !== 'zhihu.com') return null;
+    const answerPath = url.pathname.match(/^\/question\/(\d+)\/answer\/(\d+)\/?$/);
+    if (answerPath) return { questionId: answerPath[1], answerId: answerPath[2] };
+    const bare = url.pathname.match(/^\/answer\/(\d+)\/?$/);
+    if (bare) return { answerId: bare[1], questionId: '' };
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function extractQuestionIdFromUrl(input: string): string {
+  try {
+    const url = new URL(input);
+    return url.pathname.match(/^\/question\/(\d+)\/answer\/\d+\/?$/)?.[1] || '';
+  } catch {
+    return '';
+  }
+}
+
 export async function fetchZhihuHot(limit = 20): Promise<ZhihuHotResult[]> {
   const tabId = await getTab('https://www.zhihu.com');
   await checkLoginRedirect(tabId, 'Zhihu');
@@ -210,6 +255,174 @@ export async function getZhihuQuestion(questionId: string, limit = 5): Promise<a
       }));
     } catch (e: any) { return { error: e.message || 'Zhihu question scraper failed' }; }
   }, [questionId, limit]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return data || [];
+}
+
+export async function fetchZhihuRecommend(limit = 20): Promise<any[]> {
+  const safeLimit = Math.max(1, Math.min(limit, 1000));
+  const tabId = await getTab('https://www.zhihu.com');
+  await checkLoginRedirect(tabId, 'Zhihu');
+  const data = await executeInPage(tabId, async (lim: number) => {
+    try {
+      const rows: any[] = [];
+      const seen: Record<string, boolean> = {};
+      let url = 'https://www.zhihu.com/api/v3/feed/topstory/recommend?limit=10&desktop=true';
+      for (let page = 0; url && page < 100 && rows.length < lim; page++) {
+        const res = await fetch(url, { credentials: 'include' });
+        if (!res.ok) return { error: 'Zhihu recommend failed: HTTP ' + res.status };
+        const d = await res.json();
+        for (const item of d?.data || []) {
+          const target = item.target || {};
+          const key = target.id != null ? String(target.type || '') + ':' + String(target.id) : item.id ? '__feed:' + String(item.id) : '';
+          if (key && seen[key]) continue;
+          if (key) seen[key] = true;
+          let itemUrl = '';
+          if (target.type === 'answer') itemUrl = 'https://www.zhihu.com/question/' + target.question?.id + '/answer/' + target.id;
+          else if (target.type === 'article') itemUrl = 'https://zhuanlan.zhihu.com/p/' + target.id;
+          else if (target.type === 'question') itemUrl = 'https://www.zhihu.com/question/' + target.id;
+          rows.push({
+            rank: rows.length + 1,
+            type: target.type || item.type || '',
+            title: target.type === 'answer' ? (target.question?.title || '') : (target.title || target.question?.title || ''),
+            author: target.author?.name || '',
+            votes: target.voteup_count ?? target.reaction?.statistics?.like_count ?? 0,
+            url: itemUrl,
+          });
+          if (rows.length >= lim) break;
+        }
+        if (d?.paging?.is_end) break;
+        url = typeof d?.paging?.next === 'string' ? d.paging.next : '';
+      }
+      return rows;
+    } catch (e: any) {
+      return { error: e.message || 'Zhihu recommend scraper failed' };
+    }
+  }, [safeLimit]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return data || [];
+}
+
+export async function getZhihuAnswerDetail(id: string, maxContent = 0): Promise<any[]> {
+  const target = parseAnswerTarget(id);
+  if (!target) throw new Error('Answer ID must be numeric, answer:<questionId>:<answerId>, or a Zhihu answer URL');
+  const tabId = await getTab('https://www.zhihu.com/answer/' + target.answerId);
+  await new Promise(r => setTimeout(r, 2000));
+  await checkLoginRedirect(tabId, 'Zhihu');
+  const current = await chrome.tabs.get(tabId).catch(() => null);
+  const currentQuestionId = extractQuestionIdFromUrl(current?.url || '');
+  const data = await executeInPage(tabId, async (answerId: string, questionIdHint: string, maxLen: number) => {
+    try {
+      const strip = (html: string) => (html || '')
+        .replace(/<br\s*\/?\s*>/gi, '\n')
+        .replace(/<\/(?:p|div|h[1-6]|li|blockquote)>/gi, '\n\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      const res = await fetch('https://www.zhihu.com/api/v4/answers/' + answerId + '?include=content,voteup_count,comment_count,author,created_time,updated_time,question', { credentials: 'include' });
+      if (!res.ok) return { error: 'Zhihu answer detail failed: HTTP ' + res.status };
+      const d = await res.json();
+      const question = d.question || {};
+      const questionId = questionIdHint || (question.id == null ? '' : String(question.id));
+      const stripped = strip(d.content || '');
+      return [{
+        id: answerId,
+        author: d.author?.name || 'anonymous',
+        votes: d.voteup_count || 0,
+        comments: d.comment_count || 0,
+        question_id: questionId,
+        question_title: question.title || '',
+        url: questionId ? 'https://www.zhihu.com/question/' + questionId + '/answer/' + answerId : 'https://www.zhihu.com/answer/' + answerId,
+        created_at: d.created_time ? new Date(d.created_time * 1000).toISOString() : '',
+        updated_at: d.updated_time ? new Date(d.updated_time * 1000).toISOString() : '',
+        content: maxLen > 0 && stripped.length > maxLen ? stripped.slice(0, maxLen) : stripped,
+      }];
+    } catch (e: any) {
+      return { error: e.message || 'Zhihu answer detail scraper failed' };
+    }
+  }, [target.answerId, target.questionId || currentQuestionId, maxContent]);
+  if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
+  return data || [];
+}
+
+export async function getZhihuAnswerComments(id: string, limit = 20, repliesLimit = 3): Promise<any[]> {
+  const target = parseAnswerTarget(id);
+  if (!target) throw new Error('Answer ID must be numeric, answer:<questionId>:<answerId>, or a Zhihu answer URL');
+  const safeLimit = Math.max(1, Math.min(limit, 1000));
+  const safeReplies = Math.max(0, Math.min(repliesLimit, 100));
+  const tabId = await getTab('https://www.zhihu.com/answer/' + target.answerId);
+  await new Promise(r => setTimeout(r, 2000));
+  await checkLoginRedirect(tabId, 'Zhihu');
+  const current = await chrome.tabs.get(tabId).catch(() => null);
+  const questionId = target.questionId || extractQuestionIdFromUrl(current?.url || '');
+  const data = await executeInPage(tabId, async (answerId: string, qid: string, topLimit: number, replyLimit: number) => {
+    try {
+      const strip = (html: string) => (html || '')
+        .replace(/<br\s*\/?\s*>/gi, '\n')
+        .replace(/<\/(?:p|div|h[1-6]|li|blockquote)>/gi, '\n\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      const rows: any[] = [];
+      let topCount = 0;
+      let currentTopRank = 0;
+      let currentReplyCount = 0;
+      let url = 'https://www.zhihu.com/api/v4/answers/' + answerId + '/comments?order=normal&limit=20&offset=0&status=open';
+      const visited: Record<string, boolean> = {};
+      while (url && !visited[url] && topCount < topLimit) {
+        visited[url] = true;
+        const res = await fetch(url, { credentials: 'include' });
+        if (!res.ok) return { error: 'Zhihu answer comments failed: HTTP ' + res.status };
+        const d = await res.json();
+        for (const comment of d?.data || []) {
+          const author = comment.author?.member?.name || comment.author?.name || '';
+          const replyTo = comment.reply_to_author?.member?.name || comment.reply_to_author?.name || '';
+          const isReply = Boolean(replyTo);
+          if (!isReply) {
+            if (topCount >= topLimit) break;
+            topCount++;
+            currentTopRank = topCount;
+            currentReplyCount = 0;
+          } else {
+            if (!currentTopRank || currentReplyCount >= replyLimit) continue;
+            currentReplyCount++;
+          }
+          const commentId = String(comment.id || '');
+          rows.push({
+            rank: rows.length + 1,
+            comment_rank: currentTopRank,
+            reply_rank: isReply ? currentReplyCount : 0,
+            depth: 0,
+            id: commentId,
+            parent_id: '',
+            author: author || 'anonymous',
+            reply_to: replyTo,
+            likes: comment.vote_count || 0,
+            created_at: comment.created_time ? new Date(comment.created_time * 1000).toISOString() : '',
+            url: qid && commentId ? 'https://www.zhihu.com/question/' + qid + '/answer/' + answerId + '#comment-' + commentId : (comment.url || ''),
+            content: strip(comment.content || ''),
+          });
+        }
+        if (d?.paging?.is_end) break;
+        url = typeof d?.paging?.next === 'string' ? d.paging.next : '';
+      }
+      return rows;
+    } catch (e: any) {
+      return { error: e.message || 'Zhihu answer comments scraper failed' };
+    }
+  }, [target.answerId, questionId, safeLimit, safeReplies]);
   if (data && typeof data === 'object' && 'error' in data) throw new Error((data as any).error);
   return data || [];
 }

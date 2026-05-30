@@ -58,7 +58,11 @@ export const openReplyComposerHandler: ActionHandler = async (params, callbacks)
  * 填充回复内容
  */
 export const fillReplyTextHandler: ActionHandler = async (params, callbacks) => {
-  const { content, highlight = true } = params as { content: string; highlight?: boolean };
+  // `highlight` kept in the destructure for backward-compat with any
+  // callers still passing it, but the visual overlay is disabled —
+  // the blue ring around the reply textarea was distracting and made
+  // the automation feel un-native compared to a real user typing.
+  const { content } = params as { content: string; highlight?: boolean };
   callbacks.onProgress?.({} as any, '正在填充回复内容...');
 
   if (!content) {
@@ -75,41 +79,10 @@ export const fillReplyTextHandler: ActionHandler = async (params, callbacks) => 
   textarea.focus();
   await HumanBehaviorSimulator.microPause();
 
-  // 高亮显示
-  if (highlight) {
-    try {
-      const container = textarea.parentElement;
-      if (container) {
-        const overlay = document.createElement('div');
-        const computed = window.getComputedStyle(textarea);
-        const radius = computed.borderRadius;
-
-        if (window.getComputedStyle(container).position === 'static') {
-          container.style.position = 'relative';
-        }
-
-        Object.assign(overlay.style, {
-          position: 'absolute',
-          top: '-4px', left: '-4px',
-          width: `calc(${textarea.offsetWidth}px + 8px)`,
-          height: `calc(${textarea.offsetHeight}px + 8px)`,
-          pointerEvents: 'none',
-          zIndex: '9999',
-          borderRadius: radius || '16px',
-          border: '4px solid rgba(29, 155, 240, 0.3)',
-          boxShadow: 'inset 0 0 15px 2px rgba(29, 155, 240, 0.1)',
-          opacity: '0',
-          transition: 'opacity 0.4s ease-out'
-        });
-
-        container.appendChild(overlay);
-        requestAnimationFrame(() => overlay.style.opacity = '1');
-        setTimeout(() => overlay.remove(), 5000);
-      }
-    } catch (e) {
-      console.warn('[fillReplyText] 高亮失败:', e);
-    }
-  }
+  // Visual highlight overlay removed (was a 4px X-blue ring + inner
+  // glow around the textarea, 5s decay). User said it made the
+  // automation look obviously automated; removing it makes the action
+  // look indistinguishable from the user typing directly.
 
   // 清除现有内容
   if (textarea.textContent && textarea.textContent.trim().length > 0) {

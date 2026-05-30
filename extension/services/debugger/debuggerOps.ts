@@ -771,6 +771,27 @@ export async function setFileInputFilesViaChooser(
       backendNodeId,
       files: filePaths,
     })
+    // Some React uploaders attach the file input only long enough for the
+    // chooser event and then rely on the trusted chooser path to trigger
+    // their onChange chain. CDP sets the FileList, but a few apps do not
+    // observe it unless we explicitly emit the same events their handlers
+    // listen for.
+    try {
+      const resolved = await debuggerSend<{
+        object?: { objectId?: string }
+      }>(targetId, 'DOM.resolveNode', { backendNodeId })
+      if (resolved?.object?.objectId) {
+        await debuggerSend(targetId, 'Runtime.callFunctionOn', {
+          objectId: resolved.object.objectId,
+          functionDeclaration: `function() {
+            this.dispatchEvent(new Event('input', { bubbles: true }));
+            this.dispatchEvent(new Event('change', { bubbles: true }));
+            return this.files ? this.files.length : -1;
+          }`,
+          returnByValue: true,
+        })
+      }
+    } catch {}
     // Diagnostic: confirm files actually attached after setFiles call.
     let postSetFilesCount: unknown = null
     try {

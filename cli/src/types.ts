@@ -25,6 +25,7 @@ export interface ExtensionStatus {
   type: 'status';
   extensionConnected: boolean;
   version: string;
+  features?: string[];
 }
 
 /** Heartbeat message */

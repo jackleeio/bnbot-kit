@@ -34,6 +34,7 @@ interface PoolEntry {
   userOwned?: boolean; // if true, don't close on idle (it's the user's own tab)
 }
 const tabPool = new Map<string, PoolEntry>();
+const SCRAPER_WINDOW_STORAGE_KEY = 'bnbotScraperWindowIds';
 
 // Windows we've created for scraping purposes. Tracked independently of
 // `tabPool` because pool entries get evicted on idle but the WINDOW may
@@ -42,16 +43,50 @@ const tabPool = new Map<string, PoolEntry>();
 // symptoms. We prune dead window IDs lazily on access.
 const scraperWindowIds = new Set<number>();
 
+async function loadStoredScraperWindowIds(): Promise<void> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+  try {
+    const stored = await chrome.storage.local.get(SCRAPER_WINDOW_STORAGE_KEY);
+    const ids = stored[SCRAPER_WINDOW_STORAGE_KEY];
+    if (!Array.isArray(ids)) return;
+    for (const id of ids) {
+      if (Number.isFinite(id)) scraperWindowIds.add(id);
+    }
+  } catch {
+    // Storage is a best-effort cache; in-memory tracking still works.
+  }
+}
+
+async function persistScraperWindowIds(): Promise<void> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+  try {
+    await chrome.storage.local.set({
+      [SCRAPER_WINDOW_STORAGE_KEY]: Array.from(scraperWindowIds),
+    });
+  } catch {
+    // Best effort only.
+  }
+}
+
+function rememberScraperWindowId(windowId: number): void {
+  scraperWindowIds.add(windowId);
+  persistScraperWindowIds().catch(() => undefined);
+}
+
 /** Remove closed windows from the tracking set. Call before decisions that
  *  depend on whether a scraper window is available. */
 async function pruneDeadScraperWindows(): Promise<void> {
+  await loadStoredScraperWindowIds();
+  let changed = false;
   for (const winId of Array.from(scraperWindowIds)) {
     try {
       await chrome.windows.get(winId);
     } catch {
       scraperWindowIds.delete(winId);
+      changed = true;
     }
   }
+  if (changed) await persistScraperWindowIds();
 }
 
 // Content scripts don't have access to chrome.windows/tabs/debugger — this
@@ -61,6 +96,7 @@ async function pruneDeadScraperWindows(): Promise<void> {
 if (typeof chrome !== 'undefined' && chrome.windows?.onRemoved) {
   chrome.windows.onRemoved.addListener((windowId) => {
     scraperWindowIds.delete(windowId);
+    persistScraperWindowIds().catch(() => undefined);
   });
 }
 
@@ -83,6 +119,11 @@ export function getPoolTabs(): Array<{ host: string; tabId: number; windowId: nu
     // waiting to be closed), so prefer it when multiple pools exist.
     busy: e.timer === null,
   }));
+}
+
+export async function getScraperWindowIds(): Promise<number[]> {
+  await pruneDeadScraperWindows();
+  return Array.from(scraperWindowIds);
 }
 
 /**
@@ -112,7 +153,7 @@ export async function openTabInScraperWindow(url: string): Promise<number> {
   const win = await chrome.windows.create({ url, type: 'normal', focused: false });
   const tabId = win.tabs?.[0]?.id;
   if (tabId == null || win.id == null) throw new Error('Failed to create scraper window');
-  scraperWindowIds.add(win.id);
+  rememberScraperWindowId(win.id);
   return tabId;
 }
 
@@ -171,7 +212,7 @@ async function openScraperWindow(url: string): Promise<{ tabId: number; windowId
   if (tabId == null || windowId == null) {
     throw new Error('Failed to create scraper window');
   }
-  scraperWindowIds.add(windowId);
+  rememberScraperWindowId(windowId);
   return { tabId, windowId };
 }
 
@@ -265,7 +306,7 @@ export async function getTab(
         timer: null,
         closeAt: 0,
       });
-      scraperWindowIds.add(t.windowId);
+      rememberScraperWindowId(t.windowId);
       console.log(`[Scraper] Adopted orphaned ${expectedHost} tab ${t.id} (window ${t.windowId})`);
       return t.id;
     }

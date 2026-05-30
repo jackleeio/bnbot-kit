@@ -34,70 +34,11 @@ let resizeHandler: (() => void) | null = null;
  * 覆盖 header 和 primaryColumn
  */
 function showAIOperatingIndicator(): void {
-  // 如果已经存在，不重复创建
-  if (document.getElementById(AI_INDICATOR_OVERLAY_ID)) {
-    return;
-  }
-
-  const header = document.querySelector('header[role="banner"]');
-  const col = document.querySelector('[data-testid="primaryColumn"]');
-
-  if (!header || !col) {
-    console.log('[ActionExecutor] Cannot show AI indicator - elements not found');
-    return;
-  }
-
-  const left = header.getBoundingClientRect().left;
-  const right = col.getBoundingClientRect().right;
-  const width = right - left;
-
-  const overlay = document.createElement('div');
-  overlay.id = AI_INDICATOR_OVERLAY_ID;
-  overlay.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: ${left}px;
-    width: ${width}px;
-    height: 100vh;
-    pointer-events: none;
-    z-index: 9999;
-  `;
-  document.body.appendChild(overlay);
-
-  resizeHandler = () => {
-    const newLeft = header.getBoundingClientRect().left;
-    const newRight = col.getBoundingClientRect().right;
-    overlay.style.left = newLeft + 'px';
-    overlay.style.width = (newRight - newLeft) + 'px';
-  };
-  window.addEventListener('resize', resizeHandler);
-
-  const style = document.createElement('style');
-  style.id = AI_INDICATOR_STYLE_ID;
-  style.textContent = `
-    @keyframes bnbot-breathe {
-      0%, 100% {
-        box-shadow:
-          inset 0 40px 40px -30px rgba(29,155,240,0.25),
-          inset 0 -40px 40px -30px rgba(29,155,240,0.25),
-          inset 80px 0 60px -40px rgba(29,155,240,0.25),
-          inset -80px 0 60px -40px rgba(29,155,240,0.25);
-      }
-      50% {
-        box-shadow:
-          inset 0 40px 40px -30px rgba(29,155,240,0.6),
-          inset 0 -40px 40px -30px rgba(29,155,240,0.6),
-          inset 80px 0 60px -40px rgba(29,155,240,0.6),
-          inset -80px 0 60px -40px rgba(29,155,240,0.6);
-      }
-    }
-    #${AI_INDICATOR_OVERLAY_ID} {
-      animation: bnbot-breathe 1.5s ease-in-out infinite !important;
-    }
-  `;
-  document.head.appendChild(style);
-
-  console.log('[ActionExecutor] AI indicator shown');
+  // Disabled by user request — the original implementation injected
+  // a full-height 4-edge blue breathing overlay (`rgba(29,155,240, …)`
+  // animated `bnbot-breathe` keyframes) every time an action started.
+  // It made the automation look obviously bot-driven and competed
+  // with X's own focus rings. No-op now; callers stay unchanged.
 }
 
 /**
