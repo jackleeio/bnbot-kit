@@ -584,12 +584,20 @@ function buildProgram(): Command {
     .description('Reload the unpacked BNBot extension from disk (picks up a fresh build)')
     .action(async () => {
       const { runCliAction } = await import('./cli.js');
-      try {
-        await runCliAction('dev_reload', {}, DEFAULT_PORT);
-      } catch {
-        // SW restarts mid-response; the socket drop is expected, not an error.
-      }
-      console.error('Extension reload requested (service worker restarting)...');
+      // The SW tears itself down ~600ms after acking, so the response frame
+      // may never arrive — don't hang on it. Race against a short timer.
+      await Promise.race([
+        runCliAction('dev_reload', {}, DEFAULT_PORT).catch(() => {}),
+        new Promise((r) => setTimeout(r, 2500)),
+      ]);
+      console.error('Extension reload requested (service worker restarting ~1s)...');
+    });
+  debug
+    .command('ping')
+    .description('Ping the extension dev marker (confirms which build is loaded)')
+    .action(async () => {
+      const { runCliAction } = await import('./cli.js');
+      await runCliAction('dev_ping', {}, DEFAULT_PORT);
     });
   debug
     .command('eval <expression>')

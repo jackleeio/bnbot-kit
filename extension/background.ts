@@ -1909,7 +1909,14 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   // Dev helper: reload the unpacked extension from disk (picks up a fresh
   // `npm run build`). Delay so this action's WS response flushes first; the
   // SW restart drops the socket and auto-reconnects.
-  dev_reload: () => { setTimeout(() => chrome.runtime.reload(), 250); return { ok: true, reloading: true }; },
+  // Reload synchronously — MV3 service workers can suspend right after a
+  // handler returns, which drops any pending setTimeout, so a delayed
+  // reload never fires. Calling reload() inline tears the SW down before
+  // the WS response flushes (CLI tolerates that via a race timeout).
+  dev_reload: () => { chrome.runtime.reload(); return { ok: true, reloading: true }; },
+  // Dev marker: bump the string on each build to confirm a reload actually
+  // picked up fresh code (call `bnbot debug ping`).
+  dev_ping: () => ({ ok: true, marker: 'pong-1' }),
   scrape_notifications: (m) => getTwitterNotifications(m.limit || 40),
   screenshot: (m) => captureTabScreenshot({ url: m.url, tabId: m.tabId, fullPage: m.fullPage }),
   navigate_to_url: (m) => navigateTabViaCdp({ url: m.url, tabId: m.tabId, spawn: m.spawn }),
