@@ -120,10 +120,10 @@ export async function getCtripFlight(
   const data = await executeInPage(tabId, async (max: number, url: string) => {
     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
     try {
-      // Wait for flight cards (post-load XHR settles 1-3s) or captcha.
+      // Wait for flight cards (post-load XHR can take 5-12s after nav) or captcha.
       const started = Date.now();
       let state: 'content' | 'captcha' | 'timeout' = 'timeout';
-      while (Date.now() - started < 8000) {
+      while (Date.now() - started < 15000) {
         if (location.pathname.includes('captcha') || /验证码|verify the human/i.test(document.body?.innerText || '')) { state = 'captcha'; break; }
         if (document.querySelector('.flight-list > span > div')) { state = 'content'; break; }
         await sleep(300);
