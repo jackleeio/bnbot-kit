@@ -304,3 +304,4 @@ export {
   getTikTokTopProductDetail,
   getTikTokTopProductMetrics,
 } from './tiktok-ads';
+export { getCtripHotelSearch, getCtripFlight } from './ctrip';

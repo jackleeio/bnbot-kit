@@ -394,6 +394,21 @@ export async function scrapeTweetArticleCommand(url: string): Promise<void> {
   return runCliAction('scrape_tweet_article', { tweetUrl: url, queryIds: await getXQueryIds() }, getPort());
 }
 
+// ── Ctrip browser scrapers (hotel-search / flight) ──────────────
+export async function ctripHotelSearchCommand(city: string, options: { checkin?: string; checkout?: string; limit?: string }): Promise<void> {
+  console.error(`Searching Ctrip hotels in city=${city} (${options.checkin} → ${options.checkout})...`);
+  return runCliAction('scrape_ctrip_hotel_search', {
+    city, checkin: options.checkin, checkout: options.checkout, limit: parseInt(options.limit || '10', 10),
+  }, getPort());
+}
+
+export async function ctripFlightCommand(from: string, to: string, options: { date?: string; limit?: string }): Promise<void> {
+  console.error(`Searching Ctrip flights ${from}→${to} on ${options.date}...`);
+  return runCliAction('scrape_ctrip_flight', {
+    from, to, date: options.date, limit: parseInt(options.limit || '20', 10),
+  }, getPort());
+}
+
 // ── Analytics ────────────────────────────────────────────────
 
 export async function analyticsCommand(options: { as?: string } = {}): Promise<void> {

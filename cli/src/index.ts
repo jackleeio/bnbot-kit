@@ -49,6 +49,8 @@ import {
   scrapeUserFollowersCommand,
   scrapeUserFollowingCommand,
   scrapeTweetArticleCommand,
+  ctripHotelSearchCommand,
+  ctripFlightCommand,
   analyticsCommand,
   navigateUrlCommand,
   navigateSearchCommand,
@@ -578,6 +580,18 @@ function buildProgram(): Command {
   // ── Debug helpers (CDP-level, for probing new platforms) ───
   const debug = program.command('debug').description('Low-level CDP helpers (dev / exploration)');
   debug
+    .command('reload')
+    .description('Reload the unpacked BNBot extension from disk (picks up a fresh build)')
+    .action(async () => {
+      const { runCliAction } = await import('./cli.js');
+      try {
+        await runCliAction('dev_reload', {}, DEFAULT_PORT);
+      } catch {
+        // SW restarts mid-response; the socket drop is expected, not an error.
+      }
+      console.error('Extension reload requested (service worker restarting)...');
+    });
+  debug
     .command('eval <expression>')
     .description('Run JS in a scraper pool tab via CDP Runtime.evaluate; prints the return value as JSON')
     .option('--tab-id <id>', 'Target a specific chrome tab id')
@@ -1020,6 +1034,21 @@ function buildProgram(): Command {
     .action(async (query: string, options: { limit?: string }) => {
       await runPublicScraper('ctrip-hotel-suggest', { query, limit: Number(options.limit) || 15 });
     });
+  // hotel-search / flight need the logged-in browser (SSR / DOM scrape) →
+  // routed through the extension via runCliAction, not the public fetch path.
+  ctrip
+    .command('hotel-search <city>')
+    .description('Search Ctrip hotels by numeric city ID + date range (browser)')
+    .requiredOption('--checkin <date>', 'Check-in date (YYYY-MM-DD)')
+    .requiredOption('--checkout <date>', 'Check-out date (YYYY-MM-DD)')
+    .option('-l, --limit <n>', 'Max hotels (1-30)', '10')
+    .action(ctripHotelSearchCommand);
+  ctrip
+    .command('flight <from> <to>')
+    .description('Search Ctrip one-way flights by IATA codes + date (browser)')
+    .requiredOption('--date <date>', 'Departure date (YYYY-MM-DD)')
+    .option('-l, --limit <n>', 'Max flights (1-50)', '20')
+    .action(ctripFlightCommand);
 
   // hackernews
   const hackernews = program
