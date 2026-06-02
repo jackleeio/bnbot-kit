@@ -1916,7 +1916,7 @@ const scraperHandlers: Record<string, (msg: any) => Promise<any>> = {
   dev_reload: () => { chrome.runtime.reload(); return { ok: true, reloading: true }; },
   // Dev marker: bump the string on each build to confirm a reload actually
   // picked up fresh code (call `bnbot debug ping`).
-  dev_ping: () => ({ ok: true, marker: 'pong-1' }),
+  dev_ping: () => ({ ok: true, marker: 'pong-2-reloadtest' }),
   scrape_notifications: (m) => getTwitterNotifications(m.limit || 40),
   screenshot: (m) => captureTabScreenshot({ url: m.url, tabId: m.tabId, fullPage: m.fullPage }),
   navigate_to_url: (m) => navigateTabViaCdp({ url: m.url, tabId: m.tabId, spawn: m.spawn }),

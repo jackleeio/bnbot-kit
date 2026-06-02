@@ -475,6 +475,31 @@ export async function executeInPage<T = any>(
   func: (...args: any[]) => T,
   args: any[] = [],
 ): Promise<T> {
+  // Hard ceiling over the ENTIRE CDP round-trip (attach + getTargets +
+  // Runtime.evaluate). None of chrome.debugger.* has a built-in timeout, so
+  // an anti-bot page that wedges ANY step would block until the daemon-side
+  // skill timeout. Observed: Douban db.* hangs at 85% to the full 60s — and
+  // it wedges at attach, before evaluate, so a per-evaluate race wasn't
+  // enough. This race covers every step.
+  const EXEC_TIMEOUT_MS = 25000;
+  return Promise.race([
+    executeInPageImpl<T>(tabId, func, args),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(
+          `executeInPage timed out after ${EXEC_TIMEOUT_MS}ms (page unresponsive — likely an anti-bot trap or stalled load)`,
+        )),
+        EXEC_TIMEOUT_MS,
+      ),
+    ),
+  ]);
+}
+
+async function executeInPageImpl<T = any>(
+  tabId: number,
+  func: (...args: any[]) => T,
+  args: any[] = [],
+): Promise<T> {
   // Preflight: refuse to attach to a tab that drifted to an extension/chrome page.
   // chrome.debugger.attach rejects chrome-extension:// URLs from other extensions
   // with "Cannot access a chrome-extension:// URL of different extension".
@@ -530,15 +555,32 @@ export async function executeInPage<T = any>(
   const argsJson = args.map(a => JSON.stringify(a)).join(', ');
   const expression = `(${func.toString()})(${argsJson})`;
 
-  const result = await chrome.debugger.sendCommand(
-    { targetId },
-    'Runtime.evaluate',
-    {
-      expression,
-      awaitPromise: true,
-      returnByValue: true,
-    },
-  ) as any;
+  // chrome.debugger.sendCommand has no built-in timeout. An anti-bot page
+  // that wedges Runtime.evaluate — e.g. Douban's `debugger`-trap scripts,
+  // which suspend the page once a CDP client is attached — would block here
+  // forever, burning the entire daemon-side skill budget (observed: douban
+  // db.* hanging at 85% until the 60s skill timeout). Race a hard timeout so
+  // a wedged scrape fails fast with a clear error instead of timing out blind.
+  const EXEC_TIMEOUT_MS = 25000;
+  const result = await Promise.race([
+    chrome.debugger.sendCommand(
+      { targetId },
+      'Runtime.evaluate',
+      {
+        expression,
+        awaitPromise: true,
+        returnByValue: true,
+      },
+    ),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(
+          `executeInPage timed out after ${EXEC_TIMEOUT_MS}ms (page unresponsive — likely an anti-bot trap or stalled load)`,
+        )),
+        EXEC_TIMEOUT_MS,
+      ),
+    ),
+  ]) as any;
 
   if (result?.exceptionDetails) {
     const errMsg = result.exceptionDetails.exception?.description
